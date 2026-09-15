@@ -1,19 +1,13 @@
-# 构建产物
-longnan-heritage.zip
-部署包/
-
 # 密钥（永不推送）
 js/secrets.js
 
 # 个人文件
 新文科简历.docx
 
-# Windows
+# 系统
 Thumbs.db
 desktop.ini
 *.lnk
-
-# macOS
 .DS_Store
 
 # 编辑器
