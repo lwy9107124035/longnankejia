@@ -1,132 +1,45 @@
-龙南客家非遗数字助手 — 部署指南（完整版）
-============================================
+龙南客家非遗数字助手 — 部署指南
+==================================
 
-目录
-----
-一、当前推荐：Netlify Drop（zip 拖拽，零注册）
-二、GitHub Pages（推代码自动部署，免费永久）
-三、Netlify + GitHub（推代码自动部署，界面友好）
-四、本地局域网演示（不开公网）
-五、版本管理与打包
-六、常见问题
+当前方案：Git 推送 → Netlify 自动部署
+（已删除 zip 手动打包方式）
 
+首次配置（只需一次）
+--------------------
+1. 打开 https://app.netlify.com
+2. 选择你的站点 → Site configuration → Build & deploy
+3. 点 "Link site to a Git repository"
+4. 选 GitHub → 授权 → 选择仓库 longnankejia
+5. 构建设置（netlify.toml 已配好，一般不用改）：
+     Build command:  echo 'window.APP_SECRETS={apiKey:"'$SILICONFLOW_API_KEY'"};' > js/secrets.js
+     Publish directory:  .
+6. 左侧 Environment variables → Add variable：
+     Key:    SILICONFLOW_API_KEY
+     Value:  你的硅基流动 API Key
+7. 保存后回到 Deploys → Trigger deploy → Deploy site
 
-一、当前推荐：Netlify Drop（zip 拖拽，零注册）
-------------------------------------------------
-适合：快速拿到永久网址，不想注册账号
-
-1. 双击 deploy.bat（或把桌面 longnan-heritage.zip 直接拖出）
-2. 浏览器自动打开 https://app.netlify.com/drop
-3. 把 zip 文件拖进网页虚线区域
-4. 等 10~30 秒，得到网址，形如：
-     https://abc123-demo.netlify.app
-5. 复制网址 → 打开数字助手页 → 右上角「二维码」→ 粘贴保存
-
-注意：
-- 未登录 Netlify 部署的站点，7 天无人访问会休眠（再访问自动唤醒，多等几秒）
-- 注册免费账号绑定后不会休眠
-- 更新内容：重新跑 deploy.bat，拖新 zip 即可，网址不变
-
-
-二、GitHub Pages（推代码自动部署，免费永久）
---------------------------------------------
-适合：已把代码推到 GitHub，想要最稳定的永久方案
-
-前提：代码已在 GitHub 仓库
-  https://github.com/lwy9107124035/longnankejia
-
-步骤：
-1. 打开 https://github.com/lwy9107124035/longnankejia/settings/pages
-2. Source 选 "Deploy from a branch"
-3. Branch 选 main，目录选 /(root)
-4. 点 Save
-5. 等 1~2 分钟，刷新页面，顶部出现网址：
-     https://lwy9107124035.github.io/longnankejia/
-6. 把网址粘进数字助手页二维码弹层保存
-
-以后更新：
+日常更新（全自动）
+------------------
   git add -A
   git commit -m "改了什么"
   git push
-  GitHub 自动重新部署，网址不变。
 
-优点：完全免费、永不失效、不限流量（合理使用范围内）
-缺点：国内偶尔访问较慢
+push 完 Netlify 自动重新部署，网址不变，约 30 秒生效。
 
+本地预览
+--------
+  双击 qidong.bat（手机与电脑同一 Wi-Fi 可扫码）
+  双击 zhanting.bat（停止服务）
 
-三、Netlify + GitHub（推代码自动部署，界面友好）
-------------------------------------------------
-适合：已登录 Netlify（GitHub 授权），想要可视化管理
+API Key 安全说明
+----------------
+  Key 存在两处（都不在代码里）：
+  - Netlify 环境变量（Settings → Environment variables）
+  - GitHub Secrets（如果也开了 GitHub Pages）
+  构建时自动注入到 js/secrets.js，该文件在 .gitignore 中。
 
-步骤：
-1. 打开 https://app.netlify.com
-2. 点 "Add new site" → "Import an existing project"
-3. 选 GitHub，授权后找到仓库 longnankejia，点进去
-4. 所有设置保持默认，点 "Deploy"
-5. 等 1 分钟左右，得到网址形如：
-     https://xxxx-random-1234.netlify.app
-6. 把网址粘进数字助手页二维码弹层保存
-
-以后更新：
-  git push 即可，Netlify 自动重新部署。
-
-优点：部署快、界面友好、有访问日志
-缺点：免费版长期无人访问可能休眠（登录账号绑定后不会）
-
-
-四、本地局域网演示（不开公网）
-------------------------------
-适合：现场演示，评委/观众手机连同一 Wi-Fi
-
-1. 双击 qidong.bat → 浏览器自动打开页面
-2. 窗口里显示局域网地址，形如 http://192.168.x.x:8787/
-3. 手机连同一 Wi-Fi，打开页面右上角「二维码」直接扫
-4. 演示完双击 zhanting.bat 停止服务
-
-注意：手机和电脑必须在同一个 Wi-Fi 下
-
-
-五、版本管理与打包
-------------------
-项目已纳入 Git：
-  仓库：https://github.com/lwy9107124035/longnankejia
-
-打包流程：
-  1. 修改代码（index.html / css / js）
-  2. 双击 deploy.bat
-     → 自动生成 部署包\v-时间戳.zip（历史存档）
-     → 同时在桌面生成 longnan-heritage.zip（最新版，拖去部署）
-  3. 旧版本 zip 全部保留在 部署包\ 文件夹，不会丢失
-
-Git 提交流程：
-  git add -A
-  git commit -m "描述改动"
-  git push
-
-部署包\ 文件夹已在 .gitignore 中，不会推到 GitHub。
-
-
-六、常见问题
-------------
-Q: 手机扫码后页面很简陋，没有样式？
-A: 多为 zip 路径问题（旧版 Windows 打包用反斜杠）。
-   重新跑 deploy.bat（新版用 Python 正斜杠打包），
-   把新 zip 重新拖到 Netlify 覆盖即可。
-
-Q: Netlify 网址打不开 / 很慢？
-A: 未登录部署的站点可能休眠，多刷两次会自动唤醒。
-   或改用 GitHub Pages（永不失效）。
-
-Q: 改了知识库/代码，网址会变吗？
-A: 不会。同一站点重新部署/推送，网址不变，内容自动更新。
-
-Q: 怎么切换到真实 AI 大模型？
-A: 编辑 js/config.js：
-   ai.mode 改为 'api'
-   ai.api.apiKey 填入 API Key（推荐硅基流动免费 Qwen）
-   重新打包部署即可。
-
-Q: 想加新的非遗知识条目？
-A: 编辑 js/knowledge-base.js，往数组里加：
-   { id:'xx', title:'标题', keywords:['词1','词2'], answer:'回答内容' }
-   重新打包部署即可。
+管理知识库 / API 配置
+---------------------
+  用户页面底部 → 「⚙ 管理入口」→ 密码登录（默认 admin123）
+  可增删改知识条目、切换 AI 引擎、修改模型参数。
+  修改存在浏览器 localStorage，不影响源码。
