@@ -1,0 +1,15 @@
+# 构建产物
+longnan-heritage.zip
+
+# Windows
+Thumbs.db
+desktop.ini
+*.lnk
+
+# macOS
+.DS_Store
+
+# 编辑器
+.vscode/
+.idea/
+*.swp

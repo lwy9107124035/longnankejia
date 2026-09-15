@@ -1,0 +1,65 @@
+龙南客家非遗数字助手 — 永久部署指南
+====================================
+
+这个网站是纯静态页面（HTML/CSS/JS），部署到免费托管平台后会得到
+一个固定的永久网址，手机任何网络都能扫码访问，不用开隧道、不用
+保持电脑开机。
+
+桌面已准备好打包文件：
+  C:\Users\lwy\OneDrive\Desktop\longnan-heritage.zip  (约 29 KB)
+
+
+方案 A：Netlify Drop（最快，推荐，30秒搞定）
+---------------------------------------------
+1. 浏览器打开：https://app.netlify.com/drop
+2. 把 longnan-heritage.zip 直接拖进网页中间虚线区域
+3. 等待 10~30 秒，页面会显示一个网址，例如：
+     https://abc123-demo.netlify.app
+4. 复制该网址，打开数字助手页面，点右上角「二维码」，
+   粘贴到「公网访问地址」，点「保存」
+5. 二维码立即变为永久版，全网可扫
+
+更新内容后：重新拖一次 zip 即可覆盖，网址不变。
+
+
+方案 B：GitHub Pages（免费、稳定，需注册 GitHub 账号）
+------------------------------------------------------
+1. 打开 https://github.com 注册/登录
+2. 点右上角 + → New repository
+3. 仓库名填：longnan-heritage  →  选 Public  →  Create
+4. 点 "uploading an existing file"，把 longnan-heritage.zip
+   里的内容拖上去（注意：是 zip 里的 index.html、css/、js/
+   这些文件本身，不是 zip 包）
+5. 仓库页面 → Settings → Pages
+6. Source 选 "Deploy from a branch"，Branch 选 main，根目录 /
+7. 保存后等 1~2 分钟，网址为：
+     https://你的用户名.github.io/longnan-heritage/
+8. 把这个网址粘贴进二维码弹层保存
+
+
+方案 C：Gitee Pages（国内访问快，需实名认证）
+----------------------------------------------
+1. 打开 https://gitee.com 注册并完成实名认证
+2. 新建仓库 → 上传站点文件（同 GitHub 步骤 4）
+3. 仓库 → 服务 → Gitee Pages → 启动部署
+4. 网址形如：https://你的用户名.gitee.io/longnan-heritage/
+5. 粘贴进二维码弹层保存
+
+
+本地演示（不部署也能用）
+------------------------
+双击 qidong.bat，手机和电脑连同一 Wi-Fi，
+页面右上角「二维码」直接就是局域网地址，可扫码。
+
+
+常用文件说明
+------------
+  qidong.bat      一键启动本地服务 + 打开浏览器
+  zhanting.bat    一键停止本地服务
+  deploy.bat      重新打包 zip（改了内容之后跑一次）
+  js/config.js    改 AI 模式/API Key 的地方
+  js/knowledge-base.js  往里加非遗知识条目
+
+注意：Netlify 免费版未登录时部署的站点，若 7 天无人访问可能
+休眠，重新访问会自动唤醒。比赛前两天访问一次即可保持活跃。
+或注册免费账号绑定，就不会休眠。

@@ -1,0 +1,110 @@
+/**
+ * 应用入口：装配聊天流程
+ */
+(function () {
+  'use strict';
+
+  var input, sendBtn;
+  var busy = false;
+
+  function setBusy(on) {
+    busy = on;
+    if (sendBtn) sendBtn.disabled = on;
+    if (input) input.disabled = on;
+  }
+
+  function ask(question) {
+    question = String(question || '').trim();
+    if (!question || busy) return;
+
+    // 清空输入、更新状态
+    if (input) input.value = '';
+    setBusy(true);
+
+    // 用户气泡
+    window.UI.Chat.addUser(question);
+
+    // 阿蓝进入思考状态
+    var bubble = window.UI.Chat.addBotShell();
+    window.UI.Avatar.thinking(true);
+    window.UI.Avatar.talking(false);
+    window.UI.Voice.stop();
+
+    var engine = window.AnswerEngine.getEngine();
+
+    engine.ask(question).then(function (result) {
+      window.UI.Avatar.thinking(false);
+      window.UI.Avatar.talking(true);
+
+      return window.UI.Chat.typewrite(bubble, result.text, function onProgress(state) {
+        if (state === 'done') {
+          window.UI.Avatar.talking(false);
+        }
+      }).then(function () {
+        window.UI.Avatar.talking(false);
+        window.UI.Voice.speak(result.text);
+
+        // 引擎状态展示
+        var statusEl = document.getElementById('engineStatus');
+        if (statusEl) {
+          var label = engine.label || engine.name;
+          if (result.source === 'rules' && result.matched) {
+            statusEl.textContent = '当前引擎：本地知识库 · 命中「' + result.matched + '」';
+          } else if (result.fallback) {
+            statusEl.textContent = '当前引擎：本地知识库 · 未命中，已启用兜底引导';
+          } else {
+            statusEl.textContent = '当前引擎：' + label;
+          }
+        }
+      });
+    }).catch(function (err) {
+      console.error(err);
+      window.UI.Avatar.thinking(false);
+      window.UI.Avatar.talking(false);
+      bubble.textContent = '阿蓝刚才走神了，抱歉~ 请再试一次。';
+    }).then(function () {
+      setBusy(false);
+      if (input) input.focus();
+    });
+  }
+
+  function bind() {
+    input = document.getElementById('chatInput');
+    sendBtn = document.getElementById('sendBtn');
+
+    sendBtn.addEventListener('click', function () {
+      ask(input.value);
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        ask(input.value);
+      }
+    });
+
+    // 快捷问题 chips
+    document.getElementById('quickQuestions').addEventListener('click', function (e) {
+      var chip = e.target.closest('.chip');
+      if (!chip) return;
+      ask(chip.getAttribute('data-q'));
+    });
+  }
+
+  // 对外暴露（详情弹层「问问阿蓝」会调用）
+  window.App = { ask: ask };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    window.UI.init();
+    bind();
+
+    // 控制台欢迎 & 调试提示
+    console.log(
+      '%c龙南客家非遗数字助手%c v' +
+        ((window.APP_CONFIG && window.APP_CONFIG.app.version) || '0.1.0'),
+      'background:#2F5D50;color:#fff;padding:3px 8px;border-radius:4px 0 0 4px;font-weight:bold',
+      'background:#C45C26;color:#fff;padding:3px 8px;border-radius:0 4px 4px 0'
+    );
+    console.log('切换 AI 引擎：编辑 js/config.js → ai.mode = "api" 并填写 apiKey');
+  });
+})();
