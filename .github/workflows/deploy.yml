@@ -18,20 +18,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate secrets.js from GitHub Secret
+      - name: Generate secrets.js
         run: |
           echo "window.APP_SECRETS={apiKey:\"${{ secrets.SILICONFLOW_API_KEY }}\"};" > js/secrets.js
-          echo "secrets.js generated"
 
       - name: Deploy to Netlify
-        uses: nwtgck/actions-netlify@v3
-        with:
-          publish-dir: '.'
-          production-branch: main
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: "Deploy from ${{ github.ref }} @ ${{ github.sha }}"
-          enable-pull-request-comment: false
-          enable-commit-comment: true
+        run: |
+          npm install -g netlify-cli
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "Deploying branch: $BRANCH"
+          if [ "$BRANCH" = "main" ]; then
+            netlify deploy --dir . --prod \
+              --auth "$NETLIFY_AUTH_TOKEN" \
+              --site "$NETLIFY_SITE_ID"
+          else
+            netlify deploy --dir . --alias "$BRANCH" \
+              --auth "$NETLIFY_AUTH_TOKEN" \
+              --site "$NETLIFY_SITE_ID"
+          fi
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
