@@ -1,0 +1,10 @@
+# Netlify 构建配置
+# 连接 GitHub 仓库后自动生效
+[build]
+  publish = "."
+  # 构建时从环境变量注入 API Key 到 secrets.js
+  # 环境变量在 Netlify 后台 Settings → Environment variables 设置
+  command = "echo 'window.APP_SECRETS={apiKey:\"'$SILICONFLOW_API_KEY'\"};' > js/secrets.js && echo done"
+
+[build.environment]
+  NODE_VERSION = "18"
