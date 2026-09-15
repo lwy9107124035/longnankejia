@@ -175,6 +175,10 @@
       { role: 'user', content: String(question || '') }
     ];
 
+    // 带超时的 fetch（15 秒无响应则回退本地知识库）
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 15000);
+
     return fetch(api.baseUrl, {
       method: 'POST',
       headers: {
@@ -186,24 +190,30 @@
         messages: messages,
         temperature: api.temperature != null ? api.temperature : 0.7,
         max_tokens: api.maxTokens || 512
-      })
+      }),
+      signal: controller.signal
     }).then(function (res) {
+      clearTimeout(timer);
       if (!res.ok) {
-        throw new Error('API 请求失败：HTTP ' + res.status);
+        throw new Error('API HTTP ' + res.status);
       }
       return res.json();
     }).then(function (data) {
-      var text =
-        (data.choices &&
-          data.choices[0] &&
-          data.choices[0].message &&
-          data.choices[0].message.content) || '';
-      text = String(text).trim();
+      var msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
+      // 优先取 content；若为空则尝试 reasoning_content
+      var text = String(msg.content || '').trim();
+      if (!text && msg.reasoning_content) {
+        text = String(msg.reasoning_content).trim();
+      }
       if (!text) throw new Error('API 返回内容为空');
+      // 清理 markdown 强调符号（**bold** → bold）
+      text = text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
+      // 限制长度，防止打字机过长
+      if (text.length > 300) text = text.slice(0, 300) + '……';
       return { text: text, source: 'api' };
     }).catch(function (err) {
+      clearTimeout(timer);
       console.error('[answer-engine] API 调用失败，回退本地知识库：', err);
-      // 网络/配置失败时静默回退，保证演示不翻车
       return self._fallback
         ? self._fallback.ask(question)
         : { text: '网络似乎不太稳定，阿蓝先用本地知识库回答：可以问我蓝染、竹编、织带、围屋相关的问题~', source: 'fallback' };
