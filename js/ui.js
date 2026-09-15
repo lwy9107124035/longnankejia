@@ -597,14 +597,14 @@
           if (ci < line.length) {
             cursor.insertAdjacentText('beforebegin', line.charAt(ci));
             ci++;
-            // 标点稍作停顿，更自然
+            // 快速输出，标点稍停
             var ch = line.charAt(ci - 1);
-            var delay = '，。！？；：'.indexOf(ch) !== -1 ? 90 : 18;
+            var delay = '，。！？；：'.indexOf(ch) !== -1 ? 40 : 8;
             timer = setTimeout(step, delay);
           } else {
             li++;
             ci = 0;
-            timer = setTimeout(step, 40);
+            timer = setTimeout(step, 15);
           }
           scrollToBottom();
         }

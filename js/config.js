@@ -25,7 +25,7 @@ window.APP_CONFIG = {
       apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || '',
       model: 'Qwen/Qwen2.5-7B-Instruct',
       temperature: 0.7,
-      maxTokens: 512,
+      maxTokens: 256,
       systemPrompt:
         '你是"阿蓝"，龙南客家非遗数字助手，为游客介绍江西龙南的客家非物质文化遗产。' +
         '你熟悉蓝染、竹编、客家织带、客家围屋、客家山歌与童谣、客家方言等知识。' +
