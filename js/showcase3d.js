@@ -371,12 +371,26 @@
   function buildLandye() {
     var g = new THREE.Group();
 
-    // 布料（用扎染纹理 + 波浪变形）
-    var clothGeo = new THREE.PlaneGeometry(2, 2.4, 32, 32);
+    // 挂杆（最高点 y=1.3）
+    var rodY = 1.3;
+    var rod = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.2, 12),
+      new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.75 }));
+    rod.rotation.z = Math.PI / 2;
+    rod.position.y = rodY;
+    rod.castShadow = true;
+    g.add(rod);
+
+    // 布料（顶端挂在杆上，自然下垂到染缸上方）
+    var clothW = 1.6, clothH = 1.7;
+    var clothGeo = new THREE.PlaneGeometry(clothW, clothH, 24, 24);
     var pos = clothGeo.attributes.position;
     for (var i = 0; i < pos.count; i++) {
       var x = pos.getX(i), y = pos.getY(i);
-      pos.setZ(i, Math.sin(x * 2.5 + 0.5) * 0.1 + Math.cos(y * 1.8) * 0.07 - Math.abs(x) * 0.05);
+      // y 从 -clothH/2 到 +clothH/2，顶端在 +clothH/2
+      var wave = Math.sin(x * 3 + 0.5) * 0.06 + Math.cos(y * 2) * 0.04;
+      // 底部随重力略微收拢
+      var sag = -Math.abs(x) * 0.03 * (1 - (y + clothH / 2) / clothH);
+      pos.setZ(i, wave + sag);
     }
     clothGeo.computeVertexNormals();
 
@@ -392,54 +406,55 @@
       clothMat = new THREE.MeshStandardMaterial({ color: 0x2F5D50, roughness: 0.85, side: THREE.DoubleSide });
     }
     var cloth = new THREE.Mesh(clothGeo, clothMat);
-    cloth.rotation.x = -0.08;
+    // 顶端对齐挂杆，整体略向前倾
+    cloth.position.y = rodY - clothH / 2 - 0.02;
+    cloth.rotation.x = -0.06;
     cloth.castShadow = true;
     cloth.receiveShadow = true;
     g.add(cloth);
 
-    // 挂杆
-    var rod = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.3, 12),
-      new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.75 }));
-    rod.rotation.z = Math.PI / 2;
-    rod.position.y = 1.25;
-    rod.castShadow = true;
-    g.add(rod);
-
-    // 挂钩
-    [-0.7, -0.3, 0.3, 0.7].forEach(function (hx) {
-      var hook = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.01, 6, 12),
+    // 挂钩（连接杆和布）
+    [-0.55, -0.2, 0.2, 0.55].forEach(function (hx) {
+      var hook = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.008, 6, 12),
         new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6, roughness: 0.4 }));
-      hook.position.set(hx, 1.2, 0);
+      hook.position.set(hx, rodY - 0.04, 0);
       hook.rotation.x = Math.PI / 2;
       g.add(hook);
     });
 
-    // 染缸
+    // 染缸（底部贴地，放在布料下方偏后）
+    var vatY = -0.72; // 缸中心高度，底部落在 -1.0 左右
     var vatMat = new THREE.MeshStandardMaterial({ color: 0x5C4033, roughness: 0.88 });
-    var vat = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.36, 0.55, 16), vatMat);
-    vat.position.y = -0.9;
+    var vat = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.34, 0.52, 16), vatMat);
+    vat.position.set(0, vatY, -0.15);
     vat.castShadow = true;
     g.add(vat);
-    var rim = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 8, 16), vatMat);
+    var rim = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.025, 8, 16), vatMat);
     rim.rotation.x = Math.PI / 2;
-    rim.position.y = -0.62;
+    rim.position.set(0, vatY + 0.26, -0.15);
     g.add(rim);
-    var liq = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.04, 16),
+    var liq = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.03, 16),
       new THREE.MeshStandardMaterial({ color: 0x0F2A22, roughness: 0.15 }));
-    liq.position.y = -0.65;
+    liq.position.set(0, vatY + 0.2, -0.15);
     g.add(liq);
 
-    // 板蓝根
+    // 板蓝根（立在地面，不在空中）
+    var groundY = -1.05;
     var stemMat = new THREE.MeshStandardMaterial({ color: 0x4A7A3A, roughness: 0.7 });
     var leafMat = new THREE.MeshStandardMaterial({ color: 0x3D6B2E, roughness: 0.65, side: THREE.DoubleSide });
-    var px = 1.1, pz = -0.3;
-    var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.5, 6), stemMat);
-    stem.position.set(px, -0.7, pz);
+    var px = 0.95, pz = 0.2;
+    var stemH = 0.45;
+    var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, stemH, 6), stemMat);
+    stem.position.set(px, groundY + stemH / 2, pz);
     g.add(stem);
     for (var li = 0; li < 4; li++) {
-      var leaf = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.08), leafMat);
+      var leaf = new THREE.Mesh(new THREE.PlaneGeometry(0.11, 0.07), leafMat);
       var la = (li / 4) * Math.PI * 2;
-      leaf.position.set(px + Math.cos(la) * 0.08, -0.55 + li * 0.1, pz + Math.sin(la) * 0.08);
+      leaf.position.set(
+        px + Math.cos(la) * 0.07,
+        groundY + stemH * 0.4 + li * 0.08,
+        pz + Math.sin(la) * 0.07
+      );
       leaf.rotation.y = la;
       leaf.rotation.x = -0.3;
       g.add(leaf);
