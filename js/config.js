@@ -9,8 +9,8 @@ window.APP_CONFIG = {
     name: '龙南客家非遗数字助手',
     assistantName: '阿蓝',
     version: '0.2.0-demo',
-    // 公网访问地址：部署后填入永久网址（也可在页面二维码弹层粘贴保存）
-    publicUrl: ''
+    // 公网访问地址：部署到 Netlify 后的永久网址
+    publicUrl: 'https://prismatic-syrniki-1e0e96.netlify.app'
   },
 
   ai: {

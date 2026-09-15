@@ -98,6 +98,7 @@
     window.UI.init();
     bind();
     window.Admin.init();
+    window.Showcase3D.init();
 
     // 控制台欢迎 & 调试提示
     console.log(
