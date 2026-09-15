@@ -97,6 +97,7 @@
   document.addEventListener('DOMContentLoaded', function () {
     window.UI.init();
     bind();
+    window.Admin.init();
 
     // 控制台欢迎 & 调试提示
     console.log(
@@ -105,6 +106,6 @@
       'background:#2F5D50;color:#fff;padding:3px 8px;border-radius:4px 0 0 4px;font-weight:bold',
       'background:#C45C26;color:#fff;padding:3px 8px;border-radius:0 4px 4px 0'
     );
-    console.log('切换 AI 引擎：编辑 js/config.js → ai.mode = "api" 并填写 apiKey');
+    console.log('管理入口：页面底部「⚙ 管理入口」，默认密码 admin123');
   });
 })();

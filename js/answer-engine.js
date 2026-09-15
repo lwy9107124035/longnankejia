@@ -74,7 +74,8 @@
   function RulesEngine() {
     this.name = 'rules';
     this.label = '本地知识库';
-    this.entries = (window.KNOWLEDGE_BASE || []).slice();
+    // 从 Store 读取合并后的知识库（默认 + 管理员修改）
+    this.entries = (window.Store ? window.Store.getEntries() : (window.KNOWLEDGE_BASE || [])).slice();
   }
 
   RulesEngine.prototype.scoreEntry = function (entry, tokens) {
@@ -155,9 +156,9 @@
   function ApiEngine() {
     this.name = 'api';
     this.label = 'AI 大模型';
-    var api = (window.APP_CONFIG && window.APP_CONFIG.ai.api) || {};
-    this.cfg = api;
-    if (!api.apiKey) {
+    // 从 Store 读取合并后的 AI 配置（默认 + 管理员覆盖）
+    this.cfg = window.Store ? window.Store.getEffectiveAi().api : ((window.APP_CONFIG && window.APP_CONFIG.ai.api) || {});
+    if (!this.cfg.apiKey) {
       console.warn('[answer-engine] 已选择 API 模式，但未配置 apiKey，将回退到本地知识库。');
       this._fallback = new RulesEngine();
     }
@@ -225,7 +226,12 @@
 
   function getEngine() {
     if (current) return current;
-    var mode = (window.APP_CONFIG && window.APP_CONFIG.ai.mode) || 'rules';
+    var mode = 'rules';
+    if (window.Store) {
+      mode = window.Store.getEffectiveAi().mode || 'rules';
+    } else if (window.APP_CONFIG) {
+      mode = window.APP_CONFIG.ai.mode || 'rules';
+    }
     current = mode === 'api' ? new ApiEngine() : new RulesEngine();
     return current;
   }

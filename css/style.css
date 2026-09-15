@@ -837,3 +837,340 @@ input { font-family: inherit; }
   .msg { animation: none; }
   .typing-cursor { animation: none; }
 }
+
+/* ============================================================
+   管理员界面
+   ============================================================ */
+
+.admin-entry {
+  display: block;
+  margin: 14px auto 0;
+  font-size: 11px;
+  color: var(--muted);
+  background: none;
+  border: 1px dashed rgba(47, 93, 80, 0.2);
+  border-radius: 999px;
+  padding: 5px 14px;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+.admin-entry:active { background: var(--primary-faint); color: var(--primary); }
+
+/* 遮罩 */
+.admin-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(20, 28, 25, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  animation: fadeIn 0.2s ease;
+}
+.admin-mask[hidden] { display: none; }
+
+/* 面板 */
+.admin-panel {
+  background: var(--paper);
+  border-radius: 18px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 92vh;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: popIn 0.25s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* 登录 */
+.admin-login {
+  padding: 40px 28px 28px;
+  text-align: center;
+}
+.admin-login-icon { font-size: 40px; margin-bottom: 10px; }
+.admin-login-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary-deep);
+  margin-bottom: 20px;
+  letter-spacing: 1px;
+}
+.admin-login input {
+  width: 100%;
+  height: 44px;
+  border: 1.5px solid rgba(47, 93, 80, 0.25);
+  border-radius: 10px;
+  padding: 0 14px;
+  font-size: 15px;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s;
+  background: var(--card);
+}
+.admin-login input:focus { border-color: var(--primary); }
+.admin-login-error {
+  height: 20px;
+  font-size: 12px;
+  color: #C0392B;
+  margin-top: 6px;
+}
+.admin-login-btn {
+  width: 100%;
+  height: 44px;
+  background: var(--primary);
+  color: #FFF8EE;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  margin-top: 8px;
+  transition: background 0.2s;
+}
+.admin-login-btn:active { background: var(--primary-deep); }
+.admin-login-cancel {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+}
+
+/* 头部 */
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--primary-deep);
+  color: #FFF8EE;
+  flex-shrink: 0;
+}
+.admin-header-title { font-size: 15px; font-weight: 700; letter-spacing: 1px; }
+.admin-close-btn {
+  color: rgba(255, 248, 238, 0.8);
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255, 248, 238, 0.12);
+}
+.admin-close-btn:active { background: rgba(255, 248, 238, 0.25); }
+
+/* Tabs */
+.admin-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  flex-shrink: 0;
+}
+.admin-tab {
+  flex: 1;
+  padding: 11px 6px;
+  font-size: 13px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  background: none;
+}
+.admin-tab.active {
+  color: var(--primary-deep);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+/* Body */
+.admin-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 14px 24px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 通用 */
+.admin-form-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary-deep);
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+.admin-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 10px 0 4px;
+}
+.admin-input, .admin-textarea {
+  width: 100%;
+  border: 1.5px solid rgba(47, 93, 80, 0.2);
+  border-radius: 9px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--card);
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.admin-input:focus, .admin-textarea:focus { border-color: var(--primary); }
+.admin-textarea { resize: vertical; line-height: 1.6; }
+.admin-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-top: 6px;
+}
+.admin-row { display: flex; gap: 10px; }
+.admin-col { flex: 1; }
+
+.admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid rgba(47, 93, 80, 0.2);
+  background: var(--card);
+  color: var(--ink-soft);
+  transition: all 0.18s;
+}
+.admin-btn:active { transform: scale(0.97); }
+.admin-btn-primary {
+  background: var(--primary);
+  color: #FFF8EE;
+  border-color: var(--primary);
+}
+.admin-btn-primary:active { background: var(--primary-deep); }
+.admin-btn-danger {
+  background: #FDF0EE;
+  color: #C0392B;
+  border-color: rgba(192, 57, 43, 0.25);
+}
+
+.admin-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.admin-badge-default { background: var(--primary-soft); color: var(--primary); }
+.admin-badge-custom { background: var(--accent-soft); color: var(--accent); }
+
+/* 知识库列表 */
+.admin-kb-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.admin-search {
+  flex: 1;
+  height: 38px;
+  border: 1.5px solid rgba(47, 93, 80, 0.2);
+  border-radius: 9px;
+  padding: 0 12px;
+  font-size: 13px;
+  outline: none;
+  background: var(--card);
+}
+.admin-search:focus { border-color: var(--primary); }
+.admin-kb-stats {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.admin-kb-item {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.admin-kb-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.admin-kb-item-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.admin-kb-item-keywords {
+  font-size: 11px;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+.admin-kb-item-preview {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.admin-kb-item-actions { display: flex; gap: 6px; }
+.admin-btn-sm {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(47, 93, 80, 0.18);
+  background: var(--paper);
+  color: var(--ink-soft);
+}
+.admin-btn-edit:active { background: var(--primary-soft); color: var(--primary); }
+.admin-btn-del { color: #C0392B; border-color: rgba(192, 57, 43, 0.2); }
+.admin-btn-del:active { background: #FDF0EE; }
+
+.admin-kb-form {
+  background: var(--card);
+  border: 1.5px solid var(--primary);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.admin-form-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.admin-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 30px 10px;
+  font-size: 13px;
+}
+
+/* API 设置 */
+.admin-api-section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.admin-mode-toggle { display: flex; gap: 8px; }
+.admin-mode-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 9px;
+  font-size: 13px;
+  border: 1.5px solid rgba(47, 93, 80, 0.2);
+  background: var(--paper);
+  color: var(--ink-soft);
+  transition: all 0.18s;
+}
+.admin-mode-btn.active {
+  background: var(--primary);
+  color: #FFF8EE;
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
+/* 桌面端适配 */
+@media (min-width: 600px) {
+  .admin-panel { max-height: 85vh; }
+}
