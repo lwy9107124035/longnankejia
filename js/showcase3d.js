@@ -380,14 +380,14 @@
     rod.castShadow = true;
     g.add(rod);
 
-    // 布料（顶端精确对齐挂杆，底端落在底座平面）
-    var clothW = 1.7, clothH = 2.4;
+    // 布料（顶端对齐挂杆，底端悬在染缸上方，不穿模）
+    var clothW = 1.7, clothH = 1.6;
     var clothGeo = new THREE.PlaneGeometry(clothW, clothH, 24, 24);
     var pos = clothGeo.attributes.position;
     for (var i = 0; i < pos.count; i++) {
       var x = pos.getX(i), y = pos.getY(i);
-      var wave = Math.sin(x * 3 + 0.5) * 0.05 + Math.cos(y * 2) * 0.03;
-      var sag = -Math.abs(x) * 0.025 * (1 - (y + clothH / 2) / clothH);
+      var wave = Math.sin(x * 3 + 0.5) * 0.04 + Math.cos(y * 2) * 0.025;
+      var sag = -Math.abs(x) * 0.02 * (1 - (y + clothH / 2) / clothH);
       pos.setZ(i, wave + sag);
     }
     clothGeo.computeVertexNormals();
@@ -404,9 +404,7 @@
       clothMat = new THREE.MeshStandardMaterial({ color: 0x2F5D50, roughness: 0.85, side: THREE.DoubleSide });
     }
     var cloth = new THREE.Mesh(clothGeo, clothMat);
-    // 顶端 = 杆中心，底端 ≈ 底座平面（y=-1.3）
-    // cloth top = pos.y + clothH/2 = rodY → pos.y = rodY - clothH/2 = 1.3 - 1.2 = 0.1
-    // cloth bottom = 0.1 - 1.2 = -1.1（略高于底座 -1.3，视觉上落在平面上）
+    // 顶端 = 杆中心（y=1.3），底端 = y=1.3-1.6=-0.3（悬在染缸上方，不穿模）
     cloth.position.set(0, rodY - clothH / 2, 0);
     cloth.castShadow = true;
     cloth.receiveShadow = true;
@@ -421,20 +419,20 @@
       g.add(hook);
     });
 
-    // 染缸（底部贴地，放在布料下方偏后）
-    var vatY = -0.72; // 缸中心高度，底部落在 -1.0 左右
+    // 染缸（布后方，不与布穿模）
+    var vatY = -0.72;
     var vatMat = new THREE.MeshStandardMaterial({ color: 0x5C4033, roughness: 0.88 });
     var vat = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.34, 0.52, 16), vatMat);
-    vat.position.set(0, vatY, -0.15);
+    vat.position.set(0, vatY, -0.35);
     vat.castShadow = true;
     g.add(vat);
     var rim = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.025, 8, 16), vatMat);
     rim.rotation.x = Math.PI / 2;
-    rim.position.set(0, vatY + 0.26, -0.15);
+    rim.position.set(0, vatY + 0.26, -0.35);
     g.add(rim);
     var liq = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.03, 16),
       new THREE.MeshStandardMaterial({ color: 0x0F2A22, roughness: 0.15 }));
-    liq.position.set(0, vatY + 0.2, -0.15);
+    liq.position.set(0, vatY + 0.2, -0.35);
     g.add(liq);
 
     // 板蓝根（立在地面，不在空中）
