@@ -17,7 +17,7 @@ window.APP_CONFIG = {
     // 'rules' = 本地知识库规则问答（默认）
     // 'api'   = 调用真实大模型 API（OpenAI 兼容接口）
     // 切换为 'api' 前，请先在 js/secrets.js 中填入 apiKey
-    mode: 'rules',
+    mode: 'api',
 
     api: {
       baseUrl: 'https://api.siliconflow.cn/v1/chat/completions',
