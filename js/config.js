@@ -46,5 +46,11 @@ window.APP_CONFIG = {
     lang: 'zh-CN',
     rate: 1.0,
     pitch: 1.05
+  },
+
+  // 管理员界面
+  admin: {
+    // 默认密码（管理员可在界面中修改，修改后存 localStorage 覆盖此值）
+    password: 'admin123'
   }
 };
