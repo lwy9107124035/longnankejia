@@ -8,12 +8,16 @@
   var THREE = null;
   var currentModel = null;
   var renderer, scene, camera, animationId;
-  var isDragging = false, prevMouse = { x: 0, y: 0 };
+  var isDragging = false, dragMode = 'rotate', prevMouse = { x: 0, y: 0 };
   var rotX = 0.25, rotY = 0.4, targetRotX = 0.25, targetRotY = 0.4;
   var zoom = 4.5, targetZoom = 4.5;
+  var panX = 0, panY = 0, targetPanX = 0, targetPanY = 0;
   var autoRotate = true;
   var idleTimer = null;
   var textures = {};
+  // 触摸状态
+  var touchMode = null; // 'rotate' | 'pan' | 'pinch'
+  var pinchDist = 0, pinchMidX = 0, pinchMidY = 0;
 
   var ITEMS = [
     { id: 'hutoumao', name: '虎头帽', subtitle: '定南客家童帽', icon: '\u{1F42F}',
@@ -501,51 +505,112 @@
   }
 
   function bindControls(canvas) {
-    function startDrag(x, y) {
-      isDragging = true;
+    // 阻止右键菜单
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    function stopAuto() {
       autoRotate = false;
-      prevMouse.x = x;
-      prevMouse.y = y;
       clearTimeout(idleTimer);
-      idleTimer = setTimeout(function () { autoRotate = true; }, 5000);
-    }
-    function moveDrag(x, y) {
-      if (!isDragging) return;
-      targetRotY += (x - prevMouse.x) * 0.008;
-      targetRotX += (y - prevMouse.y) * 0.006;
-      targetRotX = Math.max(-1.0, Math.min(1.0, targetRotX));
-      prevMouse.x = x;
-      prevMouse.y = y;
+      idleTimer = setTimeout(function () { autoRotate = true; }, 6000);
     }
 
-    canvas.addEventListener('mousedown', function (e) { startDrag(e.clientX, e.clientY); });
-    window.addEventListener('mousemove', function (e) { moveDrag(e.clientX, e.clientY); });
+    // ===== 桌面端 =====
+    canvas.addEventListener('mousedown', function (e) {
+      isDragging = true;
+      stopAuto();
+      // 右键或中键 = 平移，左键 = 旋转
+      dragMode = (e.button === 2 || e.button === 1) ? 'pan' : 'rotate';
+      prevMouse.x = e.clientX;
+      prevMouse.y = e.clientY;
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (!isDragging) return;
+      var dx = e.clientX - prevMouse.x, dy = e.clientY - prevMouse.y;
+      if (dragMode === 'pan') {
+        targetPanX += dx * 0.005;
+        targetPanY -= dy * 0.005;
+        targetPanX = Math.max(-2, Math.min(2, targetPanX));
+        targetPanY = Math.max(-1.5, Math.min(1.5, targetPanY));
+      } else {
+        targetRotY += dx * 0.008;
+        targetRotX += dy * 0.006;
+        targetRotX = Math.max(-1.0, Math.min(1.0, targetRotX));
+      }
+      prevMouse.x = e.clientX;
+      prevMouse.y = e.clientY;
+    });
     window.addEventListener('mouseup', function () { isDragging = false; });
-    canvas.addEventListener('touchstart', function (e) {
-      if (e.touches.length === 1) startDrag(e.touches[0].clientX, e.touches[0].clientY);
-    }, { passive: true });
-    canvas.addEventListener('touchmove', function (e) {
-      if (isDragging && e.touches.length === 1) { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); }
-    }, { passive: false });
-    canvas.addEventListener('touchend', function () { isDragging = false; });
     canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
+      stopAuto();
       targetZoom = Math.max(2.5, Math.min(8, targetZoom + e.deltaY * 0.003));
     }, { passive: false });
 
-    var initDist = 0;
+    // ===== 移动端 =====
     canvas.addEventListener('touchstart', function (e) {
-      if (e.touches.length === 2) {
-        initDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      stopAuto();
+      if (e.touches.length === 1) {
+        touchMode = 'rotate';
+        isDragging = true;
+        prevMouse.x = e.touches[0].clientX;
+        prevMouse.y = e.touches[0].clientY;
+      } else if (e.touches.length === 2) {
+        touchMode = 'pan'; // 默认双指平移
+        isDragging = true;
+        var dx = e.touches[0].clientX - e.touches[1].clientX;
+        var dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchDist = Math.hypot(dx, dy);
+        pinchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        pinchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       }
     }, { passive: true });
+
     canvas.addEventListener('touchmove', function (e) {
-      if (e.touches.length === 2) {
-        var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        if (initDist > 0) targetZoom = Math.max(2.5, Math.min(8, targetZoom * initDist / d));
-        initDist = d;
+      if (!isDragging) return;
+      e.preventDefault();
+      if (touchMode === 'rotate' && e.touches.length === 1) {
+        var dx = e.touches[0].clientX - prevMouse.x;
+        var dy = e.touches[0].clientY - prevMouse.y;
+        targetRotY += dx * 0.008;
+        targetRotX += dy * 0.006;
+        targetRotX = Math.max(-1.0, Math.min(1.0, targetRotX));
+        prevMouse.x = e.touches[0].clientX;
+        prevMouse.y = e.touches[0].clientY;
+      } else if (e.touches.length === 2) {
+        // 双指：同时检测平移和缩放
+        var dx = e.touches[0].clientX - e.touches[1].clientX;
+        var dy = e.touches[0].clientY - e.touches[1].clientY;
+        var newDist = Math.hypot(dx, dy);
+        var newMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        var newMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+        // 缩放：距离变化
+        if (pinchDist > 0) {
+          targetZoom = Math.max(2.5, Math.min(8, targetZoom * pinchDist / newDist));
+        }
+        // 平移：中点移动
+        targetPanX += (newMidX - pinchMidX) * 0.005;
+        targetPanY -= (newMidY - pinchMidY) * 0.005;
+        targetPanX = Math.max(-2, Math.min(2, targetPanX));
+        targetPanY = Math.max(-1.5, Math.min(1.5, targetPanY));
+
+        pinchDist = newDist;
+        pinchMidX = newMidX;
+        pinchMidY = newMidY;
       }
-    }, { passive: true });
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', function (e) {
+      if (e.touches.length === 0) {
+        isDragging = false;
+        touchMode = null;
+      } else if (e.touches.length === 1) {
+        // 双指变单指 → 切回旋转
+        touchMode = 'rotate';
+        prevMouse.x = e.touches[0].clientX;
+        prevMouse.y = e.touches[0].clientY;
+      }
+    });
   }
 
   function showModel(id) {
@@ -566,6 +631,8 @@
     scene.add(currentModel);
     targetRotX = 0.25;
     targetRotY = 0.4;
+    targetPanX = 0;
+    targetPanY = 0;
     targetZoom = id === 'weiwu' ? 5.0 : (id === 'landye' ? 4.5 : 4.0);
   }
 
@@ -575,9 +642,11 @@
     rotX += (targetRotX - rotX) * 0.08;
     rotY += (targetRotY - rotY) * 0.08;
     zoom += (targetZoom - zoom) * 0.08;
+    panX += (targetPanX - panX) * 0.1;
+    panY += (targetPanY - panY) * 0.1;
     if (currentModel) { currentModel.rotation.x = rotX; currentModel.rotation.y = rotY; }
-    camera.position.z = zoom;
-    camera.lookAt(0, 0.15, 0);
+    camera.position.set(panX, 0.4 + panY, zoom);
+    camera.lookAt(panX, 0.15 + panY, 0);
     renderer.render(scene, camera);
   }
 
