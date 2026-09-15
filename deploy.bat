@@ -24,15 +24,10 @@ if %MISSING%==1 (
 )
 echo [OK] All site files present.
 
-rem ---- build zip with Python (forward-slash paths, Linux-compatible) ----
-rem resolve real Desktop (handles OneDrive redirect)
+rem ---- resolve real Desktop ----
 for /f "delims=" %%d in ('powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"') do set "DESKTOP=%%d"
-set "ZIP=%DESKTOP%\longnan-heritage.zip"
-echo.
-echo Creating zip: %ZIP%
-echo (this only packs index.html + css + js, not the bat/docx files)
-echo.
 
+rem ---- find python ----
 set "PY="
 where python >nul 2>nul && set "PY=python"
 if not defined PY where python3 >nul 2>nul && set "PY=python3"
@@ -43,44 +38,52 @@ if not defined PY (
     exit /b 1
 )
 
-"%PY%" -c "import zipfile,pathlib,os;src=pathlib.Path(r'%~dp0.');dst=pathlib.Path(r'%ZIP%');[dst.unlink() for _ in [dst] if dst.exists()];files=['index.html','css/style.css','js/config.js','js/knowledge-base.js','js/answer-engine.js','js/ui.js','js/app.js'];z=zipfile.ZipFile(dst,'w',zipfile.ZIP_DEFLATED);[z.write(src/f,f) for f in files];z.close();print('Zip created:',dst,'(',round(dst.stat().st_size/1024,1),'KB )')"
+rem ---- build timestamp ----
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmm"') do set "TS=%%i"
 
-if not exist "%ZIP%" (
+rem ---- archive folder ----
+set "ARCHIVE=%~dp0部署包"
+if not exist "%ARCHIVE%" mkdir "%ARCHIVE%"
+
+rem ---- build zip into archive + desktop ----
+set "ZIP_ARC=%ARCHIVE%\v-%TS%.zip"
+set "ZIP_DESK=%DESKTOP%\longnan-heritage.zip"
+echo.
+echo Creating archive: %ZIP_ARC%
+echo Creating desktop: %ZIP_DESK%
+echo.
+
+"%PY%" -c "import zipfile,pathlib,sys;src=pathlib.Path(r'%~dp0.');files=['index.html','css/style.css','js/config.js','js/knowledge-base.js','js/answer-engine.js','js/ui.js','js/app.js'];paths=[r'%ZIP_ARC%',r'%ZIP_DESK%'];\
+[z.unlink() for p in paths for _ in [pathlib.Path(p)] if _.exists()];\
+[ (lambda z: ([z.write(src/f,f) for f in files], z.close()))(zipfile.ZipFile(p,'w',zipfile.ZIP_DEFLATED)) for p in paths ];\
+print('Done.')"
+
+if not exist "%ZIP_DESK%" (
     echo [ERROR] Failed to create zip.
     pause
     exit /b 1
 )
 
+echo [OK] Archive saved to 部署包\v-%TS%.zip
+echo [OK] Desktop copy: longnan-heritage.zip
 echo.
 echo ============================================
-echo   DONE. Next steps:
+echo   Next steps:
 echo ============================================
 echo.
-echo   1. A zip file is now on your Desktop:
-echo      longnan-heritage.zip
+echo   1. Open: https://app.netlify.com/drop
+echo   2. Drag Desktop\longnan-heritage.zip onto the page
+echo   3. Wait for URL, copy it
+echo   4. Open assistant page, click QR, paste URL, Save
 echo.
-echo   2. Open this page in your browser:
-echo      https://app.netlify.com/drop
-echo.
-echo   3. Drag the zip file onto that page.
-echo.
-echo   4. Wait ~10 seconds, you will get a URL like:
-echo      https://xxxx-yyyy-1234.netlify.app
-echo.
-echo   5. Copy that URL. Open the assistant page,
-echo      click QR button, paste URL, click Save.
-echo.
-echo   That URL is PERMANENT and works worldwide.
-echo   To update the site later: re-run this bat,
-echo   drag the new zip onto the same Netlify page.
+echo   All past zips are kept in 部署包\ folder.
+echo   To update: change files, re-run this bat,
+echo   drag the NEW desktop zip onto Netlify.
 echo ============================================
 echo.
 
-rem open browser to Netlify Drop
 start "" "https://app.netlify.com/drop"
-
-rem reveal zip on desktop
-explorer /select,"%ZIP%"
+explorer /select,"%ZIP_DESK%"
 
 echo Press any key to close...
 pause >nul
