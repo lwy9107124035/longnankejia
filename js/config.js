@@ -1,31 +1,28 @@
 /**
  * 全局配置 —— 后续扩展入口都收拢在这里
  * ------------------------------------------------------------
- * AI 接入：把 mode 改为 'api'，填好 apiKey 即可切换到真实大模型。
- * 目前默认 'rules'（本地知识库），离线可用、演示零风险。
+ * AI 接入：把 mode 改为 'api'，并在 js/secrets.js 里填入 apiKey。
+ * secrets.js 在 .gitignore 中，不会推送到 Git。
  */
 window.APP_CONFIG = {
   app: {
     name: '龙南客家非遗数字助手',
     assistantName: '阿蓝',
     version: '0.2.0-demo',
-    // 公网访问地址：部署到 Netlify/GitHub Pages 后填入永久网址
-    // 也可以在页面二维码弹层里粘贴保存（会覆盖此处配置并存入 localStorage）。
+    // 公网访问地址：部署后填入永久网址（也可在页面二维码弹层粘贴保存）
     publicUrl: ''
   },
 
   ai: {
     // 'rules' = 本地知识库规则问答（默认）
     // 'api'   = 调用真实大模型 API（OpenAI 兼容接口）
+    // 切换为 'api' 前，请先在 js/secrets.js 中填入 apiKey
     mode: 'rules',
 
-    // —— API 模式配置（mode: 'api' 时生效）——
-    // 推荐 SiliconFlow（硅基流动）免费模型，注册后获取 API Key：
-    //   https://cloud.siliconflow.cn
-    // 其他 OpenAI 兼容服务（DeepSeek、智谱、Moonshot 等）改 baseUrl/model 即可。
     api: {
       baseUrl: 'https://api.siliconflow.cn/v1/chat/completions',
-      apiKey: '',           // ← 在此填入 API Key
+      // 密钥从 secrets.js 读取，此处无需填写
+      apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || '',
       model: 'Qwen/Qwen2.5-7B-Instruct',
       temperature: 0.7,
       maxTokens: 512,

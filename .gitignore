@@ -2,6 +2,9 @@
 longnan-heritage.zip
 部署包/
 
+# 密钥（永不推送）
+js/secrets.js
+
 # 个人文件
 新文科简历.docx
 

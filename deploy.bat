@@ -53,9 +53,9 @@ echo Creating archive: %ZIP_ARC%
 echo Creating desktop: %ZIP_DESK%
 echo.
 
-"%PY%" -c "import zipfile,pathlib,sys;src=pathlib.Path(r'%~dp0.');files=['index.html','css/style.css','js/config.js','js/knowledge-base.js','js/answer-engine.js','js/ui.js','js/app.js'];paths=[r'%ZIP_ARC%',r'%ZIP_DESK%'];\
+"%PY%" -c "import zipfile,pathlib;src=pathlib.Path(r'%~dp0.');files=['index.html','css/style.css','js/config.js','js/knowledge-base.js','js/answer-engine.js','js/ui.js','js/app.js','js/secrets.js'];exist=[f for f in files if (src/f).exists()];paths=[r'%ZIP_ARC%',r'%ZIP_DESK%'];\
 [z.unlink() for p in paths for _ in [pathlib.Path(p)] if _.exists()];\
-[ (lambda z: ([z.write(src/f,f) for f in files], z.close()))(zipfile.ZipFile(p,'w',zipfile.ZIP_DEFLATED)) for p in paths ];\
+[ (lambda z: ([z.write(src/f,f) for f in exist], z.close()))(zipfile.ZipFile(p,'w',zipfile.ZIP_DEFLATED)) for p in paths ];\
 print('Done.')"
 
 if not exist "%ZIP_DESK%" (
