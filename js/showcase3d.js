@@ -548,6 +548,8 @@
 
     // ===== 移动端 =====
     canvas.addEventListener('touchstart', function (e) {
+      e.preventDefault(); // 阻止页面滚动/缩放
+      e.stopPropagation();
       stopAuto();
       if (e.touches.length === 1) {
         touchMode = 'rotate';
@@ -555,7 +557,7 @@
         prevMouse.x = e.touches[0].clientX;
         prevMouse.y = e.touches[0].clientY;
       } else if (e.touches.length === 2) {
-        touchMode = 'pan'; // 默认双指平移
+        touchMode = 'pan';
         isDragging = true;
         var dx = e.touches[0].clientX - e.touches[1].clientX;
         var dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -563,11 +565,12 @@
         pinchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         pinchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     canvas.addEventListener('touchmove', function (e) {
+      e.preventDefault(); // 阻止页面滚动
+      e.stopPropagation();
       if (!isDragging) return;
-      e.preventDefault();
       if (touchMode === 'rotate' && e.touches.length === 1) {
         var dx = e.touches[0].clientX - prevMouse.x;
         var dy = e.touches[0].clientY - prevMouse.y;

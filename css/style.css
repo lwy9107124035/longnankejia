@@ -1227,6 +1227,10 @@ input { font-family: inherit; }
   overflow: hidden;
   position: relative;
   margin-bottom: 10px;
+  touch-action: none;
+  overscroll-behavior: contain;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .c3d-viewport canvas {
@@ -1235,6 +1239,8 @@ input { font-family: inherit; }
   height: 100% !important;
   cursor: grab;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .c3d-viewport canvas:active { cursor: grabbing; }
