@@ -102,46 +102,63 @@
 
   /* ---------- 前言/后记 ---------- */
   function showPreface() {
-    var mask = $('#dcDetailMask');
-    var body = $('#dcDetailBody');
-    body.innerHTML =
-      '<div class="dc-detail-name">前言</div>' +
-      '<div class="dc-detail-desc"><p>' + esc(data.meta.preface) + '</p></div>' +
-      '<div class="dc-detail-meta">' + esc(data.meta.compiler) + ' · ' + esc(data.meta.date) + '</div>';
-    mask.hidden = false;
+    try {
+      var mask = document.getElementById('dcDetailMask');
+      var body = document.getElementById('dcDetailBody');
+      if (!mask || !body || !data) return;
+      body.innerHTML =
+        '<div class="dc-detail-name">前言</div>' +
+        '<div class="dc-detail-desc"><p>' + esc((data.meta && data.meta.preface) || '暂无前言内容') + '</p></div>' +
+        '<div class="dc-detail-meta">' + esc((data.meta && data.meta.compiler) || '') + ' · ' + esc((data.meta && data.meta.date) || '') + '</div>';
+      mask.hidden = false;
+    } catch (e) { console.error('[Diancang] showPreface error:', e); }
   }
 
   function showEpilogue() {
-    var mask = $('#dcDetailMask');
-    var body = $('#dcDetailBody');
-    body.innerHTML =
-      '<div class="dc-detail-name">后记</div>' +
-      '<div class="dc-detail-desc"><p>' + esc(data.epilogue) + '</p></div>';
-    mask.hidden = false;
+    try {
+      var mask = document.getElementById('dcDetailMask');
+      var body = document.getElementById('dcDetailBody');
+      if (!mask || !body || !data) return;
+      body.innerHTML =
+        '<div class="dc-detail-name">后记</div>' +
+        '<div class="dc-detail-desc"><p>' + esc(data.epilogue || '暂无后记内容') + '</p></div>';
+      mask.hidden = false;
+    } catch (e) { console.error('[Diancang] showEpilogue error:', e); }
   }
 
   /* ---------- 初始化 ---------- */
   function init() {
-    data = window.DIANCANG;
-    if (!data) return;
+    try {
+      data = window.DIANCANG;
+      if (!data || !data.chapters) {
+        console.warn('[Diancang] data not loaded');
+        return;
+      }
 
-    var section = $('#diancangSection');
-    if (!section) return;
+      var section = document.getElementById('diancangSection') || document.getElementById('panelDiancang');
+      if (!section) {
+        console.warn('[Diancang] section not found');
+        return;
+      }
 
-    // 绑定前言/后记按钮
-    var prefaceBtn = $('#dcPrefaceBtn');
-    var epilogueBtn = $('#dcEpilogueBtn');
-    if (prefaceBtn) prefaceBtn.addEventListener('click', showPreface);
-    if (epilogueBtn) epilogueBtn.addEventListener('click', showEpilogue);
+      // 绑定前言/后记按钮
+      var prefaceBtn = document.getElementById('dcPrefaceBtn');
+      var epilogueBtn = document.getElementById('dcEpilogueBtn');
+      if (prefaceBtn) prefaceBtn.addEventListener('click', showPreface);
+      if (epilogueBtn) epilogueBtn.addEventListener('click', showEpilogue);
 
-    // 绑定关闭
-    var closeBtn = $('#dcDetailClose');
-    var mask = $('#dcDetailMask');
-    if (closeBtn) closeBtn.addEventListener('click', function () { mask.hidden = true; });
-    if (mask) mask.addEventListener('click', function (e) { if (e.target === mask) mask.hidden = true; });
+      // 绑定关闭
+      var closeBtn = document.getElementById('dcDetailClose');
+      var mask = document.getElementById('dcDetailMask');
+      if (closeBtn) closeBtn.addEventListener('click', function () { mask.hidden = true; });
+      if (mask) mask.addEventListener('click', function (e) { if (e.target === mask) mask.hidden = true; });
 
-    renderChapterTabs();
-    selectChapter(data.chapters[0].id);
+      renderChapterTabs();
+      selectChapter(data.chapters[0].id);
+      console.log('[Diancang] initialized,', data.chapters.length, 'chapters');
+    } catch (e) {
+      console.error('[Diancang] init error:', e);
+    }
   }
 
   window.Diancang = { init: init };

@@ -40,13 +40,13 @@
       if (!THREE) { resolve(); return; }
       var loader = new THREE.TextureLoader();
       var files = {
-        blackCotton: 'assets/black-cotton.png',
-        tigerEmb: 'assets/tiger-embroidery.png',
-        rammedEarth: 'assets/rammed-earth.png',
-        roofTiles: 'assets/roof-tiles.png',
-        stonePaving: 'assets/stone-paving.png',
-        landyeFinal: 'assets/landye-final.png',
-        embroidery: 'assets/embroidery-pattern.png'
+        blackCotton: 'assets/black-cotton.jpg',
+        tigerEmb: 'assets/tiger-embroidery.jpg',
+        rammedEarth: 'assets/rammed-earth.jpg',
+        roofTiles: 'assets/roof-tiles.jpg',
+        stonePaving: 'assets/stone-paving.jpg',
+        landyeFinal: 'assets/landye-final.jpg',
+        embroidery: 'assets/embroidery-pattern.jpg'
       };
       var loaded = 0, total = Object.keys(files).length;
       function done() { loaded++; if (loaded >= total) resolve(); }

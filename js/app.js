@@ -95,11 +95,11 @@
   window.App = { ask: ask };
 
   document.addEventListener('DOMContentLoaded', function () {
-    window.UI.init();
+    try { window.UI.init(); } catch (e) { console.error('UI.init error:', e); }
     bind();
-    window.Admin.init();
-    window.Showcase3D.init();
-    window.Diancang.init();
+    try { window.Admin.init(); } catch (e) { console.error('Admin.init error:', e); }
+    try { window.Showcase3D.init(); } catch (e) { console.error('3D.init error:', e); }
+    try { window.Diancang.init(); } catch (e) { console.error('Diancang.init error:', e); }
 
     // 主内容 Tab 切换
     var tabs = document.querySelectorAll('.main-tab');
@@ -113,13 +113,5 @@
         });
       });
     });
-
-    // 控制台欢迎
-    console.log(
-      '%c龙南客家非遗数字助手%c v' +
-        ((window.APP_CONFIG && window.APP_CONFIG.app.version) || '0.1.0'),
-      'background:#2F5D50;color:#fff;padding:3px 8px;border-radius:4px 0 0 4px;font-weight:bold',
-      'background:#C45C26;color:#fff;padding:3px 8px;border-radius:0 4px 4px 0'
-    );
   });
 })();
