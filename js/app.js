@@ -99,14 +99,27 @@
     bind();
     window.Admin.init();
     window.Showcase3D.init();
+    window.Diancang.init();
 
-    // 控制台欢迎 & 调试提示
+    // 主内容 Tab 切换
+    var tabs = document.querySelectorAll('.main-tab');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        tabs.forEach(function (t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        var panelId = tab.getAttribute('data-panel');
+        document.querySelectorAll('.tab-panel').forEach(function (p) {
+          p.classList.toggle('active', p.id === panelId);
+        });
+      });
+    });
+
+    // 控制台欢迎
     console.log(
       '%c龙南客家非遗数字助手%c v' +
         ((window.APP_CONFIG && window.APP_CONFIG.app.version) || '0.1.0'),
       'background:#2F5D50;color:#fff;padding:3px 8px;border-radius:4px 0 0 4px;font-weight:bold',
       'background:#C45C26;color:#fff;padding:3px 8px;border-radius:0 4px 4px 0'
     );
-    console.log('管理入口：页面底部「⚙ 管理入口」，默认密码 admin123');
   });
 })();

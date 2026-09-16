@@ -92,53 +92,56 @@
         </div>
       </section>
 
-      <!-- 问答区 -->
-      <section class="chat-section" id="chatSection">
-        <div class="section-label">
-          <span class="section-label-dot"></span>AI 互动问答
-        </div>
+      <!-- ======== 主内容 Tab 导航 ======== -->
+      <nav class="main-tabs" id="mainTabs">
+        <button class="main-tab active" data-panel="panelChat" type="button">
+          <span class="main-tab-icon">💬</span>问答
+        </button>
+        <button class="main-tab" data-panel="panelHeritage" type="button">
+          <span class="main-tab-icon">🏮</span>科普
+        </button>
+        <button class="main-tab" data-panel="panel3d" type="button">
+          <span class="main-tab-icon">🧊</span>3D
+        </button>
+        <button class="main-tab" data-panel="panelDiancang" type="button">
+          <span class="main-tab-icon">📖</span>典藏
+        </button>
+      </nav>
 
+      <!-- ======== 问答面板 ======== -->
+      <div class="tab-panel active" id="panelChat">
         <div class="quick-questions" id="quickQuestions">
-          <button class="chip" data-q="什么是客家蓝染？" type="button">什么是客家蓝染？</button>
-          <button class="chip" data-q="竹编有什么工艺特色？" type="button">竹编有什么特色？</button>
-          <button class="chip" data-q="客家织带有什么寓意？" type="button">织带有什么寓意？</button>
-          <button class="chip" data-q="龙南为什么叫世界围屋之都？" type="button">围屋之都？</button>
-          <button class="chip" data-q="客家童谣是什么？" type="button">客家童谣？</button>
+          <button class="chip" data-q="什么是客家蓝染？" type="button">蓝染？</button>
+          <button class="chip" data-q="竹编有什么工艺特色？" type="button">竹编？</button>
+          <button class="chip" data-q="客家织带有什么寓意？" type="button">织带？</button>
+          <button class="chip" data-q="龙南为什么叫世界围屋之都？" type="button">围屋？</button>
+          <button class="chip" data-q="客家童谣是什么？" type="button">童谣？</button>
+          <button class="chip" data-q="酿豆腐是怎么做的？" type="button">酿豆腐？</button>
         </div>
-
         <div class="chat-window" id="chatWindow" aria-live="polite"></div>
-
         <div class="engine-status" id="engineStatus">当前引擎：本地知识库</div>
-
         <div class="input-bar">
-          <input type="text" id="chatInput" placeholder="问问阿蓝：蓝染、竹编、织带、围屋……" autocomplete="off" enterkeyhint="send">
+          <input type="text" id="chatInput" placeholder="问问阿蓝……" autocomplete="off" enterkeyhint="send">
           <button class="send-btn" id="sendBtn" type="button" aria-label="发送">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.4 20.4L20.85 12.92C21.66 12.57 21.66 11.43 20.85 11.08L3.4 3.6C2.74 3.31 2 3.8 2 4.51V19.49C2 20.2 2.74 20.69 3.4 20.4ZM20 12L4 12" fill="currentColor"/></svg>
           </button>
         </div>
-
         <div class="voice-row">
           <label class="voice-toggle">
             <input type="checkbox" id="voiceToggle">
             <span class="voice-toggle-ui"></span>
-            <span class="voice-toggle-label">语音朗读回答</span>
+            <span class="voice-toggle-label">语音朗读</span>
           </label>
         </div>
-      </section>
+      </div>
 
-      <!-- 非遗科普 -->
-      <section class="heritage-section" id="heritageSection">
-        <div class="section-label">
-          <span class="section-label-dot"></span>非遗科普 · 点击卡片查看详情
-        </div>
-        <div class="heritage-grid" id="heritageGrid"><!-- js 注入 --></div>
-      </section>
+      <!-- ======== 科普面板 ======== -->
+      <div class="tab-panel" id="panelHeritage">
+        <div class="heritage-grid" id="heritageGrid"></div>
+      </div>
 
-      <!-- 3D 立体展示 -->
-      <section class="c3d-section" id="showcase3dSection">
-        <div class="section-label">
-          <span class="section-label-dot"></span>3D 立体展示 · 旋转缩放查看细节
-        </div>
+      <!-- ======== 3D 面板 ======== -->
+      <div class="tab-panel" id="panel3d">
         <div class="c3d-list" id="c3dList"></div>
         <div class="c3d-viewport" id="c3dViewport">
           <div class="c3d-loading">加载 3D 模型中…</div>
@@ -147,8 +150,18 @@
           <div class="c3d-info-name" id="c3dName"></div>
           <div class="c3d-info-desc" id="c3dDesc"></div>
         </div>
-        <div class="c3d-hint">🖱 左键拖拽旋转 · 右键拖拽平移 · 滚轮缩放 ｜ 触屏：单指旋转 · 双指平移缩放</div>
-      </section>
+        <div class="c3d-hint">🖱 左键旋转 · 右键平移 · 滚轮缩放 ｜ 触屏：单指旋转 · 双指平移缩放</div>
+      </div>
+
+      <!-- ======== 典藏面板 ======== -->
+      <div class="tab-panel" id="panelDiancang">
+        <div class="dc-toolbar">
+          <button class="dc-tool-btn" id="dcPrefaceBtn" type="button">📜 前言</button>
+          <button class="dc-tool-btn" id="dcEpilogueBtn" type="button">✍ 后记</button>
+        </div>
+        <div class="dc-tabs" id="dcTabs"></div>
+        <div id="dcContent"></div>
+      </div>
 
       <footer class="footer">
         <div class="footer-brand">数智传薪 · 非遗远航</div>
@@ -156,6 +169,14 @@
         <button class="admin-entry" id="adminEntry" type="button">⚙ 管理入口</button>
       </footer>
     </main>
+  </div>
+
+  <!-- ======== 典藏详情弹层 ======== -->
+  <div class="modal-mask" id="dcDetailMask" hidden>
+    <div class="modal-card modal-card-detail">
+      <button class="modal-close" id="dcDetailClose" type="button" aria-label="关闭">×</button>
+      <div id="dcDetailBody"></div>
+    </div>
   </div>
 
   <!-- ======== 二维码弹层 ======== -->
@@ -201,11 +222,13 @@
   <script src="js/config.js"></script>
   <script src="js/store.js"></script>
   <script src="js/knowledge-base.js"></script>
+  <script src="js/diancang-data.js"></script>
   <script src="js/answer-engine.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/admin.js"></script>
   <script src="js/textures.js"></script>
   <script src="js/showcase3d.js"></script>
+  <script src="js/diancang.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
