@@ -169,7 +169,92 @@ window.KNOWLEDGE_BASE = [
       '团队成员来自汉语言文学、汉语国际教育、人工智能、法学等专业，人文同学负责知识内容，技术同学负责数字产品开发。\n' +
       '自 2024 年起多次赴龙南调研实践，实习基地设在世界客家非遗馆、关西新围等文旅一线。'
   },
-  // ===== 文化典藏展品 =====
+  // ===== 文化典藏展品（含视频讲解链接） =====
+  {
+    id: 'dc-caichaxi',
+    title: '采茶戏',
+    keywords: ['采茶戏', '赣南采茶', '采茶'],
+    answer: '采茶戏是流行于江西等省区的传统戏曲类别，赣南采茶戏已有四百余年历史，无论男女角色手中必持一扇。在龙南，采茶戏被改编成采茶操。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TDG'
+  },
+  {
+    id: 'dc-lianhuadiao',
+    title: '莲花调',
+    keywords: ['莲花调', '莲花落'],
+    answer: '莲花调是流传于龙南的传统曲艺，唱词以四句七言为主，以竹板击节，源于旧时"莲花落"，是客家人最朴素的乡音。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61Tbs'
+  },
+  {
+    id: 'dc-luodihuagu',
+    title: '落地花鼓',
+    keywords: ['落地花鼓'],
+    answer: '落地花鼓两百余年前由福建传入，生旦丑三人登场，音乐融合凤阳花鼓与客家山歌。2009年列入梅州市级非遗。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TyV'
+  },
+  {
+    id: 'dc-huangyuanmiguo',
+    title: '黄元米果',
+    keywords: ['黄元米果', '米果'],
+    answer: '龙南过年少不了黄元米果——"过年吃米果，来年日子节节高"。以黄元柴灰碱水浸泡大禾米，石臼捶打至软糯筋道。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TC3'
+  },
+  {
+    id: 'dc-huangjiangdoufu',
+    title: '黄姜豆腐',
+    keywords: ['黄姜豆腐'],
+    answer: '黄姜豆腐不用石膏卤水，专拿野生黄姜酸水凝固豆汁，外黄内白，山里人叫"软黄金"，一代传一代三百多年。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61bcE'
+  },
+  {
+    id: 'dc-xianshuidong',
+    title: '仙水冻',
+    keywords: ['仙水冻', '仙人粄'],
+    answer: '仙水冻用仙人草熬制，被誉为龙南"三宝"之一，墨绿色凝胶晶莹剔透，入伏吃仙人粄是客家人的习俗。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61T80'
+  },
+  {
+    id: 'dc-meicaikouro',
+    title: '梅菜扣肉',
+    keywords: ['梅菜扣肉', '扣肉'],
+    answer: '梅菜扣肉是客家三件宝之一，五花肉炸至金黄与梅菜叠碗蒸透，是赣南宴席的"压轴菜"。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TMH'
+  },
+  {
+    id: 'dc-sanjidi',
+    title: '三及第',
+    keywords: ['三及第'],
+    answer: '三及第汤寓意"连中三元"，瘦肉、猪肝、粉肠分别借喻状元、榜眼、探花。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TLx'
+  },
+  {
+    id: 'dc-yizhuocai',
+    title: '一桌菜',
+    keywords: ['一桌菜', '龙南一桌菜'],
+    answer: '"龙南客家一桌菜"2019年正式评选推出，十三道最具地方特色的佳肴。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TLY'
+  },
+  {
+    id: 'dc-lingmao',
+    title: '铃帽',
+    keywords: ['铃帽'],
+    answer: '铃帽缝上银铃铛走一步响一串，帽顶绣"月光"，男孩虎头、女孩莲花，五福临门。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TDk'
+  },
+  {
+    id: 'dc-huolong',
+    title: '火笼',
+    keywords: ['火笼', '竹火笼'],
+    answer: '火笼以竹为骨、陶为胆，"地瓜当饭饱，火笼当棉袄"，是女儿出嫁必备嫁妆。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TL1'
+  },
+  {
+    id: 'dc-zougushi',
+    title: '走古事',
+    keywords: ['走古事'],
+    answer: '走古事以"古装巡游+仕子科考"为特色，孩童着汉服诵经典，"状元"红袍巡礼报喜，将崇文重教的祖训化作年节文化展演。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TAI'
+  },
+  {
+    id: 'dc-shikehui',
+    title: '世界客属恳亲大会',
+    keywords: ['世客会', '恳亲大会', '世界客属'],
+    answer: '世客会1971年在香港诞生，已在亚美非多国举办，是连接全球客家人的桥梁。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61TCV'
+  },
+  {
+    id: 'dc-zisundai',
+    title: '子孙袋',
+    keywords: ['子孙袋'],
+    answer: '子孙袋用红布缝制，内装花生红枣莲子桂圆，取"早生贵子"之意，是客家婚俗重要信物。📺 可观看客家话讲解视频：https://6525763.hlcode.pro/?id=Na61T3r'
+  },
+  // ===== 其他典藏展品 =====
   {
     id: 'dc-wushiwei',
     title: '乌石围',
