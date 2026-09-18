@@ -1,0 +1,9 @@
+# Netlify 配置
+# 部署由 GitHub Actions 完成（见 .github/workflows/deploy.yml）
+# API Key 从 GitHub Secrets 注入，不走 Netlify 环境变量
+[build]
+  publish = "."
+  command = ""
+
+[build.environment]
+  NODE_VERSION = "18"

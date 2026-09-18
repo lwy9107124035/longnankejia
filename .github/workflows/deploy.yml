@@ -1,0 +1,41 @@
+name: Build & Deploy to Netlify
+
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate secrets.js
+        run: |
+          echo "window.APP_SECRETS={apiKey:\"${{ secrets.SILICONFLOW_API_KEY }}\"};" > js/secrets.js
+
+      - name: Deploy to Netlify
+        run: |
+          npm install -g netlify-cli
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "Deploying branch: $BRANCH"
+          if [ "$BRANCH" = "main" ]; then
+            netlify deploy --dir . --prod \
+              --auth "$NETLIFY_AUTH_TOKEN" \
+              --site "$NETLIFY_SITE_ID"
+          else
+            netlify deploy --dir . --alias "$BRANCH" \
+              --auth "$NETLIFY_AUTH_TOKEN" \
+              --site "$NETLIFY_SITE_ID"
+          fi
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
