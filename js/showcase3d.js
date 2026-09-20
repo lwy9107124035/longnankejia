@@ -29,7 +29,7 @@
       if (THREE) { resolve(THREE); return; }
       // 优先加载本地文件，CDN 作备份
       var sources = [
-        'js/three.min.js',
+        'js/vendor/three.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
       ];
       var idx = 0;
@@ -53,13 +53,13 @@
       if (!THREE) { resolve(); return; }
       var loader = new THREE.TextureLoader();
       var files = {
-        blackCotton: 'assets/black-cotton.png',
-        tigerEmb: 'assets/tiger-embroidery.png',
-        rammedEarth: 'assets/rammed-earth.png',
-        roofTiles: 'assets/roof-tiles.png',
-        stonePaving: 'assets/stone-paving.png',
-        landyeFinal: 'assets/landye-final.png',
-        embroidery: 'assets/embroidery-pattern.png'
+        blackCotton: 'assets/textures/black-cotton.png',
+        tigerEmb: 'assets/textures/tiger-embroidery.png',
+        rammedEarth: 'assets/textures/rammed-earth.png',
+        roofTiles: 'assets/textures/roof-tiles.png',
+        stonePaving: 'assets/textures/stone-paving.png',
+        landyeFinal: 'assets/textures/landye-final.png',
+        embroidery: 'assets/textures/embroidery-pattern.png'
       };
       var loaded = 0, total = Object.keys(files).length;
       function done() { loaded++; if (loaded >= total) resolve(); }
