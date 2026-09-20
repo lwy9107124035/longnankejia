@@ -20,14 +20,7 @@
 
   function switchToChat(question) {
     // 切换到问答 Tab
-    var tabs = document.querySelectorAll('.main-tab');
-    tabs.forEach(function (t) {
-      var isActive = t.getAttribute('data-panel') === 'panelChat';
-      t.classList.toggle('active', isActive);
-    });
-    document.querySelectorAll('.tab-panel').forEach(function (p) {
-      p.classList.toggle('active', p.id === 'panelChat');
-    });
+    if (window.App && window.App.switchPanel) window.App.switchPanel('panelChat');
     // 触发问答
     if (window.App && window.App.ask) {
       setTimeout(function () { window.App.ask(question); }, 200);

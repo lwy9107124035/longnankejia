@@ -415,6 +415,28 @@ input { font-family: inherit; }
 }
 .dc-detail-ask:active { background: var(--primary-deep); }
 
+/* 科普详情里的「问问阿蓝」此前没有任何规则，浏览器按纯文本渲染，完全不像按钮 */
+.ask-more-btn {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px 14px;
+  background: var(--accent);
+  color: #FFF8EE;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: background 0.15s, transform 0.1s;
+}
+.ask-more-btn::before { content: "💬 "; }
+.ask-more-btn:hover { background: #A94B1D; }
+.ask-more-btn:active { background: #8E3E17; transform: translateY(1px); }
+
 .dc-detail-meta { font-size: 10px; color: var(--muted); text-align: center; margin-top: 6px; }
 
 /* 视频播放器弹层 */

@@ -942,8 +942,10 @@
       });
       askBtn.addEventListener('click', function () {
         close();
+        // 只调 ask() 的话回答打在隐藏的问答面板里，用户看到的是「没反应」
+        if (window.App && window.App.switchPanel) window.App.switchPanel('panelChat');
         if (window.App && window.App.ask) {
-          window.App.ask(currentAsk);
+          setTimeout(function () { window.App.ask(currentAsk); }, 200);
         }
       });
     }

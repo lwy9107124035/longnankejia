@@ -251,8 +251,26 @@ async function run() {
   check('at least 4 heritage cards', n >= 4, n + ' cards');
   await page.evaluate(`document.querySelector('#heritageGrid .h-card').click()`);
   check('detail modal opens', await until(page, `!document.getElementById('detailModal').hidden`));
+  const askStyle = await page.evaluate(`(() => {
+    const b = document.getElementById('askMoreBtn'), cs = getComputedStyle(b);
+    return { bg: cs.backgroundColor, cursor: cs.cursor, h: Math.round(b.getBoundingClientRect().height) };
+  })()`);
+  check('「问问阿蓝」渲染成按钮而不是纯文本',
+    askStyle.bg !== 'rgba(0, 0, 0, 0)' && askStyle.cursor === 'pointer' && askStyle.h > 30,
+    JSON.stringify(askStyle));
   await page.evaluate(`document.getElementById('detailClose').click()`);
   check('detail modal closes', await until(page, `document.getElementById('detailModal').hidden`));
+
+  // 回归：以前只调 ask()，回答打在隐藏面板里，看起来像点了没反应
+  await until(page, `!document.getElementById('sendBtn').disabled`, 30000);  // 等上一条打完字
+  await page.evaluate(`document.querySelector('#heritageGrid .h-card').click()`);
+  await until(page, `!document.getElementById('detailModal').hidden`);
+  const botBefore = await page.evaluate(`document.querySelectorAll('.msg-bot').length`);
+  await page.evaluate(`document.getElementById('askMoreBtn').click()`);
+  check('点「问问阿蓝」自动跳到问答面板',
+    await until(page, `document.querySelector('.tab-panel.active').id === 'panelChat'`));
+  check('跳转后提问确实发出（气泡已建）',
+    await until(page, `document.querySelectorAll('.msg-bot').length > ${botBefore}`, 5000));
 
   console.log('\n6. 3D panel (the de-watermarked models)');
   await page.evaluate(`document.querySelector('[data-panel="panel3d"]').click()`);
@@ -268,6 +286,28 @@ async function run() {
   }
   const tex200 = netFailures.filter((f) => f.includes('assets/textures'));
   check('all texture maps loaded without error', tex200.length === 0, tex200.join('; '));
+
+  console.log('\n6b. 自动旋转失控回归');
+  check('Showcase3D 暴露了只读调试状态', await until(page, `!!window.Showcase3D.debugState`));
+  await sleep(6000);   // 让自动旋转先累加一段
+  const spun = await page.evaluate(`window.Showcase3D.debugState()`);
+  check('久转后角度仍收敛在 ±π 内',
+    Math.abs(spun.targetRotY) <= Math.PI + 1e-6 && Math.abs(spun.rotY) <= Math.PI + 1e-6,
+    'target=' + spun.targetRotY.toFixed(3) + ' rot=' + spun.rotY.toFixed(3));
+  // 修复前：切模型时 rotY 要从几十弧度绕回去，单帧能跳 0.5 以上
+  const maxStep = await page.evaluate(`(async () => {
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    document.querySelectorAll('#c3dList .c3d-item')[2].click();
+    let prev = window.Showcase3D.debugState().rotY, max = 0;
+    for (let i = 0; i < 30; i++) {
+      await frame();
+      const now = window.Showcase3D.debugState().rotY;
+      max = Math.max(max, Math.abs(now - prev));
+      prev = now;
+    }
+    return max;
+  })()`, true);
+  check('切换模型不会一帧暴转', maxStep < 0.25, 'max Δ/帧 = ' + maxStep.toFixed(4));
 
   console.log('\n7. 典藏 panel');
   await page.evaluate(`document.querySelector('[data-panel="panelDiancang"]').click()`);

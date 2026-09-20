@@ -788,14 +788,36 @@
       default: currentModel = buildHutoumao();
     }
     scene.add(currentModel);
-    targetRotX = 0.25; targetRotY = 0.4;
+    targetRotX = 0.25;
+    // Return to the canonical view by the shortest arc. Assigning 0.4 outright left
+    // rotY at whatever the auto-rotation had accumulated, so the lerp unwound tens of
+    // radians in a second — the violent spin on switching models.
+    targetRotY = rotY + shortestTurnTo(rotY, 0.4);
     targetPanX = 0; targetPanY = 0;
     targetZoom = id === 'weiwu' ? 5.5 : (id === 'landye' ? 4.8 : 4.2);
+  }
+
+  /** Signed delta from `from` to `to` taking the short way round. */
+  function shortestTurnTo(from, to) {
+    var d = to - from;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  /** Keep both angles in (-PI, PI] so a long idle session cannot drift to huge values. */
+  function wrapAngles() {
+    if (targetRotY > Math.PI || targetRotY < -Math.PI) {
+      var w = targetRotY - Math.round(targetRotY / (Math.PI * 2)) * Math.PI * 2;
+      rotY += w - targetRotY;   // shift both equally: no visual jump
+      targetRotY = w;
+    }
   }
 
   function animate() {
     animationId = requestAnimationFrame(animate);
     if (autoRotate && !isDragging) targetRotY += 0.003;
+    wrapAngles();
     rotX += (targetRotX - rotX) * 0.08;
     rotY += (targetRotY - rotY) * 0.08;
     zoom += (targetZoom - zoom) * 0.08;
@@ -879,5 +901,12 @@
     });
   }
 
-  window.Showcase3D = { init: init, stop: stop };
+  /** 只读状态，供 tests/ 断言自动旋转角度不会无上限累加 */
+  window.Showcase3D = {
+    init: init,
+    stop: stop,
+    debugState: function () {
+      return { rotX: rotX, rotY: rotY, targetRotX: targetRotX, targetRotY: targetRotY, autoRotate: autoRotate };
+    }
+  };
 })();

@@ -91,8 +91,20 @@
     });
   }
 
+  /** 切换主面板：Tab 点击、详情弹层「问问阿蓝」、典藏跳转共用这一条路径 */
+  function switchPanel(panelId) {
+    document.querySelectorAll('.main-tab').forEach(function (t) {
+      t.classList.toggle('active', t.getAttribute('data-panel') === panelId);
+    });
+    document.querySelectorAll('.tab-panel').forEach(function (p) {
+      p.classList.toggle('active', p.id === panelId);
+    });
+    var main = document.getElementById('main');
+    if (main) main.scrollTop = 0;
+  }
+
   // 对外暴露（详情弹层「问问阿蓝」会调用）
-  window.App = { ask: ask };
+  window.App = { ask: ask, switchPanel: switchPanel };
 
   document.addEventListener('DOMContentLoaded', function () {
     try { window.UI.init(); } catch (e) { console.error('UI.init error:', e); }
@@ -105,12 +117,7 @@
     var tabs = document.querySelectorAll('.main-tab');
     tabs.forEach(function (tab) {
       tab.addEventListener('click', function () {
-        tabs.forEach(function (t) { t.classList.remove('active'); });
-        tab.classList.add('active');
-        var panelId = tab.getAttribute('data-panel');
-        document.querySelectorAll('.tab-panel').forEach(function (p) {
-          p.classList.toggle('active', p.id === panelId);
-        });
+        switchPanel(tab.getAttribute('data-panel'));
       });
     });
   });
