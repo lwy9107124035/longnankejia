@@ -244,6 +244,25 @@ async function run() {
   check('api mode still returns an answer', apiGot, Date.now() - apiT0 + 'ms');
   if (!apiGot) console.log('        note: the live endpoint never answered within 30s');
 
+  console.log('\n4c. 接口失败时必须回落到真正的知识库（不是罐头话）');
+  // Block-listing the API host via CDP proved flaky, so drive the failure path
+  // directly: reject fetch, then call ApiEngine.ask and inspect what comes back.
+  const fb = await page.evaluate(`(async () => {
+    const orig = window.fetch;
+    window.fetch = () => Promise.reject(new Error('forced failure for test'));
+    let out;
+    try {
+      const e = new window.AnswerEngine.ApiEngine();
+      const r = await e.ask('什么是客家蓝染？');
+      out = { text: String(r.text || ''), source: r.source };
+    } finally { window.fetch = orig; }
+    return out;
+  })()`, true);
+  check('接口失败仍拿到知识库实体内容', (fb.text || '').indexOf('板蓝根') > -1,
+    (fb.text || '').slice(0, 40));
+  check('回落来源标注为本地知识库', fb.source === 'rules', String(fb.source));
+  check('不再返回丢弃知识库的兜底套话', (fb.text || '').indexOf('网络似乎不太稳定') === -1);
+
   console.log('\n5. 科普 panel');
   await page.evaluate(`document.querySelector('[data-panel="panelHeritage"]').click()`);
   check('heritage cards rendered', await until(page, `document.querySelectorAll('#heritageGrid .h-card').length > 0`));
@@ -446,9 +465,8 @@ async function run() {
 
   console.log('\n10. console / network hygiene');
   const realErrors = consoleErrors.filter((e) => !/favicon|ERR_CONNECTION_RESET|DevTools|hlcode\.pro/i.test(e));
-  // the dialect videos are third-party pages we only embed, so their reachability is
-  // not this site's defect; everything else must load cleanly
-  const realNet = netFailures.filter((f) => !/favicon|hlcode\.pro/i.test(f));
+  // 第三方方言视频页与线上大模型只是被内嵌/调用，其可达性不算本站缺陷
+  const realNet = netFailures.filter((f) => !/favicon|hlcode\.pro|siliconflow/i.test(f));
   check('no uncaught page errors', realErrors.length === 0, realErrors.slice(0, 5).join(' | '));
   check('no failed subresource requests', realNet.length === 0, realNet.slice(0, 5).join(' | '));
 

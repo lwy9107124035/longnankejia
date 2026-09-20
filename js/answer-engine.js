@@ -158,15 +158,18 @@
     this.label = 'AI 大模型';
     // 从 Store 读取合并后的 AI 配置（默认 + 管理员覆盖）
     this.cfg = window.Store ? window.Store.getEffectiveAi().api : ((window.APP_CONFIG && window.APP_CONFIG.ai.api) || {});
+    // 本地知识库始终作为兜底：以前只在缺 apiKey 时才建，结果密钥在但接口挂了
+    // 时 _fallback 是 undefined，catch 里拿不到它，只能回一句罐头话，
+    // 明明库里有的答案就这么丢了。
+    this._fallback = new RulesEngine();
     if (!this.cfg.apiKey) {
       console.warn('[answer-engine] 已选择 API 模式，但未配置 apiKey，将回退到本地知识库。');
-      this._fallback = new RulesEngine();
     }
   }
 
   ApiEngine.prototype.ask = function (question) {
     var self = this;
-    if (this._fallback) {
+    if (!this.cfg.apiKey) {
       return this._fallback.ask(question);
     }
 
@@ -215,9 +218,7 @@
     }).catch(function (err) {
       clearTimeout(timer);
       console.error('[answer-engine] API 调用失败，回退本地知识库：', err);
-      return self._fallback
-        ? self._fallback.ask(question)
-        : { text: '网络似乎不太稳定，阿蓝先用本地知识库回答：可以问我蓝染、竹编、织带、围屋相关的问题~', source: 'fallback' };
+      return self._fallback.ask(question);
     });
   };
 
