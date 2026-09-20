@@ -187,6 +187,27 @@ def check_textures_clean():
         [f for f in os.listdir(d) if f.endswith(".png")]))
 
 
+# ------------------------------------------------------------------- css vars
+def check_css_vars():
+    """The 护眼配色 rework renamed most palette tokens.
+
+    A leftover var(--bg-card) does not throw — it just resolves to nothing, so the rule
+    silently loses its colour. Catch that here rather than in a screenshot review.
+    """
+    css = read(rel("css", "style.css"))
+    defined = set(re.findall(r"(--[\w-]+)\s*:", css))
+    used = re.findall(r"var\(\s*(--[\w-]+)\s*(,)?", css)
+    for name, has_fallback in used:
+        if name not in defined and not has_fallback:
+            fail("css/style.css uses var(%s) but never defines it" % name)
+    # inline style attributes in the markup too
+    html = read(rel("index.html"))
+    for name in re.findall(r"var\(\s*(--[\w-]+)\s*\)", html):
+        if name not in defined:
+            fail("index.html uses var(%s) which css/style.css never defines" % name)
+    notes.append("%d css custom properties defined, all references resolve" % len(defined))
+
+
 # --------------------------------------------------------------- git hygiene
 def check_gitignore():
     txt = read(rel(".gitignore"))
@@ -207,6 +228,7 @@ def main():
     literals = check_path_literals(pages)
     check_orphans(literals, html)
     check_textures_clean()
+    check_css_vars()
     check_js_syntax()
     check_gitignore()
 

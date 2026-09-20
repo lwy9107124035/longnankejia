@@ -289,18 +289,66 @@ async function run() {
   check('前言 opens', await until(page, `!document.getElementById('dcDetailMask').hidden`));
   await page.evaluate(`document.getElementById('dcDetailClose').click()`);
 
-  console.log('\n8. QR + admin + voice');
+  console.log('\n7b. 客家话讲解视频弹层');
+  // pick a real video exhibit from the data so the test does not depend on item order
+  const vid = await page.evaluate(`(() => {
+    const ch = window.DIANCANG.chapters.findIndex(c => c.items.some(i => i.videoUrl));
+    const item = window.DIANCANG.chapters[ch].items.find(i => i.videoUrl);
+    return { ch, idx: window.DIANCANG.chapters[ch].items.indexOf(item), name: item.name };
+  })()`);
+  check('典藏数据里有带视频的展品', vid.ch >= 0, 'chapter ' + vid.ch + ' / ' + vid.name);
+  await page.evaluate(`document.querySelectorAll('#dcTabs .dc-tab')[${vid.ch}].click()`);
+  await page.evaluate(`document.querySelectorAll('#dcContent .dc-item-card')[${vid.idx}].click()`);
+  check('展品详情给出播放按钮', await until(page, `!!document.getElementById('dcPlayBtn')`, 5000));
+  await page.evaluate(`document.getElementById('dcPlayBtn').click()`);
+  check('视频弹层打开并挂上 iframe',
+    await until(page, `!document.getElementById('videoMask').hidden && document.querySelector('#videoFrame iframe')`));
+  const iframeSrc = await page.evaluate(`(document.querySelector('#videoFrame iframe')||{}).src||''`);
+  check('iframe 指向典藏登记的二维码地址', /hlcode\.pro/.test(iframeSrc), iframeSrc.slice(0, 48));
+  await shot(page, '05-video');
+  await page.evaluate(`document.getElementById('videoClose').click()`);
+  check('视频弹层关闭', await until(page, `document.getElementById('videoMask').hidden`));
+  await page.evaluate(`document.getElementById('dcDetailClose').click()`);
+  check('回到典藏列表', await until(page, `document.getElementById('dcDetailMask').hidden`));
+
+  console.log('\n8. QR 弹层');
   await page.evaluate(`document.getElementById('qrBtn').click()`);
   check('QR modal opens with a rendered code', await until(page, `!document.getElementById('qrModal').hidden && document.querySelector('#qrBox canvas, #qrBox img, #qrBox svg')`));
-  await shot(page, '05-qr');
+  await shot(page, '06-qr');
   await page.evaluate(`document.getElementById('qrClose').click()`);
   check('QR modal closes', await until(page, `document.getElementById('qrModal').hidden`));
-  await page.evaluate(`document.getElementById('adminEntry').click()`);
-  check('admin panel opens', await until(page, `!document.getElementById('adminMask').hidden`));
-  await page.evaluate(`document.getElementById('adminMask').click()`);
-  check('admin panel closes', await until(page, `document.getElementById('adminMask').hidden`));
 
-  console.log('\n9. small screen');
+  console.log('\n8b. 管理面板：登录、改知识库、刷新后是否还在');
+  await page.evaluate(`document.getElementById('adminEntry').click()`);
+  check('管理入口打开', await until(page, `!document.getElementById('adminMask').hidden`));
+  check('未登录时先要密码', await until(page, `!!document.getElementById('adminLoginBtn')`));
+  await page.evaluate(`document.getElementById('adminPwInput').value='wrong-password'`);
+  await page.evaluate(`document.getElementById('adminLoginBtn').click()`);
+  check('错误密码被拒绝', await until(page, `document.getElementById('adminPwError').textContent.length > 0`));
+  await page.evaluate(`document.getElementById('adminPwInput').value='admin123'`);
+  await page.evaluate(`document.getElementById('adminLoginBtn').click()`);
+  check('正确密码进入主面板', await until(page, `!!document.getElementById('kbAddBtn')`));
+  const kbBefore = await page.evaluate(`window.Store.getEntries().length`);
+  await page.evaluate(`document.getElementById('kbAddBtn').click()`);
+  await until(page, `!!document.getElementById('kbTitle')`);
+  await page.evaluate(`(() => {
+    const set = (id, v) => { const e = document.getElementById(id); e.value = v;
+      e.dispatchEvent(new Event('input', { bubbles: true })); };
+    set('kbTitle', '自动化测试条目'); set('kbKeywords', '测试关键词甲, 测试关键词乙');
+    set('kbAnswer', '这是端到端测试写入的条目。');
+  })()`);
+  await page.evaluate(`document.getElementById('kbSaveBtn').click()`);
+  check('新增条目写进知识库', await until(page, `window.Store.getEntries().length === ${kbBefore + 1}`));
+  await page.evaluate(`document.getElementById('adminMask').click()`);
+  await page.send('Page.navigate', { url: BASE + '/index.html' });
+  await until(page, 'document.readyState==="complete"', 8000);
+  check('刷新后条目仍在（localStorage 持久化）',
+    await until(page, `window.Store.getEntries().length === ${kbBefore + 1}`, 5000));
+  check('测试条目能被问答引擎命中', await page.evaluate(
+    `window.Store.getEntries().some(e => e.title === '自动化测试条目')`));
+
+  console.log('\n9. 布局');
+  await page.evaluate(`localStorage.removeItem('nfyj_kb_custom')`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });
   await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`);
   const fits = await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth + 1`);
@@ -308,11 +356,43 @@ async function run() {
   const heroVisible = await page.evaluate(`(() => { const r = document.querySelector('#avatarWrap img.avatar').getBoundingClientRect();
     return r.width > 40 && r.height > 80 && r.right <= window.innerWidth + 1; })()`);
   check('avatar still on-canvas at 360px', heroVisible);
-  await shot(page, '06-mobile');
+  await shot(page, '07-mobile');
+
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await until(page, `document.querySelector('#avatarWrap img.avatar')`);
+  const desk = await page.evaluate(`(() => { const r = document.querySelector('#avatarWrap img.avatar').getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height), overflow: document.documentElement.scrollWidth > window.innerWidth + 1 }; })()`);
+  check('no horizontal overflow at 1280px', !desk.overflow);
+  check('avatar keeps its aspect ratio on desktop', Math.abs(desk.w / desk.h - 520 / 912) < 0.06,
+    desk.w + 'x' + desk.h);
+  await shot(page, '08-desktop');
+
+  console.log('\n9b. 连续切换 Tab');
+  const tabOrder = [];
+  for (let i = 0; i < 6; i++) {
+    const k = i % 4;
+    tabOrder.push(await page.evaluate(`document.querySelectorAll('.main-tab')[${k}].dataset.panel`));
+    await page.evaluate(`document.querySelectorAll('.main-tab')[${k}].click()`);
+  }
+  const last = tabOrder[tabOrder.length - 1];
+  const active = await page.evaluate(`document.querySelector('.tab-panel.active').id`);
+  check('连点后停在正确的面板', active === last, active + ' (expected ' + last + ')');
+  check('连点后页面仍可交互', await until(page, `document.querySelector('#${last} .dc-tab, #${last} .h-card, #${last} .msg, #${last} .c3d-item')`));
+
+  console.log('\n9c. AI 生成内容声明');
+  // 显式标识义务落在发布方身上，页脚这句话不能被后续改版顺手删掉
+  const note = await page.evaluate(`(() => { const n = document.querySelector('.footer-ai-note');
+    if (!n) return null; const r = n.getBoundingClientRect();
+    return { text: n.textContent, visible: r.height > 0 && getComputedStyle(n).display !== 'none' }; })()`);
+  check('页脚声明了贴图与形象为 AI 辅助生成',
+    !!note && note.visible && /AI/.test(note.text) && /生成/.test(note.text),
+    note ? '' : '页脚缺少 .footer-ai-note');
 
   console.log('\n10. console / network hygiene');
-  const realErrors = consoleErrors.filter((e) => !/favicon|ERR_CONNECTION_RESET|DevTools/i.test(e));
-  const realNet = netFailures.filter((f) => !/favicon/i.test(f));
+  const realErrors = consoleErrors.filter((e) => !/favicon|ERR_CONNECTION_RESET|DevTools|hlcode\.pro/i.test(e));
+  // the dialect videos are third-party pages we only embed, so their reachability is
+  // not this site's defect; everything else must load cleanly
+  const realNet = netFailures.filter((f) => !/favicon|hlcode\.pro/i.test(f));
   check('no uncaught page errors', realErrors.length === 0, realErrors.slice(0, 5).join(' | '));
   check('no failed subresource requests', realNet.length === 0, realNet.slice(0, 5).join(' | '));
 
