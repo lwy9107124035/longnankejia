@@ -13,6 +13,24 @@
     if (input) input.disabled = on;
   }
 
+  /** 答案里提到有原声讲解的典藏展品，就把客家话视频挂在气泡下面 */
+  function attachVideos(bubble, question, answer) {
+    if (!window.Diancang || !window.Diancang.findRelatedVideos) return;
+    var items = window.Diancang.findRelatedVideos(question, answer).slice(0, 2);
+    if (!items.length) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'msg-videos';
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'msg-video-chip';
+      b.textContent = '🎬 ' + it.name + ' · 客家话原声讲解';
+      b.addEventListener('click', function () { window.Diancang.playVideo(it); });
+      wrap.appendChild(b);
+    });
+    bubble.appendChild(wrap);
+  }
+
   function ask(question) {
     question = String(question || '').trim();
     if (!question || busy) return;
@@ -56,6 +74,8 @@
             statusEl.textContent = '当前引擎：' + label;
           }
         }
+
+        attachVideos(bubble, question, result.text);
       });
     }).catch(function (err) {
       console.error(err);
@@ -101,6 +121,11 @@
     });
     var main = document.getElementById('main');
     if (main) main.scrollTop = 0;
+    // 直接调用（例如「问问阿蓝」）也要让地址栏跟上，hash 相同则不会触发事件
+    var routeName = window.Router && window.Router.BY_PANEL[panelId];
+    if (routeName && window.location.hash !== '#/' + routeName) {
+      window.location.hash = '#/' + routeName;
+    }
   }
 
   // 对外暴露（详情弹层「问问阿蓝」会调用）
@@ -112,13 +137,22 @@
     try { window.Admin.init(); } catch (e) { console.error('Admin.init error:', e); }
     try { window.Showcase3D.init(); } catch (e) { console.error('3D.init error:', e); }
     try { window.Diancang.init(); } catch (e) { console.error('Diancang.init error:', e); }
+    try { window.Dialect.init(); } catch (e) { console.error('Dialect.init error:', e); }
 
-    // 主内容 Tab 切换
+    // 主内容 Tab 切换：走 Router，让每个视图都有可分享的地址
     var tabs = document.querySelectorAll('.main-tab');
     tabs.forEach(function (tab) {
       tab.addEventListener('click', function () {
-        switchPanel(tab.getAttribute('data-panel'));
+        var panelId = tab.getAttribute('data-panel');
+        var name = window.Router && window.Router.BY_PANEL[panelId];
+        if (name) window.Router.go(name);
+        else switchPanel(panelId);
       });
     });
+
+    if (window.Router) {
+      window.addEventListener('hashchange', window.Router.apply);
+      window.Router.apply();
+    }
   });
 })();

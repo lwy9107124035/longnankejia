@@ -454,6 +454,48 @@ async function run() {
   check('连点后停在正确的面板', active === last, active + ' (expected ' + last + ')');
   check('连点后页面仍可交互', await until(page, `document.querySelector('#${last} .dc-tab, #${last} .h-card, #${last} .msg, #${last} .c3d-item')`));
 
+  console.log('\n9b2. 路由与方言语音库');
+  await page.evaluate(`document.querySelector('[data-panel="viewDialect"]').click()`);
+  check('点方言 Tab 会写进地址栏',
+    await until(page, `location.hash === '#/dialect'`), await page.evaluate(`location.hash`));
+  check('方言面板成为当前视图',
+    await until(page, `document.querySelector('.tab-panel.active').id === 'viewDialect'`));
+  const dlCount = await page.evaluate(`document.querySelectorAll('#dlTracks .dl-track').length`);
+  const dataVids = await page.evaluate(`window.Diancang.videoExhibits().length`);
+  check('语音库列出全部真实讲解条目', dlCount === dataVids && dlCount >= 14, dlCount + ' / ' + dataVids);
+  await page.evaluate(`document.querySelectorAll('#dlTracks .dl-track')[0].click()`);
+  check('点一条后正在播放区更新', await until(page,
+    `document.getElementById('dlNowName').textContent === window.Diancang.videoExhibits()[0].item.name`));
+  check('点一条后挂出讲解页并可在新窗口打开', await until(page,
+    `!!document.querySelector('#dlFrame iframe[src]') && !!document.querySelector('#dlFrame a.dl-open')`));
+  check('当前曲目在列表里高亮', await until(page,
+    `!!document.querySelector('#dlTracks .dl-track.is-active')`));
+
+  // 深链：直接带 hash 打开，应落到对应视图（分享链接的前提）
+  await page.send('Page.navigate', { url: BASE + '/index.html#/diancang' });
+  await until(page, 'document.readyState==="complete"', 8000);
+  check('深链 #/diancang 直达典藏视图', await until(page,
+    `document.querySelector('.tab-panel.active').id === 'panelDiancang'`, 6000));
+  await page.send('Page.navigate', { url: BASE + '/index.html#/nonsense-route' });
+  await until(page, 'document.readyState==="complete"', 8000);
+  check('未知 hash 回落问答而不是白屏', await until(page,
+    `document.querySelector('.tab-panel.active').id === 'panelChat'`, 6000));
+
+  console.log('\n9b3. 回答里带出客家话原声讲解');
+  await page.evaluate(`localStorage.setItem('nfyj_api_config', JSON.stringify({ mode: 'rules' }))`);
+  await page.send('Page.navigate', { url: BASE + '/index.html#/chat' });
+  await until(page, 'document.readyState==="complete"', 8000);
+  await until(page, `!!document.getElementById('chatInput')`, 6000);
+  const chips2 = await page.evaluate(`[...document.querySelectorAll('.chip')].map(c => c.dataset.q)`);
+  // 童谣的知识库答案会提到采茶戏/莲花调，正是有原声讲解的展品
+  await page.evaluate(`[...document.querySelectorAll('.chip')].find(c => c.dataset.q === '客家童谣是什么？').click()`);
+  const chipAppeared = await until(page, `document.querySelectorAll('.msg-video-chip').length > 0`, 20000);
+  check('答案下方挂出原声讲解入口', chipAppeared,
+    chips2.length + ' chips, ' + await page.evaluate(`document.querySelectorAll('.msg-video-chip').length`) + ' chips');
+  await page.evaluate(`document.querySelector('.msg-video-chip')?.click()`);
+  check('点讲解入口打开视频弹层', await until(page, `!document.getElementById('videoMask').hidden`));
+  await page.evaluate(`document.getElementById('videoClose').click()`);
+
   console.log('\n9c. AI 生成内容声明');
   // 显式标识义务落在发布方身上，页脚这句话不能被后续改版顺手删掉
   const note = await page.evaluate(`(() => { const n = document.querySelector('.footer-ai-note');

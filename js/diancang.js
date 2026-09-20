@@ -197,5 +197,41 @@
     }
   }
 
-  window.Diancang = { init: init, switchToChat: switchToChat };
+  /**
+   * 找出文本里提到的、且有客家话讲解视频的典藏展品。
+   * 知识库条目大量引用这些展品名，所以问答命中后可以直接把原声挂上去。
+   */
+  function findRelatedVideos() {
+    var hay = Array.prototype.slice.call(arguments).join(' ');
+    var hits = [];
+    if (!data || !hay) return hits;
+    var triggers = window.VIDEO_TRIGGERS || {};
+    data.chapters.forEach(function (ch) {
+      (ch.items || []).forEach(function (it) {
+        if (!it.videoUrl) return;
+        var named = hay.indexOf(it.name) !== -1;
+        var keyed = (triggers[it.name] || []).some(function (w) { return hay.indexOf(w) !== -1; });
+        if (named || keyed) hits.push(it);
+      });
+    });
+    return hits;
+  }
+
+  window.Diancang = {
+    init: init,
+    switchToChat: switchToChat,
+    findRelatedVideos: findRelatedVideos,
+    playVideo: showVideoPlayer,
+    /** 所有带客家话讲解视频的展品，方言语音库用 */
+    videoExhibits: function () {
+      var out = [];
+      if (!data) return out;
+      data.chapters.forEach(function (ch) {
+        (ch.items || []).forEach(function (it) {
+          if (it.videoUrl) out.push({ item: it, chapter: ch.title });
+        });
+      });
+      return out;
+    }
+  };
 })();

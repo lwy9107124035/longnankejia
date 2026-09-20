@@ -49,6 +49,9 @@
         <button class="main-tab" data-panel="panelDiancang" type="button">
           <span class="main-tab-icon">📖</span>典藏
         </button>
+        <button class="main-tab" data-panel="viewDialect" type="button">
+          <span class="main-tab-icon">🗣</span>方言
+        </button>
       </nav>
 
       <!-- ======== 问答面板 ======== -->
@@ -104,6 +107,31 @@
         </div>
         <div class="dc-tabs" id="dcTabs"></div>
         <div id="dcContent"></div>
+      </div>
+
+      <!-- ======== 客家方言语音库 ======== -->
+      <div class="tab-panel" id="viewDialect">
+        <div class="dl-head">
+          <div class="dl-title">客家方言语音库</div>
+          <div class="dl-sub">
+            文化典藏里 <strong id="dlCount">0</strong> 件展品的客家话原声讲解。这些音频原本要扫展品旁的二维码才能听到，
+            这里已经把内容直接列出来，点一条就能听。
+          </div>
+        </div>
+
+        <div class="dl-now" id="dlNow">
+          <div class="dl-now-idx" id="dlNowIdx">—</div>
+          <div class="dl-now-body">
+            <div class="dl-now-name" id="dlNowName">从下面挑一条开始听</div>
+            <div class="dl-now-meta" id="dlNowMeta"></div>
+          </div>
+        </div>
+        <div class="dl-frame" id="dlFrame" hidden></div>
+
+        <ol class="dl-tracks" id="dlTracks"></ol>
+        <div class="dl-note">
+          发音为展品所在地（江西龙南，属客家语宁龙片）的现场录音，转写文字随讲解页一同提供。
+        </div>
       </div>
 
       <footer class="footer">
@@ -188,6 +216,8 @@
   <script src="js/textures.js"></script>
   <script src="js/showcase3d.js"></script>
   <script src="js/diancang.js"></script>
+  <script src="js/dialect.js"></script>
+  <script src="js/router.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
