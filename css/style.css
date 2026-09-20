@@ -136,7 +136,25 @@ input { font-family: inherit; }
   flex-shrink: 0;
 }
 
-.avatar { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* 阿蓝是一套切片动画：底图 + 眨眼层 + 闭口层，三层同一坐标系完全重合，
+   所以只在不透明像素处替换，不会出现分层旋转时的那种接缝。 */
+.avatar-stage {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 100%;
+  animation: avatarBreathe 3.8s ease-in-out infinite;
+}
+
+.avatar, .avatar-blink, .avatar-mouth {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+.avatar-blink, .avatar-mouth { opacity: 0; }
+.avatar-blink { animation: avatarBlink 5.4s infinite; }
 
 .avatar-ring {
   position: absolute;
@@ -147,19 +165,35 @@ input { font-family: inherit; }
   border-radius: 50%;
 }
 
-/* 阿蓝状态：说话时轻轻点头，思考时微微摇晃 */
-.avatar-wrap.is-talking .avatar { animation: avatarTalk 0.85s ease-in-out infinite; }
-.avatar-wrap.is-thinking .avatar { animation: avatarThink 2.2s ease-in-out infinite; }
+/* 说话：点头 + 口型开合；思考：左右微晃 */
+.avatar-wrap.is-talking .avatar-stage { animation: avatarTalk 0.9s ease-in-out infinite; }
+.avatar-wrap.is-thinking .avatar-stage { animation: avatarThink 2.4s ease-in-out infinite; }
+.avatar-wrap.is-talking .avatar-mouth { animation: avatarMouth 0.34s steps(1, end) infinite; }
 .avatar-wrap.is-talking .avatar-ring,
-.avatar-wrap.is-thinking .avatar-ring { animation: avatarShadow 0.85s ease-in-out infinite; }
+.avatar-wrap.is-thinking .avatar-ring { animation: avatarShadow 0.9s ease-in-out infinite; }
+
+@keyframes avatarBreathe {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(-1px) scaleY(1.014); }
+}
 @keyframes avatarTalk {
   0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-3px) rotate(-1.2deg); }
+  40% { transform: translateY(-2px) rotate(-1.6deg); }
+  75% { transform: translateY(-1px) rotate(0.7deg); }
 }
 @keyframes avatarThink {
   0%, 100% { transform: translateY(0) rotate(0deg); }
-  35% { transform: translateY(-1px) rotate(2deg); }
-  70% { transform: translateY(-1px) rotate(-2deg); }
+  30% { transform: translateY(-1px) rotate(2.4deg); }
+  65% { transform: translateY(-1px) rotate(-1.8deg); }
+}
+@keyframes avatarBlink {
+  0%, 90%, 97%, 100% { opacity: 0; }
+  92.5%, 94.5% { opacity: 1; }
+}
+@keyframes avatarMouth {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 1; }
 }
 @keyframes avatarShadow {
   0%, 100% { transform: translateX(-50%) scaleX(1); opacity: 1; }
@@ -652,6 +686,8 @@ input { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .msg, .tab-panel.active, .modal-mask, .modal-card { animation: none; }
   .typing-cursor, .thinking-dots span { animation: none; }
-  .avatar-wrap.is-talking .avatar, .avatar-wrap.is-thinking .avatar,
+  .avatar-stage, .avatar-blink, .avatar-mouth,
+  .avatar-wrap.is-talking .avatar-stage, .avatar-wrap.is-thinking .avatar-stage,
+  .avatar-wrap.is-talking .avatar-mouth,
   .avatar-wrap.is-talking .avatar-ring, .avatar-wrap.is-thinking .avatar-ring { animation: none; }
 }

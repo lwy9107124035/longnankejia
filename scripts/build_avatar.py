@@ -8,7 +8,7 @@ import numpy as np
 import cv2
 import os
 
-SRC = "数字人形象.png"
+SRC = "assets/source/数字人形象.png"
 OUT = "assets/avatar"
 PAD = 10
 
@@ -53,7 +53,7 @@ def save(img, name, max_w=None):
     if max_w and img.width > max_w:
         img = img.resize((max_w, round(img.height * max_w / img.width)), Image.LANCZOS)
     img.save(os.path.join(OUT, name), optimize=True)
-    return img.size
+    return img
 
 
 def main():
@@ -65,28 +65,80 @@ def main():
     full = to_pil(rgb, alpha)
     print("trimmed", full.size)
 
-    sizes = {}
-    sizes["alan-full.png"] = save(full, "alan-full.png", max_w=520)
+    # Every shipped layer must share one canvas: the eye and mouth coordinates below
+    # are measured on this 520-wide image, and the browser stacks the layers with
+    # object-fit: contain, so a mismatched canvas silently offsets the features.
+    base = save(full, "alan-full.png", max_w=520)
+    sizes = {"alan-full.png": base.size}
+    w, h = base.size
 
     # Chat-bubble avatar: the head only. The raised arm widens the silhouette below
     # the brim, so measure the hat band to centre the crop on the face instead.
-    w, h = full.size
-    al = np.asarray(full)[:, :, 3]
+    al = np.asarray(base)[:, :, 3]
     hat = al[: int(h * 0.2)] > 40
     _, xs = np.nonzero(hat)
     cx = int((xs.min() + xs.max()) / 2)
     side = int((xs.max() - xs.min()) * 1.08)
     x0 = max(min(cx - side // 2, w - side), 0)
-    head = full.crop((x0, 0, x0 + side, side))
-    sizes["alan-face.png"] = save(head, "alan-face.png", max_w=160)
+    head = base.crop((x0, 0, x0 + side, side))
+    sizes["alan-face.png"] = save(head, "alan-face.png", max_w=160).size
+
+    build_expression_layers(base, OUT)
 
     # Preview over the app's paper background to expose any white halo.
     prev = Image.new("RGBA", (w + 40, h + 40), (247, 243, 235, 255))
     prev.alpha_composite(full, (20, 20))
+    # 预览写到 .cache，别落进要发布的 assets 里
+    os.makedirs(".cache", exist_ok=True)
     prev.convert("RGB").resize((prev.width // 3, prev.height // 3), Image.LANCZOS).save(
-        os.path.join(OUT, "_preview_on_paper.jpg"), quality=88
+        ".cache/avatar_preview.jpg", quality=88
     )
     print(sizes)
+
+
+
+
+# ---------------------------------------------------------------- 表情覆盖层
+# 眨眼和口型用「与原图完全重合的覆盖层」实现：覆盖层和底图同一坐标系、
+# 同一位置，只在不透明像素处替换，所以不会出现分层旋转那种接缝。
+SKIN = (244, 237, 216)        # 眼间/唇上取样得到的面部肤色
+LASH = (58, 48, 44)           # 闭合时的睫毛线颜色，取自眼部描边
+EYES = [(186, 200, 256, 278), (276, 180, 346, 258)]   # 左眼 / 右眼，含眼白描边圈
+MOUTH = (250, 250, 297, 289)
+
+
+def _lid_overlay(size, boxes, closed=True):
+    """Paint skin over each box, then a curved lash line so it reads as a shut eye."""
+    import cv2
+    w, h = size
+    img = np.zeros((h, w, 4), np.uint8)
+    for x0, y0, x1, y1 in boxes:
+        cv2.ellipse(img, ((x0 + x1) // 2, (y0 + y1) // 2),
+                    ((x1 - x0) // 2, (y1 - y0) // 2), 0, 0, 360, SKIN + (255,), -1)
+    if closed:
+        for x0, y0, x1, y1 in boxes:
+            c = ((x0 + x1) // 2, (y0 + y1) // 2)
+            ax, ay = (x1 - x0) // 2 - 3, (y1 - y0) // 2 - 5
+            cv2.ellipse(img, c, (ax, ay), 0, 25, 155, LASH + (255,), 3, cv2.LINE_AA)
+    return img
+
+
+def build_expression_layers(full, out_dir):
+    """Emit alan-blink.png and alan-mouth-closed.png aligned to alan-full.png."""
+    import cv2
+    w, h = full.size
+    blink = _lid_overlay((w, h), EYES, closed=True)
+    Image.fromarray(blink, "RGBA").save(os.path.join(out_dir, "alan-blink.png"), optimize=True)
+
+    mouth = _lid_overlay((w, h), [MOUTH], closed=False)
+    # 闭口帧：把张开的嘴盖掉，再画一条上扬的微笑线
+    x0, y0, x1, y1 = MOUTH
+    cv2.ellipse(mouth, ((x0 + x1) // 2, (y0 + y1) // 2 - 2),
+                ((x1 - x0) // 2, (y1 - y0) // 2 - 3), 0, 0, 360, SKIN + (255,), -1)
+    cv2.ellipse(mouth, ((x0 + x1) // 2, (y0 + y1) // 2 - 6),
+                ((x1 - x0) // 2 - 5, (y1 - y0) // 2 - 3), 0, 20, 160, LASH + (255,), 3, cv2.LINE_AA)
+    Image.fromarray(mouth, "RGBA").save(os.path.join(out_dir, "alan-mouth-closed.png"), optimize=True)
+    print("expression layers written")
 
 
 if __name__ == "__main__":

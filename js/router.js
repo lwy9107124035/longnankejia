@@ -23,10 +23,12 @@
     return ROUTES[h] ? h : 'chat';
   }
 
-  /** 按当前 hash 切换面板；hash 缺省时补一个，保证地址始终可分享 */
+  /** 按当前 hash 切换视图。
+   *  没有 hash 时只应用默认视图，不去改写地址栏——曾经用 location.replace
+   *  补一个 #/chat 会把正在加载的文档中止掉，等于首屏多刷一次。
+   */
   function apply() {
     var name = current();
-    if (!window.location.hash) window.location.replace('#/' + name);
     if (window.App && window.App.switchPanel) window.App.switchPanel(ROUTES[name]);
     return name;
   }

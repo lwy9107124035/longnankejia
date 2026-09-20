@@ -187,6 +187,38 @@ async function run() {
                  box: (() => { const r = i.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })() } : null; })()`);
   check('hero avatar decoded from the new PNG', av && av.ok && av.w === 520, av && JSON.stringify(av));
   check('hero avatar is drawn at a usable size', av && av.box[1] >= 120, av && av.box.join('x'));
+
+  // 三层切片必须严格重合，否则眨眼/口型会画歪
+  const layers = await page.evaluate(`(() => {
+    const g = (s) => { const e = document.querySelector(s); if (!e) return null;
+      const r = e.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height),
+               nat: [e.naturalWidth, e.naturalHeight], op: getComputedStyle(e).opacity,
+               anim: getComputedStyle(e).animationName }; };
+    return { base: g('.avatar-stage img.avatar'), blink: g('.avatar-blink'), mouth: g('.avatar-mouth') };
+  })()`);
+  const aligned = ['base', 'blink', 'mouth'].every((k) => layers[k]) &&
+    layers.blink.x === layers.base.x && layers.blink.y === layers.base.y &&
+    layers.blink.w === layers.base.w && layers.blink.h === layers.base.h &&
+    layers.mouth.w === layers.base.w;
+  check('眨眼层与口型层和底图完全对齐', aligned,
+    aligned ? '' : JSON.stringify(layers));
+  check('三层都是同一张 520x912 画布', ['base', 'blink', 'mouth'].every((k) => layers[k].nat.join('x') === '520x912'),
+    ['base', 'blink', 'mouth'].map((k) => layers[k].nat.join('x')).join(' '));
+  check('待机时口型层不可见', layers.mouth.op === '0', layers.mouth.op);
+  check('眨眼动画在跑', layers.blink.anim === 'avatarBlink', layers.blink.anim);
+  const talking = await page.evaluate(`(() => {
+    const w = document.getElementById('avatarWrap');
+    w.classList.add('is-talking');
+    const out = {
+      stage: getComputedStyle(document.querySelector('.avatar-stage')).animationName,
+      mouth: getComputedStyle(document.querySelector('.avatar-mouth')).animationName
+    };
+    w.classList.remove('is-talking');
+    return out;
+  })()`);
+  check('说话状态切到点头动画', talking.stage === 'avatarTalk', talking.stage);
+  check('说话状态口型层开始开合', talking.mouth === 'avatarMouth', talking.mouth);
   await shot(page, '01-hero');
 
   console.log('\n3. tab navigation');
