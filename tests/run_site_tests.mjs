@@ -351,12 +351,28 @@ async function run() {
   await page.evaluate(`document.getElementById('dcDetailClose').click()`);
   check('回到典藏列表', await until(page, `document.getElementById('dcDetailMask').hidden`));
 
-  console.log('\n8. QR 弹层');
-  await page.evaluate(`document.getElementById('qrBtn').click()`);
-  check('QR modal opens with a rendered code', await until(page, `!document.getElementById('qrModal').hidden && document.querySelector('#qrBox canvas, #qrBox img, #qrBox svg')`));
-  await shot(page, '06-qr');
-  await page.evaluate(`document.getElementById('qrClose').click()`);
-  check('QR modal closes', await until(page, `document.getElementById('qrModal').hidden`));
+  console.log('\n8. 访问地址面板（二维码已彻底移除）');
+  await page.evaluate(`document.getElementById('accessBtn').click()`);
+  check('访问地址面板打开', await until(page, `!document.getElementById('accessModal').hidden`));
+  const addr = await page.evaluate(`(() => { const a = document.querySelector('#addrRow a.addr-link');
+    return a ? { href: a.href } : null; })()`);
+  check('地址以可点链接直接呈现', !!addr && /^http/.test(addr.href), addr && addr.href);
+  const linkCount = await page.evaluate(`document.querySelectorAll('#addrLinkList .addr-item').length`);
+  const dataCount = await page.evaluate(`window.DIANCANG.chapters.reduce((n, c) => n + c.items.filter(i => i.videoUrl).length, 0)`);
+  check('二维码背后的讲解内容全部直列出来', linkCount === dataCount && linkCount >= 14,
+    linkCount + ' / ' + dataCount);
+  const sampleHref = await page.evaluate(`(document.querySelector('#addrLinkList .addr-item-link') || {}).href || ''`);
+  check('每条都能直接点开', sampleHref.indexOf('hlcode.pro') > -1, sampleHref.slice(0, 44));
+  // 全站不得再出现任何二维码图形
+  const anyQr = await page.evaluate(`(() => ({
+    inModal: document.querySelectorAll('#accessModal canvas, #accessModal img').length,
+    byName: document.querySelectorAll('[id*="qr" i], [class*="qr-" i]').length
+  }))()`);
+  check('弹层内没有二维码画布或图片', anyQr.inModal === 0, JSON.stringify(anyQr));
+  check('DOM 里不存在任何二维码容器', anyQr.byName === 0, anyQr.byName + ' found');
+  await shot(page, '06-access');
+  await page.evaluate(`document.getElementById('addrClose').click()`);
+  check('面板关闭', await until(page, `document.getElementById('accessModal').hidden`));
 
   console.log('\n8b. 管理面板：登录、改知识库、刷新后是否还在');
   await page.evaluate(`document.getElementById('adminEntry').click()`);

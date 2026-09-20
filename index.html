@@ -15,9 +15,9 @@
       <div class="header-inner">
         <div class="header-badge">数智传薪 · 非遗远航</div>
         <h1 class="header-title">龙南客家非遗数字助手</h1>
-        <div class="header-sub">扫码即用 · 问答即懂</div>
+        <div class="header-sub">打开即用 · 问答即懂</div>
       </div>
-      <button class="qr-btn" id="qrBtn" type="button" aria-label="展示二维码">二维码</button>
+      <button class="access-btn" id="accessBtn" type="button" aria-label="查看访问地址与讲解链接">访问地址</button>
     </header>
 
     <!-- ======== 可滚动内容区 ======== -->
@@ -133,26 +133,31 @@
     </div>
   </div>
 
-  <!-- ======== 二维码弹层 ======== -->
-  <div class="modal-mask" id="qrModal" hidden>
+  <!-- ======== 访问地址弹层：不渲染二维码，链接内容直接列出 ======== -->
+  <div class="modal-mask" id="accessModal" hidden>
     <div class="modal-card">
-      <button class="modal-close" id="qrClose" type="button" aria-label="关闭">×</button>
-      <div class="modal-title">扫码访问数字助手</div>
-      <div class="qr-box" id="qrBox"></div>
-      <div class="modal-desc" id="qrUrlText"></div>
+      <button class="modal-close" id="addrClose" type="button" aria-label="关闭">×</button>
+      <div class="modal-title">打开数字助手</div>
 
-      <div class="qr-url-row" id="qrPublicRow">
-        <label class="qr-url-label" for="qrPublicInput">公网访问地址（可选）</label>
-        <div class="qr-url-form">
-          <input type="url" id="qrPublicInput" placeholder="https://xxx.trycloudflare.com" autocomplete="off" spellcheck="false">
-          <button type="button" id="qrPublicSave">保存</button>
+      <div class="addr-row" id="addrRow"></div>
+      <div class="modal-hint" id="addrModeHint">当前：局域网模式（需同一 Wi-Fi）</div>
+
+      <div class="addr-url-row">
+        <label class="addr-url-label" for="addrPublicInput">公网访问地址（可选）</label>
+        <div class="addr-url-form">
+          <input type="url" id="addrPublicInput" placeholder="https://your-site.netlify.app" autocomplete="off" spellcheck="false">
+          <button type="button" id="addrPublicSave">保存</button>
         </div>
-        <div class="qr-url-hint" id="qrPublicHint">
-          填入已部署的公网地址（如 Netlify 站点），保存后二维码全网可扫；留空则使用当前访问地址
+        <div class="addr-url-hint" id="addrPublicHint">
+          填入已部署的公网地址（如 Netlify 站点），保存后链接全网可用；留空则使用当前访问地址
         </div>
       </div>
 
-      <div class="modal-hint" id="qrModeHint">当前：局域网模式（需同一 Wi-Fi）</div>
+      <div class="addr-links-head">展品讲解链接 · <span id="addrLinkCount">0</span> 条</div>
+      <div class="addr-links-sub">
+        文化典藏每页旁的二维码，指向的就是下面这些客家话讲解页面，直接点开即可，无需扫码。
+      </div>
+      <ul class="addr-links" id="addrLinkList"></ul>
     </div>
   </div>
 

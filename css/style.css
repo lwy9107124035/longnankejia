@@ -97,7 +97,7 @@ input { font-family: inherit; }
   letter-spacing: 2px;
 }
 
-.qr-btn {
+.access-btn {
   flex-shrink: 0;
   font-size: 12px;
   color: #FFF8EE;
@@ -107,7 +107,7 @@ input { font-family: inherit; }
   padding: 5px 12px;
   transition: background 0.2s;
 }
-.qr-btn:active { background: rgba(255, 248, 238, 0.25); }
+.access-btn:active { background: rgba(255, 248, 238, 0.25); }
 
 /* ---------- Main ---------- */
 .main {
@@ -449,17 +449,54 @@ input { font-family: inherit; }
 /* ---------- Modal general ---------- */
 .modal-title { font-size: 15px; font-weight: 700; color: var(--primary-deep); margin-bottom: 6px; text-align: center; }
 .modal-desc { font-size: 11px; color: var(--muted); margin-bottom: 8px; word-break: break-all; text-align: center; }
-.qr-box { width: 180px; height: 180px; margin: 0 auto 8px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.qr-box canvas, .qr-box img { display: block; }
-.qr-placeholder { font-size: 11px; color: var(--muted); padding: 14px; line-height: 1.55; text-align: center; }
-.qr-url-row { margin-top: 8px; text-align: left; }
-.qr-url-label { display: block; font-size: 11px; font-weight: 600; color: var(--ink-soft); margin-bottom: 3px; }
-.qr-url-form { display: flex; gap: 5px; }
-.qr-url-form input { flex: 1; min-width: 0; height: 32px; border: 1px solid rgba(47,93,80,0.25); border-radius: 6px; padding: 0 8px; font-size: 12px; color: var(--ink); background: var(--card); outline: none; }
-.qr-url-form input:focus { border-color: var(--primary); }
-.qr-url-form button { flex-shrink: 0; height: 32px; padding: 0 10px; background: var(--primary); color: #FFF8EE; border-radius: 6px; font-size: 12px; font-weight: 600; }
-.qr-url-hint { font-size: 10px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
-.qr-url-hint.is-public { color: var(--primary); font-weight: 600; }
+/* ---------- 访问地址面板（取代原二维码弹层） ---------- */
+.addr-row {
+  display: flex; align-items: center; gap: 8px;
+  margin: 4px 0 6px; padding: 10px;
+  background: var(--primary-faint);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.addr-link {
+  flex: 1; min-width: 0;
+  font-size: 12px; font-weight: 600; color: var(--primary-deep);
+  word-break: break-all; line-height: 1.5; text-decoration: underline;
+}
+.addr-copy {
+  flex-shrink: 0; height: 30px; padding: 0 12px;
+  background: var(--primary); color: #FFF8EE;
+  border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.addr-copy:active { background: var(--primary-deep); }
+.addr-empty { font-size: 11px; color: var(--muted); line-height: 1.55; }
+
+.addr-url-row { margin-top: 10px; text-align: left; }
+.addr-url-label { display: block; font-size: 11px; font-weight: 600; color: var(--ink-soft); margin-bottom: 3px; }
+.addr-url-form { display: flex; gap: 5px; }
+.addr-url-form input { flex: 1; min-width: 0; height: 32px; border: 1px solid rgba(47,93,80,0.25); border-radius: 6px; padding: 0 8px; font-size: 12px; color: var(--ink); background: var(--card); outline: none; }
+.addr-url-form input:focus { border-color: var(--primary); }
+.addr-url-form button { flex-shrink: 0; height: 32px; padding: 0 10px; background: var(--primary); color: #FFF8EE; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.addr-url-hint { font-size: 10px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+.addr-url-hint.is-public { color: var(--primary); font-weight: 600; }
+
+.addr-links-head {
+  margin-top: 14px; padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px; font-weight: 700; color: var(--primary-deep); text-align: left;
+}
+.addr-links-sub { font-size: 10px; color: var(--muted); line-height: 1.5; margin: 3px 0 6px; text-align: left; }
+.addr-links {
+  list-style: none; max-height: 210px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card);
+}
+.addr-item {
+  display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 6px;
+  padding: 7px 9px; border-bottom: 1px solid var(--line);
+}
+.addr-item:last-child { border-bottom: none; }
+.addr-item-page { font-size: 10px; color: var(--muted); }
+.addr-item-name { font-size: 12px; color: var(--ink); font-weight: 600; }
+.addr-item-link { font-size: 11px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 .modal-hint { font-size: 10.5px; color: var(--muted); background: var(--paper-deep); border-radius: 6px; padding: 6px 8px; line-height: 1.4; text-align: center; }
 
 /* ---------- Footer ---------- */

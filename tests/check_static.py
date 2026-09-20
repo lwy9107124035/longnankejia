@@ -208,6 +208,27 @@ def check_css_vars():
     notes.append("%d css custom properties defined, all references resolve" % len(defined))
 
 
+# ------------------------------------------------------------------ no QR
+def check_no_qr():
+    """The site must never render a QR code.
+
+    The 505-line encoder that used to sit in ui.js is gone and the access panel shows
+    every link as text instead. Guard that so a merge or a copy-back cannot quietly
+    reintroduce a scannable code.
+    """
+    ui = read(rel("js", "ui.js"))
+    html = read(rel("index.html"))
+    for needle, where in (("var QR = (", "js/ui.js"),
+                          ("QR.render", "js/ui.js"),
+                          ("qrBox", "js/ui.js"),
+                          ('id="qrBox"', "index.html"),
+                          ('id="qrModal"', "index.html")):
+        hay = ui if where == "js/ui.js" else html
+        if needle in hay:
+            fail("%s still contains %r — QR codes must not be rendered" % (where, needle))
+    notes.append("no QR encoder or QR container in shipped code")
+
+
 # --------------------------------------------------------------- git hygiene
 def check_gitignore():
     txt = read(rel(".gitignore"))
@@ -229,6 +250,7 @@ def main():
     check_orphans(literals, html)
     check_textures_clean()
     check_css_vars()
+    check_no_qr()
     check_js_syntax()
     check_gitignore()
 
