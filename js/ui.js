@@ -526,7 +526,7 @@
       '  <div class="chat-empty-hint">关于蓝染、竹编、织带、围屋的任何问题<br>都可以在这里得到回答</div>' +
       '</div>';
 
-    var botAvatarSvg = '<svg viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg"><circle cx="34" cy="24" r="12" fill="#3A2F2A"/><circle cx="86" cy="24" r="12" fill="#3A2F2A"/><ellipse cx="60" cy="50" rx="32" ry="31" fill="#FFDDB8"/><path d="M28 44 C30 22 50 14 60 14 C70 14 90 22 92 44 C88 36 82 32 74 36 C70 28 64 26 58 30 C52 26 44 28 40 36 C34 32 30 36 28 44 Z" fill="#3A2F2A"/><ellipse cx="47" cy="52" rx="5" ry="6" fill="#2A2A2A"/><ellipse cx="73" cy="52" rx="5" ry="6" fill="#2A2A2A"/><circle cx="49" cy="50" r="1.8" fill="#fff"/><circle cx="75" cy="50" r="1.8" fill="#fff"/><path d="M53 63 Q60 69 67 63" stroke="#B0563A" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M38 82 C38 78 48 75 60 75 C72 75 82 78 82 82 L88 108 C89 112 87 116 83 116 L37 116 C33 116 31 112 32 108 Z" fill="#2F5D50"/><path d="M50 76 L60 90 L70 76" stroke="#FFF6E8" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>';
+    var botAvatarImg = '<img class="msg-avatar-img" src="assets/avatar/alan-face.png" alt="阿蓝">';
 
     function el(tag, cls, html) {
       var e = document.createElement(tag);
@@ -561,7 +561,7 @@
     function addBotShell() {
       ensureNotEmpty();
       var m = el('div', 'msg msg-bot');
-      m.appendChild(el('div', 'msg-avatar', botAvatarSvg));
+      m.appendChild(el('div', 'msg-avatar', botAvatarImg));
       var bubble = el('div', 'msg-bubble');
       bubble.innerHTML = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
       m.appendChild(bubble);
