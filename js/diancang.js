@@ -1,5 +1,5 @@
 /**
- * 文化典藏展示模块 — PDF图片 + 视频播放 + 分目录浏览
+ * 文化典藏展示模块 — PDF图片 + 视频链接 + 跳转问答
  */
 (function () {
   'use strict';
@@ -16,6 +16,22 @@
     if (!item.page) return '';
     var p = String(item.page).padStart(2, '0');
     return '<img class="dc-item-thumb" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+  }
+
+  function switchToChat(question) {
+    // 切换到问答 Tab
+    var tabs = document.querySelectorAll('.main-tab');
+    tabs.forEach(function (t) {
+      var isActive = t.getAttribute('data-panel') === 'panelChat';
+      t.classList.toggle('active', isActive);
+    });
+    document.querySelectorAll('.tab-panel').forEach(function (p) {
+      p.classList.toggle('active', p.id === 'panelChat');
+    });
+    // 触发问答
+    if (window.App && window.App.ask) {
+      setTimeout(function () { window.App.ask(question); }, 200);
+    }
   }
 
   function renderChapterTabs() {
@@ -82,16 +98,16 @@
     var imgHtml = '';
     if (item.page) {
       var p = String(item.page).padStart(2, '0');
-      imgHtml = '<img class="dc-detail-img" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + ' 典藏原页" onerror="this.style.display=\'none\'">';
+      imgHtml = '<img class="dc-detail-img" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" onerror="this.style.display=\'none\'">';
     }
 
     var videoHtml = '';
-    if (item.video) {
+    if (item.videoUrl) {
       videoHtml =
         '<div class="dc-detail-video">' +
         '  <div class="dc-detail-video-icon">🎬</div>' +
-        '  <div class="dc-detail-video-title">方言语音讲解</div>' +
-        '  <div class="dc-detail-video-desc">' + esc(item.qr) + '</div>' +
+        '  <div class="dc-detail-video-title">' + esc(item.name) + ' — 客家话语音讲解</div>' +
+        '  <div class="dc-detail-video-desc">来自文化典藏数字二维码的方言讲解视频</div>' +
         '  <button class="dc-video-play-btn" id="dcPlayBtn" type="button">▶ 播放讲解视频</button>' +
         '</div>';
     }
@@ -102,23 +118,21 @@
       imgHtml +
       '<div class="dc-detail-desc">' + esc(item.desc) + '</div>' +
       videoHtml +
-      '<div class="dc-detail-qr">' +
-      '  <div class="dc-detail-qr-icon">📱</div>' +
-      '  <div class="dc-detail-qr-text">' + esc(item.qr) + '</div>' +
-      '</div>' +
       '<button class="dc-detail-ask" id="dcAskBtn" type="button">问问阿蓝关于「' + esc(item.name) + '」的更多知识</button>';
     mask.hidden = false;
 
     var playBtn = document.getElementById('dcPlayBtn');
-    if (playBtn) {
-      playBtn.addEventListener('click', function () { showVideoPlayer(item); });
+    if (playBtn && item.videoUrl) {
+      playBtn.addEventListener('click', function () {
+        showVideoPlayer(item);
+      });
     }
 
     var askBtn = document.getElementById('dcAskBtn');
     if (askBtn) {
       askBtn.addEventListener('click', function () {
         mask.hidden = true;
-        if (window.App && window.App.ask) window.App.ask(item.name + '是什么？');
+        switchToChat(item.name + '是什么？');
       });
     }
   }
@@ -130,14 +144,10 @@
     var desc = document.getElementById('videoDesc');
     if (!mask) return;
 
-    title.textContent = item.name + ' — 方言语音讲解';
-    desc.textContent = item.qr;
-    frame.innerHTML =
-      '<div style="text-align:center;padding:20px;">' +
-      '  <div style="font-size:36px;margin-bottom:8px;">🎬</div>' +
-      '  <div style="font-size:12px;opacity:0.7;">视频内容来自文化典藏二维码</div>' +
-      '  <div style="font-size:11px;opacity:0.5;margin-top:4px;">实际部署时将接入团队拍摄的客家话讲解视频</div>' +
-      '</div>';
+    title.textContent = item.name + ' — 客家话语音讲解';
+    desc.textContent = '来自文化典藏数字二维码';
+    // 用 iframe 嵌入视频页面
+    frame.innerHTML = '<iframe src="' + esc(item.videoUrl) + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
     mask.hidden = false;
   }
 
@@ -186,11 +196,13 @@
 
       renderChapterTabs();
       selectChapter(data.chapters[0].id);
-      console.log('[Diancang] initialized,', data.chapters.length, 'chapters,', data.chapters.reduce(function(s,c){return s+c.items.length;},0), 'items');
+      var total = data.chapters.reduce(function(s,c){return s+c.items.length;},0);
+      var withVideo = data.chapters.reduce(function(s,c){return s + c.items.filter(function(i){return i.videoUrl;}).length;},0);
+      console.log('[Diancang] initialized:', data.chapters.length, 'chapters,', total, 'items,', withVideo, 'with video');
     } catch (e) {
       console.error('[Diancang] init error:', e);
     }
   }
 
-  window.Diancang = { init: init };
+  window.Diancang = { init: init, switchToChat: switchToChat };
 })();
