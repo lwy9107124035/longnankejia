@@ -362,9 +362,36 @@ async function run() {
     const s = meshStats[id];
     check('模型 ' + id + ' 有实际几何体', s && s.meshes >= 3 && s.tris > 200, JSON.stringify(s));
   });
-  // 取景不做自动断言：AABB 的角点是物体之外的空角（凉帽是圆盘、围屋有前院），
-  // 投影它们必然高估，试过之后 hutoumao/weiwu 这两个画面正常的模型也被判成裁切。
-  // 真正可靠的判据要采样渲染轮廓，成本不值，这里改由 03-model-*.png 人工核对。
+  // 取景：投影每个网格自身的最高点（取其水平中心），并在自动旋转中采样最坏角度。
+  // 不能用整体 AABB 角点——圆盘和围屋的角点是空的；也不能用网格顶面四角——围屋
+  // 4 单位宽的条石前院，远端角点会投影到地平线附近，把正常取景误报成屋顶被裁。
+  const framing = await page.evaluate(`(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const out = {};
+    for (const it of window.Showcase3D.items()) {
+      window.Showcase3D.show(it.id);
+      await wait(1600);
+      const m = window.Showcase3D.debugModel(), cam = window.Showcase3D.debugCamera();
+      let top = -9, bottom = 9;
+      for (let s = 0; s < 12; s++) {
+        m.updateMatrixWorld(true);
+        m.traverse(function (o) {
+          if (!o.isMesh || !o.geometry) return;
+          const b = new THREE.Box3().setFromObject(o);
+          const cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
+          top = Math.max(top, new THREE.Vector3(cx, b.max.y, cz).project(cam).y);
+          bottom = Math.min(bottom, new THREE.Vector3(cx, b.min.y, cz).project(cam).y);
+        });
+        await wait(160);
+      }
+      out[it.name] = [Number(top.toFixed(2)), Number(bottom.toFixed(2))];
+    }
+    return out;
+  })()`, true);
+  Object.keys(framing).forEach(function (name) {
+    const tb = framing[name];
+    check('取景完整：' + name, tb[0] < 0.95 && tb[1] > -0.95, 'top=' + tb[0] + ' bottom=' + tb[1]);
+  });
 
   console.log('\n6b. 自动旋转失控回归');
   check('Showcase3D 暴露了只读调试状态', await until(page, `!!window.Showcase3D.debugState`));
