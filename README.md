@@ -51,10 +51,22 @@ _archive/               历史克隆副本，仅供追溯
 ## 测试
 
 ```
-python tests/run_all.py            # 静态检查 + 真实 Chrome 端到端
+python tests/run_all.py            # 静态检查 + 真实 Chrome 端到端（111 项）
 python tests/run_all.py --static   # 只跑静态检查，不需要 Chrome
 node tests/run_site_tests.mjs      # 只跑浏览器套件（--headed 可观看）
 ```
+
+两个专用排查工具：
+
+```
+node tests/probe_framing.mjs          # 量每个 3D 模型是否被视口裁切，输出 NDC 上下极值
+python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密钥
+```
+
+`scan_history_secrets.py` 的由来：`js/secrets.js` 一直在 `.gitignore` 里，但三个
+一次性调试脚本曾把密钥硬编码后提交进历史，后来虽删掉文件，blob 仍可从中间历史读出。
+**把整份历史备份传到任何外部存储之前都应先跑一次**——忽略某个文件不等于它没在
+别的文件里出现过。
 
 - `tests/check_static.py`：引用完整性（改目录后有没有漏改路径）、典藏页码是否都有对应图片、
   JS 语法、CSS 变量是否有悬空引用、`.gitignore` 是否仍忽略密钥、贴图角标回归，
