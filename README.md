@@ -29,8 +29,8 @@ js/
   diancang.js           典藏模块
   diancang-data.js      典藏数据 + QR 视频链接 + 讲解触发词
   dialect.js            客家方言语音库
-  showcase3d.js         3D 模型（虎头帽 / 客家围屋 / 蓝染布）
-  textures.js           程序化贴图辅助
+  showcase3d.js         3D 模型（7 件，见下）
+  textures.js           程序化贴图生成器（canvas 现画，无外部图片）
   config.js             全局配置（AI 模式、模型参数、公网地址）
   secrets.js            API 密钥，已在 .gitignore 中，不入库
   vendor/three.min.js   Three.js r128
@@ -59,12 +59,30 @@ node tests/run_site_tests.mjs      # 只跑浏览器套件（--headed 可观看�
 - `tests/check_static.py`：引用完整性（改目录后有没有漏改路径）、典藏页码是否都有对应图片、
   JS 语法、CSS 变量是否有悬空引用、`.gitignore` 是否仍忽略密钥、贴图角标回归，
   以及"代码里不得再出现二维码渲染器"的守卫。
-- `tests/run_site_tests.mjs`：驱动本机 Chrome，共 86 项断言，覆盖四个 Tab 切换与连点、
+- `tests/run_site_tests.mjs`：驱动本机 Chrome，共 104 项断言，覆盖四个 Tab 切换与连点、
   六条快捷提问与自由提问、本地知识库引擎与线上大模型引擎两条问答路径、接口失败时的
-  知识库回落、科普详情与「问问阿蓝」跳转、三个 3D 模型逐个渲染、自动旋转角度收敛、
+  知识库回落、科普详情与「问问阿蓝」跳转、七个 3D 模型逐个渲染、自动旋转角度收敛、
   典藏翻页与详情、客家话讲解视频弹层、访问地址面板、方言语音库、hash 深链与未知路由回落、
   答案携带原声讲解、管理面板登录与知识库增改及刷新后持久化、360px 与 1280px 布局、
   页脚 AI 生成声明，最后断言无未捕获异常、无子资源加载失败。
+
+## 3D 模型
+
+共 7 件，全部用 Three.js 手工建模，贴图一律由 `js/textures.js` 在 canvas 上现画
+（竹篾经纬、织带菱形纹、酱釉垂流与开片、靛蓝棉麻），**不引入任何外部图片**，
+因此不存在生成平台角标，也不涉及 AI 内容标识义务。
+
+| id | 物件 | 贴图 |
+|---|---|---|
+| hutoumao | 虎头帽 | 典藏刺绣照片（已去角标） |
+| weiwu | 客家围屋 | 夯土墙 / 瓦顶 / 条石（已去角标） |
+| landye | 蓝染布 | 蓝染纹样（已去角标） |
+| liangmao | 客家凉帽 | canvas 竹编 + 靛蓝垂布 |
+| boji | 竹编簸箕 | canvas 竹编 |
+| zhidai | 客家织带 | canvas 织带纹样 |
+| mijiutan | 客家米酒坛 | canvas 酱釉 |
+
+`tests/run_site_tests.mjs` 会逐个渲染并断言：新增模型没有发起任何贴图图片请求。
 
 ## 已知边界
 

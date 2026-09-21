@@ -332,12 +332,157 @@
     return t.canvas;
   }
 
+  /* ---------- 竹编：经纬交错的篾片 ---------- */
+  function bambooWeave() {
+    var s = createCanvas(512, 512), ctx = s.ctx;
+    ctx.fillStyle = '#B98A4E';
+    ctx.fillRect(0, 0, 512, 512);
+    var cell = 32;
+    for (var y = 0; y < 512 / cell; y++) {
+      for (var x = 0; x < 512 / cell; x++) {
+        // 一压一挑：奇偶格决定谁在上面，露出的那截颜色略深形成阴影
+        var over = (x + y) % 2 === 0;
+        var gx = x * cell, gy = y * cell;
+        if (over) {
+          ctx.fillStyle = '#C79A5C';
+          ctx.fillRect(gx, gy + 3, cell, cell - 6);
+          ctx.strokeStyle = 'rgba(90,60,25,0.35)';
+          ctx.beginPath(); ctx.moveTo(gx, gy + 3); ctx.lineTo(gx + cell, gy + 3);
+          ctx.moveTo(gx, gy + cell - 3); ctx.lineTo(gx + cell, gy + cell - 3); ctx.stroke();
+        } else {
+          ctx.fillStyle = '#AE7F43';
+          ctx.fillRect(gx + 3, gy, cell - 6, cell);
+          ctx.strokeStyle = 'rgba(90,60,25,0.3)';
+          ctx.beginPath(); ctx.moveTo(gx + 3, gy); ctx.lineTo(gx + 3, gy + cell);
+          ctx.moveTo(gx + cell - 3, gy); ctx.lineTo(gx + cell - 3, gy + cell); ctx.stroke();
+        }
+      }
+    }
+    // 篾青的丝缕
+    ctx.globalAlpha = 0.12;
+    for (var i = 0; i < 900; i++) {
+      ctx.strokeStyle = Math.random() > 0.5 ? '#8A5F2C' : '#E0BC86';
+      var lx = Math.random() * 512, ly = Math.random() * 512, len = 6 + Math.random() * 16;
+      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + len, ly + (Math.random() - 0.5) * 2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    return s.canvas;
+  }
+
+  /* ---------- 客家织带：靛底上的菱形与锯齿纹 ---------- */
+  function wovenBelt() {
+    var s = createCanvas(512, 512), ctx = s.ctx;
+    ctx.fillStyle = '#243B55';
+    ctx.fillRect(0, 0, 512, 512);
+    var palette = ['#C0392B', '#E0A93C', '#F2E8D5', '#7BA89B'];
+    // 横向分区，每区一种纹样，模拟织带的分段构图
+    var bands = [[0, 70], [70, 150], [150, 200], [200, 320], [320, 370], [370, 450], [450, 512]];
+    bands.forEach(function (b, bi) {
+      var y0 = b[0], y1 = b[1], h = y1 - y0;
+      if (bi % 2 === 0) {
+        // 菱形串
+        var step = 46;
+        for (var x = step / 2; x < 512; x += step) {
+          ctx.fillStyle = palette[(bi + Math.floor(x / step)) % palette.length];
+          ctx.beginPath();
+          ctx.moveTo(x, y0 + h * 0.12); ctx.lineTo(x + step * 0.34, y0 + h / 2);
+          ctx.lineTo(x, y1 - h * 0.12); ctx.lineTo(x - step * 0.34, y0 + h / 2);
+          ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = '#F2E8D5'; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+      } else {
+        // 锯齿纹
+        ctx.strokeStyle = palette[bi % palette.length];
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        for (var sx = 0, up = true; sx <= 512; sx += 24) {
+          var sy = up ? y0 + h * 0.25 : y1 - h * 0.25;
+          if (sx === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+          up = !up;
+        }
+        ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(242,232,213,0.5)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, y1 - 1); ctx.lineTo(512, y1 - 1); ctx.stroke();
+    });
+    // 纬线质感
+    ctx.globalAlpha = 0.10;
+    for (var yy = 0; yy < 512; yy += 3) {
+      ctx.strokeStyle = '#000'; ctx.beginPath();
+      ctx.moveTo(0, yy); ctx.lineTo(512, yy); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    return s.canvas;
+  }
+
+  /* ---------- 酱釉陶：米酒坛的釉面 ---------- */
+  function glazeJar() {
+    var s = createCanvas(512, 512), ctx = s.ctx;
+    var grd = ctx.createLinearGradient(0, 0, 512, 0);
+    grd.addColorStop(0, '#4A2B18'); grd.addColorStop(0.35, '#8C5528');
+    grd.addColorStop(0.55, '#A9682F'); grd.addColorStop(0.75, '#7A451F');
+    grd.addColorStop(1, '#3E2414');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, 512, 512);
+    // 釉垂流痕
+    for (var i = 0; i < 40; i++) {
+      var x = Math.random() * 512;
+      ctx.strokeStyle = 'rgba(30,15,8,' + (0.05 + Math.random() * 0.14) + ')';
+      ctx.lineWidth = 2 + Math.random() * 7;
+      ctx.beginPath(); ctx.moveTo(x, Math.random() * 120);
+      ctx.lineTo(x + (Math.random() - 0.5) * 12, 260 + Math.random() * 250); ctx.stroke();
+    }
+    // 铁质斑点与开片
+    for (var k = 0; k < 700; k++) {
+      ctx.fillStyle = 'rgba(24,12,6,' + (0.10 + Math.random() * 0.3) + ')';
+      var r = Math.random() * 2.2;
+      ctx.beginPath(); ctx.arc(Math.random() * 512, Math.random() * 512, r, 0, 6.284); ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(255,235,205,0.10)'; ctx.lineWidth = 1;
+    for (var c = 0; c < 26; c++) {
+      ctx.beginPath();
+      var cx0 = Math.random() * 512, cy0 = Math.random() * 512;
+      ctx.moveTo(cx0, cy0);
+      ctx.lineTo(cx0 + (Math.random() - 0.5) * 90, cy0 + (Math.random() - 0.5) * 90);
+      ctx.stroke();
+    }
+    return s.canvas;
+  }
+
+  /* ---------- 凉帽垂布：靛蓝棉麻 ---------- */
+  function hatCloth() {
+    var s = createCanvas(512, 512), ctx = s.ctx;
+    ctx.fillStyle = '#2F4858'; ctx.fillRect(0, 0, 512, 512);
+    for (var y = 0; y < 512; y += 4) {
+      ctx.strokeStyle = y % 8 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.10)';
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+    }
+    for (var x = 0; x < 512; x += 4) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 512); ctx.stroke();
+    }
+    // 蓝染不匀的晕色
+    for (var i = 0; i < 60; i++) {
+      var r = 30 + Math.random() * 90;
+      var g2 = ctx.createRadialGradient(Math.random() * 512, Math.random() * 512, 0,
+        Math.random() * 512, Math.random() * 512, r);
+      g2.addColorStop(0, 'rgba(120,160,180,0.07)');
+      g2.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g2; ctx.fillRect(0, 0, 512, 512);
+    }
+    return s.canvas;
+  }
+
   window.Textures = {
     redFabric: redFabric,
     tigerFace: tigerFaceTexture,
     landye: landyeTexture,
     wall: wallTexture,
     roof: roofTexture,
-    envMap: envMap
+    envMap: envMap,
+    bambooWeave: bambooWeave,
+    wovenBelt: wovenBelt,
+    glazeJar: glazeJar,
+    hatCloth: hatCloth
   };
 })();

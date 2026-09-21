@@ -16,12 +16,20 @@
   var touchMode = null, pinchDist = 0, pinchMidX = 0, pinchMidY = 0;
 
   var ITEMS = [
-    { id: 'hutoumao', name: '虎头帽', subtitle: '定南客家童帽', icon: '\u{1F42F}',
+    { id: 'hutoumao', name: '虎头帽', subtitle: '定南客家童帽', icon: '\u{1F42F}', zoom: 4.2,
       desc: '黑底多层棉布基底，以红、黄、蓝、白、绿真丝线手工刺绣。前幅覆盖夸张虎头纹样，带立体凸起的刺绣眼睛、鼻子、眉毛和胡须，对称结构，两侧护耳，后方小披风，边缘饰有穗子和花边。' },
-    { id: 'weiwu', name: '客家围屋', subtitle: '龙南关西新围', icon: '\u{1F3EF}',
+    { id: 'weiwu', name: '客家围屋', subtitle: '龙南关西新围', icon: '\u{1F3EF}', zoom: 5.5,
       desc: '经典客家方形围屋，国字形布局，高耸夯土墙，深灰色瓦顶，四角炮楼，墙面分布梅花形枪眼。条石铺砌前院，中轴对称，突出防御性堡垒特征与客家建筑秩序。' },
-    { id: 'landye', name: '蓝染布', subtitle: '客家草木染', icon: '\u{1F9F5}',
-      desc: '折叠的分层布料，深邃靛蓝色带白色防染图案，含植物纹样与几何纹样。粗糙手工棉麻材质，天然板蓝根染料呈现从出缸绿到氧化蓝的水墨晕染渐变效果。' }
+    { id: 'landye', name: '蓝染布', subtitle: '客家草木染', icon: '\u{1F9F5}', zoom: 4.8,
+      desc: '折叠的分层布料，深邃靛蓝色带白色防染图案，含植物纹样与几何纹样。粗糙手工棉麻材质，天然板蓝根染料呈现从出缸绿到氧化蓝的水墨晕染渐变效果。' },
+    { id: 'liangmao', name: '客家凉帽', subtitle: '宁龙片妇女首服', icon: '\u{1F3A9}', zoom: 3.4,
+      desc: '竹篾编成扁平帽檐，顶覆蓝布，檐缘垂一圈靛蓝褶布遮面遮阳，是龙南及赣南客家妇女田间劳作的标志性首服，与蓝染、竹编两项技艺直接相关。' },
+    { id: 'boji', name: '竹编簸箕', subtitle: '客家农具', icon: '\u{1F9FA}', zoom: 3.2,
+      desc: '浅口圆形竹编器，篾片一压一挑编成，圈口缠竹皮收边，底设三足。用于扬去谷物糠秕、晾晒米果与茶叶，是龙南客家日常最具代表性的竹编活计。' },
+    { id: 'zhidai', name: '客家织带', subtitle: '彩织腰带', icon: '\u{1F9F3}', zoom: 3.4,
+      desc: '靛蓝为底，以红、黄、白、绿丝线织出菱形与锯齿纹，分段构图，末端留流苏。旧时作腰带、绑腿与福袋系带，纹样寓意吉祥连绵。' },
+    { id: 'mijiutan', name: '客家米酒坛', subtitle: '龙南米酒', icon: '\u{1F3FA}', zoom: 3.0,
+      desc: '酱釉陶坛，肩部弦纹，坛口覆红纸以绳扎封。龙南家家酿米酒，冬头帕与米酒同为待客与月子滋补之物，坛身釉色因铁质析出而深浅不匀。' }
   ];
 
   function loadThree() {
@@ -639,6 +647,295 @@
     return g;
   }
 
+  /**
+   * 程序化贴图：直接吃 js/textures.js 画的 canvas。
+   * 新增物件一律走这条路，不引入任何外部图片，因此不存在生成平台角标，
+   * 也不受 AI 内容标识义务约束。
+   */
+  function canvasTex(gen, repeatX, repeatY) {
+    if (!window.Textures || !window.Textures[gen]) return null;
+    var tex = new THREE.CanvasTexture(window.Textures[gen]());
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(repeatX || 1, repeatY || 1);
+    tex.anisotropy = 4;
+    return tex;
+  }
+
+  /* ================================================================
+     客家凉帽 —— 竹编帽檐 + 一圈垂布
+     ================================================================ */
+  function buildLiangmao() {
+    var g = new THREE.Group();
+    var weave = canvasTex('bambooWeave', 3, 3);
+    var cloth = canvasTex('hatCloth', 4, 1);
+
+    var R = 0.95;
+    var crown = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.38, 0.20, 28),
+      new THREE.MeshStandardMaterial({ map: weave, color: 0xD8B57E, roughness: 0.85 })
+    );
+    crown.position.y = 0.34;
+    crown.castShadow = true;
+    g.add(crown);
+
+    // 帽檐：扁平竹篾编的圆盘
+    var brim = new THREE.Mesh(
+      new THREE.CylinderGeometry(R, R, 0.035, 48),
+      new THREE.MeshStandardMaterial({ map: weave, color: 0xD8B57E, roughness: 0.85, side: THREE.DoubleSide })
+    );
+    brim.position.y = 0.22;
+    brim.castShadow = true;
+    g.add(brim);
+
+    // 垂布：绕帽檐一圈，带褶
+    var skirtH = 0.52;
+    var skirtGeo = new THREE.CylinderGeometry(R * 1.01, R * 1.06, skirtH, 64, 6, true);
+    var sp = skirtGeo.attributes.position;
+    for (var i = 0; i < sp.count; i++) {
+      var x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i);
+      var ang = Math.atan2(z, x);
+      // 褶量随高度增大，下摆更松散
+      var t = (y + skirtH / 2) / skirtH;
+      var pleat = Math.sin(ang * 18) * 0.022 * (1.15 - t);
+      var rr = Math.sqrt(x * x + z * z) + pleat;
+      sp.setX(i, Math.cos(ang) * rr);
+      sp.setZ(i, Math.sin(ang) * rr);
+      sp.setY(i, y - Math.abs(pleat) * 0.4);
+    }
+    skirtGeo.computeVertexNormals();
+    var skirt = new THREE.Mesh(skirtGeo, new THREE.MeshStandardMaterial({
+      map: cloth, color: 0x8FB3C4, roughness: 0.92, side: THREE.DoubleSide
+    }));
+    skirt.position.y = 0.22 - skirtH / 2 + 0.02;
+    skirt.castShadow = true;
+    g.add(skirt);
+
+    // 帽顶红布结与系带
+    var knot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 16, 12),
+      new THREE.MeshStandardMaterial({ color: 0xB03A28, roughness: 0.7 })
+    );
+    knot.position.y = 0.47;
+    g.add(knot);
+
+    var strapMat = new THREE.MeshStandardMaterial({ color: 0xC9C2B0, roughness: 0.9 });
+    [-1, 1].forEach(function (s) {
+      var strap = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.55, 8), strapMat);
+      strap.position.set(s * 0.30, -0.28, 0.16);
+      strap.rotation.z = s * 0.28;
+      g.add(strap);
+    });
+
+    g.position.y = 0.35;
+    return g;
+  }
+
+  /* ================================================================
+     竹编簸箕 —— 浅口圆簸箕，三足
+     ================================================================ */
+  function buildBoji() {
+    var g = new THREE.Group();
+    var weave = canvasTex('bambooWeave', 4, 2);
+    var mat = new THREE.MeshStandardMaterial({
+      map: weave, color: 0xD9B77E, roughness: 0.86, side: THREE.DoubleSide
+    });
+
+    var R = 1.0;
+    // 底面略微下凹的圆盘
+    var base = new THREE.Mesh(new THREE.CircleGeometry(R * 0.96, 48), mat);
+    base.rotation.x = -Math.PI / 2;
+    base.receiveShadow = true;
+    g.add(base);
+
+    // 侧壁：向外敞开的浅口
+    var wallGeo = new THREE.CylinderGeometry(R * 0.96, R, 0.20, 48, 3, true);
+    var wp = wallGeo.attributes.position;
+    for (var i = 0; i < wp.count; i++) {
+      var y = wp.getY(i);
+      var t = (y + 0.10) / 0.20;
+      var ang = Math.atan2(wp.getZ(i), wp.getX(i));
+      var rr = Math.sqrt(wp.getX(i) * wp.getX(i) + wp.getZ(i) * wp.getZ(i));
+      rr += Math.sin(ang * 26) * 0.006 * t;   // 边沿的细密编痕
+      wp.setX(i, Math.cos(ang) * rr);
+      wp.setZ(i, Math.sin(ang) * rr);
+    }
+    wallGeo.computeVertexNormals();
+    var wall = new THREE.Mesh(wallGeo, mat);
+    wall.position.y = 0.10;
+    wall.castShadow = true;
+    g.add(wall);
+
+    // 缠竹皮的圈口
+    var rim = new THREE.Mesh(
+      new THREE.TorusGeometry(R, 0.028, 10, 56),
+      new THREE.MeshStandardMaterial({ color: 0x9C6B33, roughness: 0.72 })
+    );
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.20;
+    rim.castShadow = true;
+    g.add(rim);
+
+    // 三足
+    var footMat = new THREE.MeshStandardMaterial({ color: 0x7A5228, roughness: 0.8 });
+    for (var f = 0; f < 3; f++) {
+      var a = (f / 3) * Math.PI * 2 + 0.4;
+      var foot = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 0.12, 10), footMat);
+      foot.position.set(Math.cos(a) * R * 0.62, -0.06, Math.sin(a) * R * 0.62);
+      g.add(foot);
+    }
+
+    // 簸箕里摊一点谷粒，说明用途
+    var grainMat = new THREE.MeshStandardMaterial({ color: 0xC8A24A, roughness: 0.65 });
+    var grain = new THREE.InstancedMesh(new THREE.SphereGeometry(0.022, 6, 5), grainMat, 90);
+    var m4 = new THREE.Matrix4();
+    for (var k = 0; k < 90; k++) {
+      var ra = Math.sqrt(Math.random()) * R * 0.72;
+      var ta = Math.random() * Math.PI * 2;
+      m4.makeScale(1, 0.6, 1);
+      m4.setPosition(Math.cos(ta) * ra, 0.02, Math.sin(ta) * ra);
+      grain.setMatrixAt(k, m4);
+    }
+    grain.instanceMatrix.needsUpdate = true;
+    g.add(grain);
+
+    g.position.y = 0.12;
+    return g;
+  }
+
+  /* ================================================================
+     客家织带 —— 搭在横杆上的一条织带，末端有穗
+     ================================================================ */
+  function buildZhidai() {
+    var g = new THREE.Group();
+    var belt = canvasTex('wovenBelt', 1, 3);
+
+    var rodY = 1.15;
+    var rod = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.035, 0.035, 2.0, 12),
+      new THREE.MeshStandardMaterial({ color: 0x6E563C, roughness: 0.8 })
+    );
+    rod.rotation.z = Math.PI / 2;
+    rod.position.y = rodY;
+    rod.castShadow = true;
+    g.add(rod);
+    [-0.95, 0.95].forEach(function (x) {
+      var post = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.04, rodY, 10),
+        new THREE.MeshStandardMaterial({ color: 0x5C472F, roughness: 0.85 })
+      );
+      post.position.set(x, rodY / 2, 0);
+      g.add(post);
+    });
+
+    // 绕过横杆自然垂下的两条带子，带面有轻微扭转
+    var mat = new THREE.MeshStandardMaterial({
+      map: belt, color: 0xffffff, roughness: 0.82, side: THREE.DoubleSide
+    });
+    [-1, 1].forEach(function (side) {
+      var w = 0.20, len = 0.92;
+      var geo = new THREE.PlaneGeometry(w, len, 6, 26);
+      var p = geo.attributes.position;
+      for (var i = 0; i < p.count; i++) {
+        var x = p.getX(i), y = p.getY(i);
+        var t = (y + len / 2) / len;                 // 0 在上端
+        var twist = Math.sin(t * 4.2) * 0.05 * t;    // 下摆扭转越大
+        p.setZ(i, twist + Math.sin(x * 9 + t * 5) * 0.012);
+        p.setX(i, x * (1 - 0.06 * t));               // 越往下越收
+      }
+      geo.computeVertexNormals();
+      var strip = new THREE.Mesh(geo, mat);
+      strip.position.set(side * 0.30, rodY - len / 2 - 0.02, 0.02);
+      strip.rotation.y = side * 0.12;
+      strip.castShadow = true;
+      g.add(strip);
+
+      // 末端流苏
+      var fringeMat = new THREE.MeshStandardMaterial({ color: 0xE4D6B8, roughness: 0.9 });
+      for (var f = 0; f < 9; f++) {
+        var fr = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.003, 0.13, 5), fringeMat);
+        fr.position.set(side * 0.30 + (f - 4) * 0.021, rodY - len - 0.08, 0.02);
+        fr.rotation.z = (f - 4) * 0.035;
+        g.add(fr);
+      }
+    });
+
+    // 相机注视点在 y≈0.15，架子本身高 1.15，不压低就会顶出画面
+    g.position.y = -0.52;
+    return g;
+  }
+
+  /* ================================================================
+     米酒坛 —— 酱釉陶坛 + 红纸封口
+     ================================================================ */
+  function buildMijiutan() {
+    var g = new THREE.Group();
+    var glaze = canvasTex('glazeJar', 2, 1);
+
+    // 坛身：一条轮廓线旋转成型
+    var profile = [
+      [0.00, 0.00], [0.30, 0.00], [0.34, 0.04], [0.42, 0.16],
+      [0.50, 0.34], [0.53, 0.52], [0.50, 0.70], [0.42, 0.86],
+      [0.32, 0.96], [0.27, 1.02], [0.28, 1.08], [0.31, 1.12], [0.29, 1.15]
+    ].map(function (v) { return new THREE.Vector2(v[0], v[1]); });
+
+    var body = new THREE.Mesh(
+      new THREE.LatheGeometry(profile, 48),
+      new THREE.MeshStandardMaterial({ map: glaze, color: 0xC98A52, roughness: 0.42, metalness: 0.06 })
+    );
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
+
+    // 肩部的弦纹
+    [0.62, 0.70].forEach(function (y) {
+      var ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.50, 0.010, 6, 40),
+        new THREE.MeshStandardMaterial({ color: 0x3B2213, roughness: 0.6 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = y;
+      g.add(ring);
+    });
+
+    // 红纸封口 + 扎绳
+    var cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.30, 0.07, 28),
+      new THREE.MeshStandardMaterial({ color: 0xB2352A, roughness: 0.78 })
+    );
+    cap.position.y = 1.18;
+    cap.castShadow = true;
+    g.add(cap);
+    var dome = new THREE.Mesh(
+      new THREE.SphereGeometry(0.33, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.4),
+      new THREE.MeshStandardMaterial({ color: 0x9E2C22, roughness: 0.8 })
+    );
+    dome.position.y = 1.21;
+    g.add(dome);
+    var cord = new THREE.Mesh(
+      new THREE.TorusGeometry(0.315, 0.014, 6, 30),
+      new THREE.MeshStandardMaterial({ color: 0x4A3A22, roughness: 0.9 })
+    );
+    cord.rotation.x = Math.PI / 2;
+    cord.position.y = 1.155;
+    g.add(cord);
+
+    // 坛前一只酒盏
+    var cupProfile = [
+      [0.00, 0.00], [0.10, 0.00], [0.12, 0.02], [0.14, 0.07], [0.13, 0.08], [0.10, 0.05]
+    ].map(function (v) { return new THREE.Vector2(v[0], v[1]); });
+    var cup = new THREE.Mesh(
+      new THREE.LatheGeometry(cupProfile, 24),
+      new THREE.MeshStandardMaterial({ color: 0xE8E0CC, roughness: 0.5, side: THREE.DoubleSide })
+    );
+    cup.position.set(0.62, 0.0, 0.42);
+    cup.castShadow = true;
+    g.add(cup);
+
+    // 坛子连封口高约 1.28，压低才不会把红纸坛帽裁掉
+    g.position.y = -0.58;
+    return g;
+  }
+
   /* ================================================================
      场景管理
      ================================================================ */
@@ -785,16 +1082,22 @@
       case 'hutoumao': currentModel = buildHutoumao(); break;
       case 'weiwu': currentModel = buildWeiwu(); break;
       case 'landye': currentModel = buildLandye(); break;
+      case 'liangmao': currentModel = buildLiangmao(); break;
+      case 'boji': currentModel = buildBoji(); break;
+      case 'zhidai': currentModel = buildZhidai(); break;
+      case 'mijiutan': currentModel = buildMijiutan(); break;
       default: currentModel = buildHutoumao();
     }
     scene.add(currentModel);
+    // 小件器物要拉近才看得清编织与釉面，按条目给的取景距离走
+    var spec = ITEMS.filter(function (it) { return it.id === id; })[0];
     targetRotX = 0.25;
     // Return to the canonical view by the shortest arc. Assigning 0.4 outright left
     // rotY at whatever the auto-rotation had accumulated, so the lerp unwound tens of
     // radians in a second — the violent spin on switching models.
     targetRotY = rotY + shortestTurnTo(rotY, 0.4);
     targetPanX = 0; targetPanY = 0;
-    targetZoom = id === 'weiwu' ? 5.5 : (id === 'landye' ? 4.8 : 4.2);
+    targetZoom = (spec && spec.zoom) || 4.2;
   }
 
   /** Signed delta from `from` to `to` taking the short way round. */
@@ -905,8 +1208,12 @@
   window.Showcase3D = {
     init: init,
     stop: stop,
+    show: showModel,
+    items: function () { return ITEMS.map(function (it) { return { id: it.id, name: it.name }; }); },
     debugState: function () {
       return { rotX: rotX, rotY: rotY, targetRotX: targetRotX, targetRotY: targetRotY, autoRotate: autoRotate };
-    }
+    },
+    debugModel: function () { return currentModel; },
+    debugCamera: function () { return camera; }
   };
 })();

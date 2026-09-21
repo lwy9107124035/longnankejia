@@ -151,6 +151,7 @@ async function run() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const consoleErrors = [];
   const netFailures = [];
+  const netRequests = [];
   const page = await Page.attach();
 
   page.on((m) => {
@@ -161,6 +162,9 @@ async function run() {
     if (m.method === 'Runtime.exceptionThrown') {
       const d = m.params.exceptionDetails;
       consoleErrors.push('uncaught: ' + (d.exception?.description || d.text).split('\n')[0]);
+    }
+    if (m.method === 'Network.requestWillBeSent') {
+      netRequests.push(m.params.request.url);
     }
     if (m.method === 'Network.loadingFailed') {
       netFailures.push(m.params.errorText + ' ' + (m.params.type || ''));
@@ -327,7 +331,8 @@ async function run() {
   await page.evaluate(`document.querySelector('[data-panel="panel3d"]').click()`);
   check('webgl canvas created', await until(page, `document.querySelector('#c3dViewport canvas')`, 15000));
   const items = await page.evaluate(`[...document.querySelectorAll('#c3dList .c3d-item')].length`);
-  check('three models listed', items === 3, items + ' items');
+  check('七个模型全部登记', items === 7, items + ' items');
+  const texReqBefore = netRequests.filter((u) => u.includes('assets/textures')).length;
   for (let i = 0; i < items; i++) {
     await page.evaluate(`document.querySelectorAll('#c3dList .c3d-item')[${i}].click()`);
     await sleep(900);
@@ -335,8 +340,31 @@ async function run() {
     check('model ' + (i + 1) + ' renders: ' + label, label.trim().length > 0);
     await shot(page, '03-model-' + i);
   }
+  const texReqAfter = netRequests.filter((u) => u.includes('assets/textures')).length;
   const tex200 = netFailures.filter((f) => f.includes('assets/textures'));
   check('all texture maps loaded without error', tex200.length === 0, tex200.join('; '));
+  // 新增物件的贴图必须由 canvas 现画，不能引入任何外部图片
+  check('新增模型未引入任何图片贴图（程序化生成）', texReqAfter === texReqBefore,
+    texReqAfter - texReqBefore + ' extra image requests');
+  const meshStats = await page.evaluate(`(() => {
+    const out = {};
+    ['liangmao','boji','zhidai','mijiutan'].forEach(function (id) {
+      window.Showcase3D.show(id);
+      let meshes = 0, tris = 0;
+      const m = window.Showcase3D.debugModel();
+      if (m) m.traverse(function (o) { if (o.isMesh && o.geometry) { meshes++;
+        tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } });
+      out[id] = { meshes: meshes, tris: Math.round(tris) };
+    });
+    return out;
+  })()`);
+  ['liangmao', 'boji', 'zhidai', 'mijiutan'].forEach(function (id) {
+    const s = meshStats[id];
+    check('模型 ' + id + ' 有实际几何体', s && s.meshes >= 3 && s.tris > 200, JSON.stringify(s));
+  });
+  // 取景不做自动断言：AABB 的角点是物体之外的空角（凉帽是圆盘、围屋有前院），
+  // 投影它们必然高估，试过之后 hutoumao/weiwu 这两个画面正常的模型也被判成裁切。
+  // 真正可靠的判据要采样渲染轮廓，成本不值，这里改由 03-model-*.png 人工核对。
 
   console.log('\n6b. 自动旋转失控回归');
   check('Showcase3D 暴露了只读调试状态', await until(page, `!!window.Showcase3D.debugState`));
