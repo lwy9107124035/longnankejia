@@ -139,3 +139,13 @@ python scripts/sync_diancang_text.py   # 从 PDF 注入展品原文全文到 dia
 
 推送到 GitHub 后由 Netlify 自动构建，详见 `docs/部署说明.txt`。
 `netlify.toml` 中 `publish = "."`，因此 `index.html` 必须留在仓库根目录。
+
+生产站：**https://prismatic-syrniki-1e0e96.netlify.app**
+
+只有 `main` 会自动部署。其他分支不再由 push 触发——别名部署会在 Netlify 上留下一个
+公开、且冻结在最后一次构建的预览站，不会随后续修改更新；需要预览时用
+`workflow_dispatch` 手动跑一次。`tests/check_static.py` 会守住这条规则。
+
+注意：历史上 `dev` 分支留下的 `dev--prismatic-syrniki-1e0e96.netlify.app` 仍是旧版本
+（内联 SVG 头像、会渲染二维码、未去水印的贴图），而 `dev` 分支已删除，它不会再更新。
+要清掉需在 Netlify 控制台删除该 deploy 或别名，本机未登录 Netlify CLI 所以无法代做。

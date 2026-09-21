@@ -271,6 +271,33 @@ def check_diancang_pages():
     notes.append("典藏 %d 件展品的配图页码已与 PDF 原文核对" % checked)
 
 
+# ------------------------------------------------------------- deploy workflow
+def check_deploy_workflow():
+    """Only main may auto-deploy.
+
+    A second auto-deploying branch gets a permanent public Netlify alias URL that
+    freezes at whatever it last deployed. The old dev alias still serves the pre-fix
+    page — inline-SVG avatar and a rendered QR code — and can never update again now
+    that the branch is gone. Preview deploys must be an explicit human action.
+    """
+    path = rel(".github", "workflows", "deploy.yml")
+    if not os.path.exists(path):
+        notes.append("no deploy workflow found, skipped workflow check")
+        return
+    txt = read(path)
+    m = re.search(r"branches:\s*\[([^\]]*)\]", txt)
+    if not m:
+        fail("deploy.yml: 找不到 push.branches 触发列表，无法确认只有 main 会自动部署")
+        return
+    branches = [b.strip() for b in m.group(1).split(",") if b.strip()]
+    if branches != ["main"]:
+        fail("deploy.yml: push 会自动部署 %s；除 main 外的分支都会在 Netlify 上留下"
+             "永不更新的公开预览站（dev 别名就是教训），预览请改用 workflow_dispatch 手动触发"
+             % branches)
+    else:
+        notes.append("deploy.yml: 仅 main 自动部署，预览走 workflow_dispatch")
+
+
 # --------------------------------------------------------------- git hygiene
 def check_gitignore():
     txt = read(rel(".gitignore"))
@@ -294,6 +321,7 @@ def main():
     check_css_vars()
     check_no_qr()
     check_diancang_pages()
+    check_deploy_workflow()
     check_js_syntax()
     check_gitignore()
 

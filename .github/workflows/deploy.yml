@@ -2,7 +2,7 @@ name: Build & Deploy to Netlify
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +27,8 @@ jobs:
           npm install -g netlify-cli
           BRANCH="${GITHUB_REF#refs/heads/}"
           echo "Deploying branch: $BRANCH"
+          # 只有 main 能自动部署。别名分支不再由 push 触发（dev 分支已删除，
+          # 它的预览站会永久停在旧内容上），需要预览时用 workflow_dispatch 手动跑。
           if [ "$BRANCH" = "main" ]; then
             netlify deploy --dir . --prod \
               --auth "$NETLIFY_AUTH_TOKEN" \
