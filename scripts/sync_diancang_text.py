@@ -6,24 +6,33 @@ adds a `text` field with the full passage from the PDF; `desc` stays as the card
 
 Run:  python scripts/sync_diancang_text.py
 """
-import io, json, re, sys
+import io, json, os, re, sys
 
 sys.stdout.reconfigure(encoding="utf-8")
 MARK = "扫描二维码观看龙南方言介绍视频"
 DATA = "js/diancang-data.js"
 OPENINGS = "data/exhibit-openings.json"
+PDF = "docs/世界客家非遗展示馆文化典藏.pdf"
 
 
-def book_text(sheet):
-    raw = io.open(".cache/pdf/page-%02d.txt" % sheet, encoding="utf-8").read()
-    body = raw.split(MARK, 1)[1] if MARK in raw else raw
-    # the IPA bracket is already carried in the item's own ipa field
-    body = re.sub(r"\[[^\]]*\]", "", body)
-    # the PDF wraps paragraphs mid-sentence; rejoin, then keep real paragraph breaks
-    body = re.sub(r"\s*\n\s*", "", body)
-    body = re.sub(r"\s+", "", body)
-    # strip a leading page-furniture artefact if the title characters leaked through
-    return body.strip()
+def sheet_texts():
+    """Extract every page's body straight from the PDF.
+
+    Reads the document rather than a cached .cache/pdf/ dump so the script keeps
+    working after scratch directories are cleared.
+    """
+    import fitz
+    if not os.path.exists(PDF):
+        sys.exit("找不到 %s —— 本脚本靠它取原文，请把典藏 PDF 放回 docs/" % PDF)
+    doc = fitz.open(PDF)
+    out = {}
+    for i, page in enumerate(doc, start=1):
+        raw = page.get_text()
+        body = raw.split(MARK, 1)[1] if MARK in raw else raw
+        body = re.sub(r"\[[^\]]*\]", "", body)       # IPA bracket lives in item.ipa
+        body = re.sub(r"\s*\n\s*", "", body)         # rejoin mid-sentence wraps
+        out[i] = re.sub(r"\s+", "", body)
+    return out
 
 
 def js_str(s):
@@ -65,11 +74,12 @@ def insert_text(src, name, quoted):
 
 def main():
     openings = json.load(io.open(OPENINGS, encoding="utf-8"))
+    texts = sheet_texts()
     src = io.open(DATA, encoding="utf-8").read()
 
     done = skipped = failed = 0
     for name, rec in openings.items():
-        text = book_text(rec["sheet"])
+        text = texts.get(rec["sheet"], "")
         if len(text) < 40:
             print("skip (too short):", name)
             skipped += 1

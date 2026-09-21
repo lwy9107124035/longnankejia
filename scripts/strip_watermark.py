@@ -9,23 +9,21 @@ The hole is filled from the neighbouring strip of the same texture rather than b
 diffusion inpainting: Navier-Stokes inpainting across a 188x110 window collapses
 into a flat colour gradient and reads as an obvious smudge, while cloning the band to
 the left keeps the grain and puts every horizontal feature back on its own row.
+
+Re-running is safe: each map is checked against tests/badge-template.npy first, and
+only the ones that still correlate to the badge get patched. Without that template the
+script refuses to run rather than re-patching already-clean maps.
 """
 from PIL import Image
 import numpy as np
 import os
-import shutil
+import sys
 
 TEXTURES = "assets/textures"            # the maps the 3D models load
 SPARE = "assets/source/textures"        # generated alternates, kept out of the build
-BACKUP = ".cache/texture-originals"
 # Measured pill bounds ~ x 843-1022, y 922-1022; padded for the soft rounded edge.
 BADGE = (836, 914, 1024, 1024)   # x0, y0, x1, y1
 FEATHER = 14                     # px of gradient blend along the two open edges
-TARGETS = [
-    "black-cotton.png", "tiger-embroidery.png", "embroidery-pattern.png",
-    "rammed-earth.png", "roof-tiles.png", "stone-paving.png", "landye-final.png",
-    "landye-cloth.png", "landye-pattern.png", "tiger-face.png", "weiwu-wall.png",
-]
 
 
 def feather_mask(shape, rect=BADGE):
@@ -51,37 +49,45 @@ def clean(path):
     return np.clip(rgb * (1 - m) + dst * m, 0, 255).astype(np.uint8)
 
 
-def sheet(paths, path, box=(700, 820, 1024, 1024)):
-    tiles = [Image.open(p).convert("RGB").crop(box) for p in paths]
-    tw, th = tiles[0].size
-    cols = 3
-    out = Image.new("RGB", (cols * tw, ((len(tiles) + cols - 1) // cols) * th), (250, 250, 250))
-    for i, t in enumerate(tiles):
-        out.paste(t, ((i % cols) * tw, (i // cols) * th))
-    out.save(path)
+def badge_score(path, template="tests/badge-template.npy", box=(760, 854, 1024, 1024)):
+    """Normalised cross-correlation against the recovered badge; None if no template."""
+    import cv2
+    if not os.path.exists(template):
+        return None
+    tmpl = np.load(template)
+    gray = cv2.cvtColor(np.asarray(Image.open(path).convert("RGB")), cv2.COLOR_RGB2GRAY).astype(np.float32)
+    x0, y0, x1, y1 = box
+    win = gray[y0:min(y1, gray.shape[0]), x0:min(x1, gray.shape[1])]
+    if win.shape[0] < tmpl.shape[0] or win.shape[1] < tmpl.shape[1]:
+        return None
+    return float(cv2.matchTemplate(win, tmpl, cv2.TM_CCOEFF_NORMED).max())
 
 
 def main():
-    os.makedirs(BACKUP, exist_ok=True)
-    current, originals = [], []
+    if not os.path.exists("tests/badge-template.npy"):
+        sys.exit("需要 tests/badge-template.npy 来判断角标是否还在；没有它本脚本拒绝工作，\n"
+                 "否则会把已经干净的贴图当成未处理再补一遍。")
+
+    threshold = 0.40
+    worked = skipped = 0
     for sub in (TEXTURES, SPARE):
-        for name in TARGETS:
-            f = os.path.join(sub, name)
-            if not os.path.exists(f):
+        if not os.path.isdir(sub):
+            continue
+        for name in sorted(os.listdir(sub)):
+            if not name.endswith(".png"):
                 continue
-            b = os.path.join(BACKUP, name)
-            if os.path.exists(b):
-                os.remove(f)
-                shutil.copy(b, f)      # always restart from the pristine original
-            else:
-                shutil.copy(f, b)
+            f = os.path.join(sub, name)
+            score = badge_score(f)
+            if score is None or score <= threshold:
+                print("  跳过（角标相关度 %.2f，已干净）%s" % (score or -1, f))
+                skipped += 1
+                continue
             Image.fromarray(clean(f)).save(f, optimize=True)
-            current.append(f)
-            originals.append(b)
-            print("cleaned", f)
-    sheet(current, os.path.join(BACKUP, "_after.png"))
-    sheet(originals, os.path.join(BACKUP, "_before.png"))
-    print("review sheets in", BACKUP)
+            print("  已去角标（相关度 %.2f → 复检 %.2f）%s" % (score, badge_score(f), f))
+            worked += 1
+
+    print("\n处理 %d 张，跳过 %d 张。" % (worked, skipped))
+    print("原始带角标版本另存于 OneDrive 备份目录，不在仓库内。")
 
 
 if __name__ == "__main__":

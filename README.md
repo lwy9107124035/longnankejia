@@ -111,12 +111,20 @@ python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密
 ## 素材构建
 
 ```
-python scripts/build_avatar.py      # 数字人形象.png → 抠图 / 裁切 → assets/avatar/
-python scripts/strip_watermark.py   # 从 .cache 原始图重建去角标贴图，可重复执行
+python scripts/build_avatar.py      # 数字人形象.png → 抠图 / 裁切 / 表情层 → assets/avatar/
+python scripts/strip_watermark.py   # 就地去除贴图角标，可重复执行
+python scripts/sync_diancang_pages.py  # 重建展品的 PDF 页序映射 + data/exhibit-openings.json
+python scripts/sync_diancang_text.py   # 从 PDF 注入展品原文全文到 diancang-data.js
 ```
 
-两个脚本都是幂等的：`strip_watermark.py` 每次都从 `.cache/texture-originals/` 里的原始图重新生成，
-反复运行不会叠加处理痕迹。
+`strip_watermark.py` 不依赖任何缓存目录：它先用 `tests/badge-template.npy` 量每张图与角标
+的相关度，只处理仍然命中的那些，已干净的跳过。模板缺失时直接拒绝运行，以免把处理过的
+贴图再补一遍。
+
+两个 `sync_*` 脚本直接读 `docs/世界客家非遗展示馆文化典藏.pdf`（PyMuPDF），PDF 不在就报错退出。
+
+`.cache/` 是纯临时目录（测试截图、构建预览），随时可删，脚本不依赖它；已在 `.gitignore` 中。
+带角标的贴图原件不入库，另存于 OneDrive 备份目录。
 
 ## 问答引擎
 
