@@ -373,6 +373,29 @@ async function run() {
   const imgOk = await until(page, `(() => { const i = document.querySelector('#dcDetailBody img');
     return i && i.complete && i.naturalWidth > 0; })()`, 6000);
   check('exhibit PDF page image decodes', imgOk);
+  // 配图必须走 sheet（PDF 第几张），印刷页码 page 只用于给读者引用
+  const cited = await page.evaluate(`(() => {
+    const it = window.DIANCANG.chapters.flatMap(c => c.items).find(i => i.sheet && i.page && i.sheet !== i.page);
+    if (!it) return { skip: true };
+    const img = document.querySelector('#dcDetailBody img');
+    return { name: it.name, page: it.page, sheet: it.sheet,
+             srcIsSheet: img ? img.getAttribute('src').indexOf(String(it.sheet).padStart(2, '0')) > -1 : false };
+  })()`);
+  if (!cited.skip) {
+    await page.evaluate(`document.getElementById('dcDetailClose').click()`);
+    await page.evaluate(`(() => {
+      const it = window.DIANCANG.chapters.flatMap(c => c.items).find(i => i.sheet && i.page && i.sheet !== i.page);
+      const ch = window.DIANCANG.chapters.findIndex(c => c.items.indexOf(it) > -1);
+      document.querySelectorAll('#dcTabs .dc-tab')[ch].click();
+      document.querySelectorAll('#dcContent .dc-item-card')[window.DIANCANG.chapters[ch].items.indexOf(it)].click();
+    })()`);
+    const srcSheet = await until(page, `(() => { const it = window.DIANCANG.chapters.flatMap(c => c.items).find(i => i.sheet && i.page && i.sheet !== i.page);
+      const img = document.querySelector('#dcDetailBody img');
+      return img && it && img.getAttribute('src').indexOf(String(it.sheet).padStart(2, '0')) > -1; })()`, 6000);
+    check('配图用的是 PDF 页序而不是印刷页码', srcSheet, JSON.stringify(cited));
+    const cite = await page.evaluate(`(document.querySelector('.dc-detail-cite')||{}).textContent||''`);
+    check('详情标注了书内印刷页码供引用', /第\s*\d+\s*页/.test(cite), cite);
+  }
   await shot(page, '04-diancang');
   await page.evaluate(`document.getElementById('dcDetailClose').click()`);
   check('exhibit detail closes', await until(page, `document.getElementById('dcDetailMask').hidden`));

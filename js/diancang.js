@@ -13,8 +13,11 @@
   }
 
   function pageImg(item) {
-    if (!item.page) return '';
-    var p = String(item.page).padStart(2, '0');
+    // 图片按 PDF 第几张命名，而 item.page 是书上的印刷页码，两者在书中段差 2~5 页。
+    // 配图必须用 sheet，否则每条展品显示的都是隔壁那一页；page 仍用于给读者引用。
+    var p = item.sheet || item.page;
+    if (!p) return '';
+    p = String(p).padStart(2, '0');
     return '<img class="dc-item-thumb" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" loading="lazy" onerror="this.style.display=\'none\'">';
   }
 
@@ -89,9 +92,11 @@
     if (!mask || !body) return;
 
     var imgHtml = '';
-    if (item.page) {
-      var p = String(item.page).padStart(2, '0');
-      imgHtml = '<img class="dc-detail-img" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" onerror="this.style.display=\'none\'">';
+    var imgPage = item.sheet || item.page;
+    if (imgPage) {
+      var p = String(imgPage).padStart(2, '0');
+      imgHtml = '<img class="dc-detail-img" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" onerror="this.style.display=\'none\'">' +
+        '<div class="dc-detail-cite">《文化典藏》第 ' + esc(item.page) + ' 页</div>';
     }
 
     var videoHtml = '';

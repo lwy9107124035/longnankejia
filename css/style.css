@@ -489,6 +489,7 @@ input { font-family: inherit; }
 .ask-more-btn:active { background: #8E3E17; transform: translateY(1px); }
 
 .dc-detail-meta { font-size: 10px; color: var(--muted); text-align: center; margin-top: 6px; }
+.dc-detail-cite { font-size: 10px; color: var(--muted); text-align: center; margin: -2px 0 8px; }
 
 /* 视频播放器弹层 */
 .video-player-modal .modal-card { max-width: 400px; padding: 14px; }

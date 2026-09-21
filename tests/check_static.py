@@ -229,6 +229,48 @@ def check_no_qr():
     notes.append("no QR encoder or QR container in shipped code")
 
 
+# ------------------------------------------------- 典藏 exhibit ↔ image mapping
+def check_diancang_pages():
+    """Every exhibit's illustration must be the book page that actually describes it.
+
+    `page` in diancang-data.js is the printed page number while assets/pdf-imgs/page-NN.jpg
+    is numbered by PDF sheet index; they drift 2-5 apart through the book, so the images
+    were all showing a neighbouring exhibit. data/exhibit-openings.json records, per exhibit,
+    the PDF sheet it was matched to plus that sheet's display title and body opening, which
+    is what lets us re-verify the match without re-reading the 116 MB PDF.
+    """
+    fixture = rel("data", "exhibit-openings.json")
+    if not os.path.exists(fixture):
+        notes.append("exhibit-openings.json missing, skipped page check")
+        return
+    openings = json.load(open(fixture, encoding="utf-8"))
+    data = read(rel("js", "diancang-data.js"))
+
+    checked = 0
+    for m in re.finditer(r"name:\s*'([^']+)'([^}]*?)desc:", data, re.S):
+        name = m.group(1)
+        sm = re.search(r"sheet:\s*(\d+)", m.group(2))
+        if not sm:
+            continue
+        sheet = int(sm.group(1))
+        checked += 1
+        img = rel("assets", "pdf-imgs", "page-%02d.jpg" % sheet)
+        if not os.path.exists(img):
+            fail("「%s」配到 page-%02d.jpg，但该图片不存在" % (name, sheet))
+        rec = openings.get(name)
+        if not rec:
+            fail("「%s」有 sheet 字段但没有可核对的 PDF 夹具记录" % name)
+            continue
+        if rec["sheet"] != sheet:
+            fail("「%s」数据里 sheet=%d，夹具里是 %d" % (name, sheet, rec["sheet"]))
+            continue
+        name_chars = set(re.sub(r"""["“”‘’\s]""", "", name))
+        title_chars = set(rec.get("title", ""))
+        if not (name_chars <= title_chars or re.sub(r"""["“”‘’]""", "", name) in rec["opening"]):
+            fail("「%s」与所配页对不上：标题「%s」正文「%s」" % (name, rec.get("title", ""), rec["opening"][:24]))
+    notes.append("典藏 %d 件展品的配图页码已与 PDF 原文核对" % checked)
+
+
 # --------------------------------------------------------------- git hygiene
 def check_gitignore():
     txt = read(rel(".gitignore"))
@@ -251,6 +293,7 @@ def main():
     check_textures_clean()
     check_css_vars()
     check_no_qr()
+    check_diancang_pages()
     check_js_syntax()
     check_gitignore()
 
