@@ -105,16 +105,18 @@
         '<div class="dc-detail-video">' +
         '  <div class="dc-detail-video-icon">🎬</div>' +
         '  <div class="dc-detail-video-title">' + esc(item.name) + ' — 客家话语音讲解</div>' +
-        '  <div class="dc-detail-video-desc">来自文化典藏数字二维码的方言讲解视频</div>' +
+        '  <div class="dc-detail-video-desc">展柜旁二维码背后的原声讲解，已直接挂在下面</div>' +
         '  <button class="dc-video-play-btn" id="dcPlayBtn" type="button">▶ 播放讲解视频</button>' +
         '</div>';
     }
 
+    // 详情展示《文化典藏》原文全文；desc 只作为列表里的短摘要
+    var fullText = item.text || item.desc;
     body.innerHTML =
       '<div class="dc-detail-name">' + esc(item.name) + '</div>' +
       (item.ipa ? '<div class="dc-detail-ipa">' + esc(item.ipa) + '</div>' : '') +
       imgHtml +
-      '<div class="dc-detail-desc">' + esc(item.desc) + '</div>' +
+      '<div class="dc-detail-desc">' + esc(fullText) + '</div>' +
       videoHtml +
       '<button class="dc-detail-ask" id="dcAskBtn" type="button">问问阿蓝关于「' + esc(item.name) + '」的更多知识</button>';
     mask.hidden = false;
@@ -143,7 +145,7 @@
     if (!mask) return;
 
     title.textContent = item.name + ' — 客家话语音讲解';
-    desc.textContent = '来自文化典藏数字二维码';
+    desc.textContent = '《文化典藏》展品原声讲解 · 第 ' + (item.page || '') + ' 页';
     // 用 iframe 嵌入视频页面
     frame.innerHTML = '<iframe src="' + esc(item.videoUrl) + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
     mask.hidden = false;

@@ -373,6 +373,17 @@ async function run() {
   const imgOk = await until(page, `(() => { const i = document.querySelector('#dcDetailBody img');
     return i && i.complete && i.naturalWidth > 0; })()`, 6000);
   check('exhibit PDF page image decodes', imgOk);
+  const detailText = await page.evaluate(`(() => {
+    const nameEl = document.querySelector('#dcDetailBody .dc-detail-name');
+    const d = document.querySelector('#dcDetailBody .dc-detail-desc');
+    const nm = nameEl ? nameEl.textContent : '';
+    const it = window.DIANCANG.chapters.flatMap(c => c.items).find(i => i.name === nm);
+    return { name: nm, shown: d ? d.textContent.length : 0,
+             book: it ? (it.text || '').length : 0, preview: it ? it.desc.length : 0 };
+  })()`);
+  check('详情展示《文化典藏》原文全文而非摘要',
+    detailText.book > 120 && detailText.shown === detailText.book,
+    JSON.stringify(detailText));
   // 配图必须走 sheet（PDF 第几张），印刷页码 page 只用于给读者引用
   const cited = await page.evaluate(`(() => {
     const it = window.DIANCANG.chapters.flatMap(c => c.items).find(i => i.sheet && i.page && i.sheet !== i.page);
