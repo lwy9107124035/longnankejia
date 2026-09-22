@@ -54,7 +54,17 @@ class Page {
   send(method, params = {}) {
     const id = ++this.id;
     this.ws.send(JSON.stringify({ id, method, params }));
-    return new Promise((res, rej) => this.pending.set(id, { res, rej }));
+    // Chrome 半路退了的话，这个 Promise 不该永远悬着（tests 套件里已经踩过一次）
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`CDP ${method} 超时 30s`));
+      }, 30000);
+      this.pending.set(id, {
+        res: (v) => { clearTimeout(timer); resolve(v); },
+        rej: (e) => { clearTimeout(timer); reject(e); },
+      });
+    });
   }
 
   async ev(expression) {
@@ -75,8 +85,26 @@ async function until(page, expr, ms = 15000) {
   return false;
 }
 
+/** 只按我们自己的 PID 连子进程树收，不动用户开着的 Chrome。 */
+function killChrome(proc) {
+  if (!proc) return;
+  proc.kill();
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+  }
+}
+
 const profile = path.join(os.tmpdir(), 'alan-live-qr-profile');
 fs.rmSync(profile, { recursive: true, force: true });
+// 上一轮的残留实例会占住端口，attach() 连到旧页面就会拿一次假的通过/假的失败
+try {
+  const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`, { signal: AbortSignal.timeout(1500) });
+  if (r.ok) throw new Error(`端口 ${CDP_PORT} 上已有 Chrome 在跑（上一轮没退干净），先关掉它再跑`);
+} catch (e) {
+  if (/已有 Chrome/.test(e.message)) { console.log('ERROR ' + e.message); process.exit(1); }
+}
+// 先删掉上一次的产物：否则这一轮失败了，tests/decode_entry_qr.py 还会解出旧图报 ok
+fs.rmSync(OUT, { force: true });
 const chrome = spawn(CHROME, [
   '--remote-debugging-port=' + CDP_PORT,
   '--user-data-dir=' + profile,
@@ -89,8 +117,15 @@ try {
   const page = await Page.attach();
   await page.send('Page.enable');
   await page.send('Page.navigate', { url: URL });
-  if (!await until(page, 'document.readyState==="complete"')) throw new Error('页面未加载完成：' + URL);
-  if (!await until(page, '!!window.QR', 10000)) throw new Error('线上页面没有 window.QR（编码器没部署上去？）');
+  // 公网这条链路慢的时候 index.html 自己就能要十几秒，别按本地速度设预算
+  if (!await until(page, 'document.readyState==="complete"', 90000)) throw new Error('页面未加载完成：' + URL);
+  if (!await until(page, '!!window.QR', 30000)) {
+    const why = await page.ev(`(() => ({
+      qrcode: typeof window.qrcode, QR: typeof window.QR,
+      srcs: [...document.querySelectorAll('script[src]')].map(s => s.getAttribute('src')),
+    }))()`).catch((e) => ({ probeFailed: e.message }));
+    throw new Error('线上页面没有 window.QR（编码器没部署上去？） ' + JSON.stringify(why));
+  }
   await page.ev(`document.getElementById('accessBtn').click()`);
   if (!await until(page, `!!document.querySelector('#addrQr canvas')`)) {
     throw new Error('线上页面没有渲染入口二维码画布');
@@ -108,6 +143,6 @@ try {
 } catch (e) {
   console.log('ERROR ' + e.message);
 } finally {
-  chrome.kill();
+  killChrome(chrome);
 }
 process.exit(code);

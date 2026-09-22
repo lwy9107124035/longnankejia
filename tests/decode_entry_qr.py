@@ -8,6 +8,7 @@ Run after the browser suite:  python tests/run_all.py
 """
 import os
 import sys
+import time
 
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,13 +36,16 @@ def main():
         pad = cv2.copyMakeBorder(big, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=(255, 255, 255))
         text, pts, _ = det.detectAndDecode(pad)
 
+    age_min = (time.time() - os.path.getmtime(PNG)) / 60.0
+    stamp = "  [%.0f 分钟前导出]" % age_min if age_min > 5 else ""
     if not text:
-        print("  FAIL   入口二维码无法解码——观众的手机扫不出来 (%dx%d)" % (img.shape[1], img.shape[0]))
+        print("  FAIL   入口二维码无法解码——观众的手机扫不出来 (%dx%d)%s"
+              % (img.shape[1], img.shape[0], stamp))
         return 1
     if not text.startswith("http"):
-        print("  FAIL   解码结果不是网址: %r" % text)
+        print("  FAIL   解码结果不是网址: %r%s" % (text, stamp))
         return 1
-    print("  ok     入口二维码可被独立解码 -> %s" % text)
+    print("  ok     入口二维码可被独立解码 -> %s%s" % (text, stamp))
     return 0
 
 
