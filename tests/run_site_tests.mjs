@@ -60,7 +60,13 @@ function startServer() {
       res.end(buf);
     });
   });
-  return new Promise((resolve) => server.listen(PORT, '127.0.0.1', () => resolve(server)));
+  return new Promise((resolve, reject) => {
+    server.once('error', (e) => reject(new Error(
+      e.code === 'EADDRINUSE'
+        ? `端口 ${PORT} 已被占用，可能有上一轮的测试进程没退干净`
+        : e.message)));
+    server.listen(PORT, '127.0.0.1', () => resolve(server));
+  });
 }
 
 /* --------------------------------------------------------------------- cdp */
@@ -95,7 +101,17 @@ class Page {
   send(method, params = {}) {
     const id = ++this.id;
     this.ws.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    // Chrome 中途没了的话，这个 Promise 永远不该悬着——曾经让整个套件静默挂死二十分钟
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`CDP ${method} 超时 30s（Chrome 是否已经退了？）`));
+      }, 30000);
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+    });
   }
 
   on(handler) { this.handlers.push(handler); }
@@ -110,6 +126,13 @@ class Page {
 }
 
 async function launchChrome(headed) {
+  // 上一轮残留的实例会占住调试端口，attach() 就会抓到那个旧页面——测试结果看着全绿但不可信
+  try {
+    const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`, { signal: AbortSignal.timeout(1500) });
+    if (r.ok) throw new Error(`端口 ${CDP_PORT} 上已有 Chrome 在跑（上一轮没退干净），先关掉它再跑`);
+  } catch (e) {
+    if (/已有 Chrome/.test(e.message)) throw e;
+  }
   fs.rmSync(path.join(os.tmpdir(), 'alan-chrome-profile'), { recursive: true, force: true });
   const args = [
     '--remote-debugging-port=' + CDP_PORT,
@@ -128,6 +151,15 @@ async function launchChrome(headed) {
     await sleep(250);
   }
   throw new Error('Chrome did not open a debugging port');
+}
+
+/** proc.kill() 只发 SIGTERM，Chrome 的整棵子进程树会继续占着端口，所以按 PID 连树一起收。 */
+function killChrome(proc) {
+  if (!proc || proc.killed) return;
+  proc.kill();
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+  }
 }
 
 /* ------------------------------------------------------------------ helpers */
@@ -152,6 +184,7 @@ async function run() {
   const consoleErrors = [];
   const netFailures = [];
   const netRequests = [];
+  const pendingRequests = new Map();
   const page = await Page.attach();
 
   page.on((m) => {
@@ -165,9 +198,13 @@ async function run() {
     }
     if (m.method === 'Network.requestWillBeSent') {
       netRequests.push(m.params.request.url);
+      pendingRequests.set(m.params.requestId, m.params.request.url);
     }
     if (m.method === 'Network.loadingFailed') {
-      netFailures.push(m.params.errorText + ' ' + (m.params.type || ''));
+      // errorText alone can't be filtered by host, and the README promises third-party
+      // unreachability doesn't count as a site defect — so carry the URL through.
+      const u = pendingRequests.get(m.params.requestId) || '';
+      netFailures.push(m.params.errorText + ' ' + (m.params.type || '') + ' ' + u.replace(BASE, ''));
     }
     if (m.method === 'Network.responseReceived' && m.params.response.status >= 400) {
       netFailures.push(m.params.response.status + ' ' + m.params.response.url.replace(BASE, ''));
@@ -682,6 +719,6 @@ try {
   console.error('\nRUNNER ERROR:', err.message);
   process.exitCode = 2;
 } finally {
-  chrome?.kill();
+  killChrome(chrome);
   server?.close();
 }

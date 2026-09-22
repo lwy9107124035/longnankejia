@@ -11,12 +11,12 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PNG = os.path.join(ROOT, ".cache", "test-shots", "entry-qr.png")
+PNG = os.environ.get("QR_PNG") or os.path.join(ROOT, ".cache", "test-shots", "entry-qr.png")
 
 
 def main():
     if not os.path.exists(PNG):
-        print("  skip   没有 entry-qr.png（先跑 tests/run_site_tests.mjs）")
+        print("  skip   没有 %s（先跑浏览器套件，或 scripts/check_live_qr.mjs）" % os.path.basename(PNG))
         return 0
     try:
         import cv2

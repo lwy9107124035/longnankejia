@@ -70,6 +70,13 @@ node tests/probe_framing.mjs          # 量每个 3D 模型是否被视口裁切
 python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密钥
 ```
 
+部署之后另跑一次线上核验（本地全绿不代表 Netlify 上那一份也换了）：
+
+```
+node scripts/check_live_qr.mjs            # 用 headless Chrome 抓线上入口二维码 → .cache/live-entry-qr.png
+QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应打印公网地址
+```
+
 `scan_history_secrets.py` 的由来：`js/secrets.js` 一直在 `.gitignore` 里，但三个
 一次性调试脚本曾把密钥硬编码后提交进历史，后来虽删掉文件，blob 仍可从中间历史读出。
 **把整份历史备份传到任何外部存储之前都应先跑一次**——忽略某个文件不等于它没在
