@@ -122,6 +122,9 @@ QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应
   指向客家话讲解视频，那些内容已在面板中直接列成 14 条链接，不要求任何人去扫码。
   编码器用 MIT 授权的 qrcode-generator（`js/vendor/qrcode.js`）——原先手写的 500 行
   实现画得出看似合法的图，OpenCV 却解不出内容。
+- **`docs/龙南客家非遗数字助手二维码入口.png` 已作废。** 那是旧弹层的截图，码正是坏编码器
+  画的，裁切放大到 6 倍仍解不出内容；要印展板请用 `docs/入口二维码.png`
+  （`python scripts/make_entry_qr_png.py` 生成，脚本写完会自己解码验一遍）。
 - 第三方方言视频页（hlcode.pro）与线上大模型接口的可达性不计入测试失败。
 
 浏览器套件需要 `C:/Program Files/Google/Chrome/Application/chrome.exe`，无需安装任何依赖。
@@ -133,6 +136,7 @@ python scripts/build_avatar.py      # 数字人形象.png → 抠图 / 裁切 / 
 python scripts/strip_watermark.py   # 就地去除贴图角标，可重复执行
 python scripts/sync_diancang_pages.py  # 重建展品的 PDF 页序映射 + data/exhibit-openings.json
 python scripts/sync_diancang_text.py   # 从 PDF 注入展品原文全文到 diancang-data.js
+python scripts/make_entry_qr_png.py    # 浏览器导出的入口码 → docs/入口二维码.png（1148px，自检解码）
 ```
 
 `strip_watermark.py` 不依赖任何缓存目录：它先用 `tests/badge-template.npy` 量每张图与角标
