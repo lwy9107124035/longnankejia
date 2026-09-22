@@ -341,6 +341,22 @@
       }
     }
 
+    /** 站点入口码：馆内观众扫它打开页面。与典藏 PDF 的印刷码无关。 */
+    function renderQr(target) {
+      var box = document.getElementById('addrQr');
+      if (!box) return;
+      box.innerHTML = '';
+      if (!target || !isHttpUrl(target) || !window.QR) {
+        box.innerHTML = '<div class="addr-empty">当前地址不可扫码，请用下方链接</div>';
+        return;
+      }
+      var canvas = document.createElement('canvas');
+      box.appendChild(canvas);
+      if (!window.QR.render(target, canvas, 4)) {
+        box.innerHTML = '<div class="addr-empty">地址过长，无法生成二维码，请用下方链接</div>';
+      }
+    }
+
     function renderAddress() {
       var pub = normalizeUrl(getPublicUrl());
       var t = pub || currentUrl();
@@ -352,8 +368,9 @@
       } else {
         addrRow.innerHTML = '<div class="addr-empty">当前是本地文件预览，无法生成可分享的地址</div>';
       }
+      renderQr(isHttpUrl(t) ? t : '');
       modeHint.textContent = pub
-        ? '当前：公网地址（任何网络都能打开）'
+        ? '当前：公网地址（任何网络都能打开，扫码即进）'
         : (/^https?:\/\//i.test(t)
             ? '当前：局域网地址（手机需与电脑同一 Wi-Fi）'
             : '当前：本地文件预览（请运行 qidong.bat）');

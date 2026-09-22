@@ -501,7 +501,18 @@ input { font-family: inherit; }
 /* ---------- Modal general ---------- */
 .modal-title { font-size: 15px; font-weight: 700; color: var(--primary-deep); margin-bottom: 6px; text-align: center; }
 .modal-desc { font-size: 11px; color: var(--muted); margin-bottom: 8px; word-break: break-all; text-align: center; }
-/* ---------- 访问地址面板（取代原二维码弹层） ---------- */
+/* ---------- 访问地址面板 ---------- */
+.addr-qr {
+  width: 176px; height: 176px;
+  margin: 2px auto 10px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.addr-qr canvas, .addr-qr img { display: block; max-width: 100%; height: auto; }
 .addr-row {
   display: flex; align-items: center; gap: 8px;
   margin: 4px 0 6px; padding: 10px;

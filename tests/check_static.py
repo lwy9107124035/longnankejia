@@ -208,25 +208,42 @@ def check_css_vars():
     notes.append("%d css custom properties defined, all references resolve" % len(defined))
 
 
-# ------------------------------------------------------------------ no QR
-def check_no_qr():
-    """The site must never render a QR code.
+# --------------------------------------------------------------- QR entry code
+def check_qr_entry():
+    """The site must keep a scannable entry QR code.
 
-    The 505-line encoder that used to sit in ui.js is gone and the access panel shows
-    every link as text instead. Guard that so a merge or a copy-back cannot quietly
-    reintroduce a scannable code.
+    Requirement, twice-misread: "no QR codes" applies to the printed codes inside the
+    典藏 book pages, NOT to the site's own entry code — museum visitors scan that to
+    open the page. An earlier check asserted the opposite and this encoder got deleted
+    on the strength of it. Guard the presence instead so it cannot be removed again.
     """
-    ui = read(rel("js", "ui.js"))
     html = read(rel("index.html"))
-    for needle, where in (("var QR = (", "js/ui.js"),
-                          ("QR.render", "js/ui.js"),
-                          ("qrBox", "js/ui.js"),
-                          ('id="qrBox"', "index.html"),
-                          ('id="qrModal"', "index.html")):
-        hay = ui if where == "js/ui.js" else html
-        if needle in hay:
-            fail("%s still contains %r — QR codes must not be rendered" % (where, needle))
-    notes.append("no QR encoder or QR container in shipped code")
+    if not os.path.exists(rel("js", "qr.js")):
+        fail("js/qr.js 缺失 —— 站点入口二维码没有生成器，馆内观众无法扫码进入")
+    else:
+        qr = read(rel("js", "qr.js"))
+        for needle in ("function encode", "function render", "window.QR"):
+            if needle not in qr:
+                fail("js/qr.js 缺少 %r，入口二维码不可用" % needle)
+        # the adapter only delegates; without the vendored encoder the panel renders blank
+        for vend in ("js/vendor/qrcode.js", "js/vendor/qrcode-utf8.js"):
+            if not os.path.exists(rel(*vend.split("/"))):
+                fail("%s 缺失 —— 入口二维码没有可调用的编码器" % vend)
+            elif vend not in html:
+                fail("index.html 未加载 %s" % vend)
+            elif html.index(vend) > html.index("js/qr.js"):
+                fail("%s 必须在 js/qr.js 之前加载" % vend)
+        if "window.qrcode" not in qr:
+            fail("js/qr.js 不再调用 vendored 编码器")
+
+    if "js/qr.js" not in html:
+        fail("index.html 没有加载 js/qr.js")
+    if 'id="addrQr"' not in html:
+        fail("index.html 缺少二维码容器 #addrQr")
+    ui = read(rel("js", "ui.js"))
+    if "window.QR.render" not in ui:
+        fail("js/ui.js 不再渲染入口二维码")
+    notes.append("站点入口二维码：生成器、加载、容器、渲染四处均在位")
 
 
 # ------------------------------------------------- 典藏 exhibit ↔ image mapping
@@ -319,7 +336,7 @@ def main():
     check_orphans(literals, html)
     check_textures_clean()
     check_css_vars()
-    check_no_qr()
+    check_qr_entry()
     check_diancang_pages()
     check_deploy_workflow()
     check_js_syntax()

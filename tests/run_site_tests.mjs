@@ -491,7 +491,7 @@ async function run() {
   await page.evaluate(`document.getElementById('dcDetailClose').click()`);
   check('回到典藏列表', await until(page, `document.getElementById('dcDetailMask').hidden`));
 
-  console.log('\n8. 访问地址面板（二维码已彻底移除）');
+  console.log('\n8. 访问地址面板（入口扫码 + 讲解链接直列）');
   await page.evaluate(`document.getElementById('accessBtn').click()`);
   check('访问地址面板打开', await until(page, `!document.getElementById('accessModal').hidden`));
   const addr = await page.evaluate(`(() => { const a = document.querySelector('#addrRow a.addr-link');
@@ -503,13 +503,45 @@ async function run() {
     linkCount + ' / ' + dataCount);
   const sampleHref = await page.evaluate(`(document.querySelector('#addrLinkList .addr-item-link') || {}).href || ''`);
   check('每条都能直接点开', sampleHref.indexOf('hlcode.pro') > -1, sampleHref.slice(0, 44));
-  // 全站不得再出现任何二维码图形
-  const anyQr = await page.evaluate(`(() => ({
-    inModal: document.querySelectorAll('#accessModal canvas, #accessModal img').length,
-    byName: document.querySelectorAll('[id*="qr" i], [class*="qr-" i]').length
-  }))()`);
-  check('弹层内没有二维码画布或图片', anyQr.inModal === 0, JSON.stringify(anyQr));
-  check('DOM 里不存在任何二维码容器', anyQr.byName === 0, anyQr.byName + ' found');
+  // 站点入口码：馆内观众扫它进页面。之前这里断言的是「不得有二维码」，方向反了。
+  const qr = await page.evaluate(`(() => {
+    const c = document.querySelector('#addrQr canvas');
+    if (!c || !c.width) return { present: false };
+    const px = (cv) => cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    const a = px(c);
+    let black = 0;
+    for (let i = 0; i < a.length; i += 4) { if (a[i] < 128) black++; }
+    // 用同一个编码器按面板展示的地址重画一张逐像素比对，证明屏上这张码的内容
+    // 就是给用户看的那条链接。取 getAttribute 而不是 .href：DOM 属性会把
+    // https://host 规范化成 https://host/，多出的尾斜杠会让两张码对不上。
+    const shown = (document.querySelector('#addrRow a.addr-link') || {}).getAttribute('href') || '';
+    const ref = document.createElement('canvas');
+    const okRef = shown ? window.QR.render(shown, ref, 4) : false;
+    let same = false;
+    if (okRef && ref.width === c.width && ref.height === c.height) {
+      const b = px(ref);
+      same = a.length === b.length;
+      for (let i = 0; same && i < a.length; i += 4) same = a[i] === b[i];
+    }
+    return { present: true, w: c.width, ratio: +(black / (c.width * c.height)).toFixed(3),
+             matchesUrl: same, shown: shown };
+  })()`);
+  check('入口二维码已渲染', qr.present, JSON.stringify(qr));
+  check('入口码尺寸足够扫读', qr.present && qr.w >= 140, qr.w + 'px');
+  check('码面非空白（黑白模块比例合理）', !!qr.present && qr.ratio > 0.15 && qr.ratio < 0.85,
+    'black ratio=' + qr.ratio);
+  check('码内容与面板展示的地址一致', !!qr.matchesUrl, qr.shown);
+  // 导出 PNG 供 decode_entry_qr.py 用 OpenCV 独立解码——自证一致只能说明
+  // 「屏上是这个 URL 的编码」，解码通过才能说明观众的手机真扫得出来
+  const dataUrl = await page.evaluate(`(() => {
+    const c = document.querySelector('#addrQr canvas');
+    return c ? c.toDataURL('image/png') : '';
+  })()`);
+  if (dataUrl.startsWith('data:image/png')) {
+    fs.mkdirSync(SHOTS, { recursive: true });
+    fs.writeFileSync(path.join(SHOTS, 'entry-qr.png'),
+      Buffer.from(dataUrl.split(',')[1], 'base64'));
+  }
   await shot(page, '06-access');
   await page.evaluate(`document.getElementById('addrClose').click()`);
   check('面板关闭', await until(page, `document.getElementById('accessModal').hidden`));

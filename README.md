@@ -32,8 +32,10 @@ js/
   showcase3d.js         3D 模型（7 件，见下）
   textures.js           程序化贴图生成器（canvas 现画，无外部图片）
   config.js             全局配置（AI 模式、模型参数、公网地址）
+  qr.js                 入口二维码（把站点地址画成可扫的码）
   secrets.js            API 密钥，已在 .gitignore 中，不入库
   vendor/three.min.js   Three.js r128
+  vendor/qrcode.js      qrcode-generator 2.0.4（MIT，Kazuhiko Arase）—— 二维码编码器
 
 assets/
   avatar/               数字人形象：alan-full.png 全身、alan-face.png 头像
@@ -51,10 +53,15 @@ _archive/               历史克隆副本，仅供追溯
 ## 测试
 
 ```
-python tests/run_all.py            # 静态检查 + 真实 Chrome 端到端（111 项）
+python tests/run_all.py            # 静态检查 + Chrome 端到端 + 二维码解码（三段）
 python tests/run_all.py --static   # 只跑静态检查，不需要 Chrome
-node tests/run_site_tests.mjs      # 只跑浏览器套件（--headed 可观看）
+node tests/run_site_tests.mjs      # 只跑浏览器套件（113 项，--headed 可观看）
+python tests/decode_entry_qr.py    # 只解码入口二维码（需先跑浏览器套件）
 ```
+
+三段是有意分开的：浏览器里「屏上的码等于面板那条链接」只是自证一致，
+`decode_entry_qr.py` 用 OpenCV 把导出的 PNG 真的解回一个 URL，才算证明馆内手机扫得出来。
+手写编码器就是在这一步暴露出问题的——图看着完全正常，解码返回空字符串。
 
 两个专用排查工具：
 
@@ -70,11 +77,12 @@ python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密
 
 - `tests/check_static.py`：引用完整性（改目录后有没有漏改路径）、典藏页码是否都有对应图片、
   JS 语法、CSS 变量是否有悬空引用、`.gitignore` 是否仍忽略密钥、贴图角标回归，
-  以及"代码里不得再出现二维码渲染器"的守卫。
-- `tests/run_site_tests.mjs`：驱动本机 Chrome，共 104 项断言，覆盖四个 Tab 切换与连点、
+  以及"入口二维码的生成器、加载顺序、容器、渲染四处必须在位"的守卫。
+- `tests/run_site_tests.mjs`：驱动本机 Chrome，共 113 项断言，覆盖四个 Tab 切换与连点、
   六条快捷提问与自由提问、本地知识库引擎与线上大模型引擎两条问答路径、接口失败时的
   知识库回落、科普详情与「问问阿蓝」跳转、七个 3D 模型逐个渲染、自动旋转角度收敛、
-  典藏翻页与详情、客家话讲解视频弹层、访问地址面板、方言语音库、hash 深链与未知路由回落、
+  典藏翻页与详情、客家话讲解视频弹层、访问地址面板（入口二维码已渲染、黑白比例合理、
+  内容与面板链接逐像素一致）、方言语音库、hash 深链与未知路由回落、
   答案携带原声讲解、管理面板登录与知识库增改及刷新后持久化、360px 与 1280px 布局、
   页脚 AI 生成声明，最后断言无未捕获异常、无子资源加载失败。
 
@@ -102,8 +110,11 @@ python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密
   `enable_search` 被静默忽略，`/v1/models` 返回的 95 个模型无一带搜索，
   `/search`、`/web/search` 均 404。探测脚本留在 `scripts/probe_search.mjs`，
   换 key 或换供应商可以直接重跑。宁可不放这个按钮，也不放一个假装能搜的。
-- **全站不渲染二维码。** 顶栏「访问地址」面板把站点地址做成可点链接，
-  并把书里每个展品二维码背后的 14 条客家话讲解页直接列出来。
+- **入口二维码可扫。** 顶栏「扫码访问」把站点地址画成二维码，馆内观众扫一下即开本站；
+  面板里同时保留可点链接，照顾不方便扫码的场合。注意区分：典藏 PDF 每页旁印刷的二维码
+  指向客家话讲解视频，那些内容已在面板中直接列成 14 条链接，不要求任何人去扫码。
+  编码器用 MIT 授权的 qrcode-generator（`js/vendor/qrcode.js`）——原先手写的 500 行
+  实现画得出看似合法的图，OpenCV 却解不出内容。
 - 第三方方言视频页（hlcode.pro）与线上大模型接口的可达性不计入测试失败。
 
 浏览器套件需要 `C:/Program Files/Google/Chrome/Application/chrome.exe`，无需安装任何依赖。
@@ -147,5 +158,6 @@ python scripts/sync_diancang_text.py   # 从 PDF 注入展品原文全文到 dia
 `workflow_dispatch` 手动跑一次。`tests/check_static.py` 会守住这条规则。
 
 注意：历史上 `dev` 分支留下的 `dev--prismatic-syrniki-1e0e96.netlify.app` 仍是旧版本
-（内联 SVG 头像、会渲染二维码、未去水印的贴图），而 `dev` 分支已删除，它不会再更新。
+（内联 SVG 头像、未去水印的贴图，入口二维码用的是后来发现解不出内容的手写编码器），
+而 `dev` 分支已删除，它不会再更新。
 要清掉需在 Netlify 控制台删除该 deploy 或别名，本机未登录 Netlify CLI 所以无法代做。

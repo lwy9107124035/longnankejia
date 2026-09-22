@@ -17,7 +17,10 @@ except (AttributeError, OSError):
 
 stages = [("静态检查（引用完整性 / 语法 / 水印回归）", [sys.executable, "tests/check_static.py"])]
 if "--static" not in sys.argv:
-    stages.append(("浏览器端到端检查（真实 Chrome）", ["node", "tests/run_site_tests.mjs"]))
+    stages += [
+        ("浏览器端到端检查（真实 Chrome）", ["node", "tests/run_site_tests.mjs"]),
+        ("入口二维码独立解码（OpenCV）", [sys.executable, "tests/decode_entry_qr.py"]),
+    ]
 
 code = 0
 for label, cmd in stages:
