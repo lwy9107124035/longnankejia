@@ -1,45 +1,70 @@
 龙南客家非遗数字助手 — 部署指南
 ==================================
 
-当前方案：Git 推送 → Netlify 自动部署
-（已删除 zip 手动打包方式）
+当前方案：Git 推送 → GitHub Pages 自动部署（免费，没有额度闸门）
+          Netlify 降为备用宿主，只手动触发
+
+为什么换：Netlify 2025 年起按 credits 计费，本账号免费额度用完且未绑卡，之后
+          任何新的生产部署都会被挡（现网仍在服务上一次成功的部署，网址不丢）。
+          GitHub Pages 对公开仓库没有这套限制。
+
+
+网址
+----
+  生产（main 分支）     https://lwy9107124035.github.io/longnankejia/
+  开发预览（dev 分支）  https://lwy9107124035.github.io/longnankejia/dev/
+
 
 首次配置（只需一次）
 --------------------
-1. 打开 https://app.netlify.com
-2. 选择你的站点 → Site configuration → Build & deploy
-3. 点 "Link site to a Git repository"
-4. 选 GitHub → 授权 → 选择仓库 longnankejia
-5. 构建设置（netlify.toml 已配好，一般不用改）：
-     Build command:  echo 'window.APP_SECRETS={apiKey:"'$SILICONFLOW_API_KEY'"};' > js/secrets.js
-     Publish directory:  .
-6. 左侧 Environment variables → Add variable：
-     Key:    SILICONFLOW_API_KEY
-     Value:  你的硅基流动 API Key
-7. 保存后回到 Deploys → Trigger deploy → Deploy site
+1. 打开 https://github.com/lwy9107124035/longnankejia/settings/pages
+2. Build and deployment → Source 选 “GitHub Actions”，保存
+3. 确认 Settings → Secrets and variables → Actions 里有 SILICONFLOW_API_KEY
+4. 之后 push main 自动上线；没推送时每小时 :17 也会把 dev 预览同步一次
 
-日常更新（全自动）
-------------------
+
+日常更新
+--------
   git add -A
   git commit -m "改了什么"
-  git push
+  git push origin main
 
-push 完 Netlify 自动重新部署，网址不变，约 30 秒生效。
+约 1 分钟生效。进度看 Actions → “Deploy to GitHub Pages”。
+
+
+发布内容
+--------
+.github/workflows/pages.yml 只上线页面真正加载的东西：
+
+  index.html、css/、js/、assets/avatar、assets/pdf-imgs、assets/textures
+
+docs/（比赛通知与简历）、tests/、scripts/、data/、assets/source/ 不上线。
+以前 Netlify 的 publish = "." 会把这些一起推到公网，实测能直接下载到
+tests/badge-template.npy 和 scripts/ 下的脚本，所以换成白名单。
+
+dev 预览那份刻意不注入 API Key，页面按设计回落到本地知识库引擎；预览站是
+另一个公开域名，不该再带一份线上密钥（tests/check_static.py 会守这条）。
+
+
+入口二维码
+----------
+页面上的码跟随当前网址：部署到哪儿就扫出哪儿，不用改配置。
+印展板用的成品图取自配置里的永久地址，换正式域名时改这一行再重跑：
+
+  js/config.js  →  app.canonicalUrl
+  python scripts/make_entry_qr_png.py     # 生成 docs/入口二维码.png，写完自检解码
+
+测试会核对成品图与 canonicalUrl 一致，脱节直接 FAIL。
+
 
 本地预览
 --------
   双击 qidong.bat（手机与电脑同一 Wi-Fi 可扫码）
   双击 zhanting.bat（停止服务）
 
-API Key 安全说明
-----------------
-  Key 存在两处（都不在代码里）：
-  - Netlify 环境变量（Settings → Environment variables）
-  - GitHub Secrets（如果也开了 GitHub Pages）
-  构建时自动注入到 js/secrets.js，该文件在 .gitignore 中。
 
-管理知识库 / API 配置
----------------------
-  用户页面底部 → 「⚙ 管理入口」→ 密码登录（默认 admin123）
-  可增删改知识条目、切换 AI 引擎、修改模型参数。
-  修改存在浏览器 localStorage，不影响源码。
+备用：Netlify
+-------------
+站点 https://prismatic-syrniki-1e0e96.netlify.app 仍在服务上一次成功的部署，
+只是暂时推不动。额度重置后想再推一次：Actions → “Deploy to Netlify (备用宿主，
+手动)” → Run workflow。非 main 分支一律拒绝，避免再留下永不更新的别名站。

@@ -243,6 +243,29 @@ def check_qr_entry():
     ui = read(rel("js", "ui.js"))
     if "window.QR.render" not in ui:
         fail("js/ui.js 不再渲染入口二维码")
+
+    # 印展板那张成品图不能和代码里的永久地址脱节：换宿主时最容易忘的就是它
+    cfg = read(rel("js", "config.js"))
+    m = re.search(r"canonicalUrl:\s*'([^']*)'", cfg)
+    canon = m.group(1) if m else ""
+    if not canon.startswith("http"):
+        fail("js/config.js 的 app.canonicalUrl 不是一个网址，展板地址无处可寻")
+    png = rel("docs", "入口二维码.png")
+    if os.path.exists(png) and canon.startswith("http"):
+        try:
+            import cv2
+            import numpy as np
+            from PIL import Image
+            img = np.asarray(Image.open(png).convert("RGB"))
+            got, _, _ = cv2.QRCodeDetector().detectAndDecode(img)
+        except ImportError:
+            got = None
+            notes.append("缺 cv2/Pillow，跳过展板成品图核对")
+        if got is not None and got != canon:
+            fail("docs/入口二维码.png 解出来是 %r，与 canonicalUrl %r 不一致"
+                 "（跑 python scripts/make_entry_qr_png.py 重生成）" % (got, canon))
+        elif got == canon:
+            notes.append("展板成品二维码与 canonicalUrl 一致：%s" % canon)
     notes.append("站点入口二维码：生成器、加载、容器、渲染四处均在位")
 
 
@@ -290,43 +313,48 @@ def check_diancang_pages():
 
 # ------------------------------------------------------------- deploy workflow
 def check_deploy_workflow():
-    """Only main may auto-deploy to Netlify, and the Pages preview must not carry the key.
+    """Pages is the daily host; Netlify is manual-only; the preview must not carry the key.
 
-    A second auto-deploying Netlify branch gets a permanent public alias URL that
-    freezes at whatever it last deployed — the old dev alias did exactly that and had
-    to be deleted by hand. Preview deploys therefore go to GitHub Pages instead, and
-    that preview must never embed the live SiliconFlow key: it is a second public host,
-    and this repo has leaked that key once before.
+    Netlify moved to a credit model and this account is out of credits with no card on
+    file, so every production deploy there now fails ("new deploys are blocked until
+    credits are added") while the site keeps serving its last good deploy. Daily delivery
+    therefore went to GitHub Pages, which has no such gate. Two invariants matter:
+    the dev copy served at /dev/ is a second public host and must not embed the live
+    SiliconFlow key (this repo leaked it once already), and the published set is an
+    allowlist — docs/ holds the competition notices and a résumé, and on Netlify
+    publish="." had exposed tests/badge-template.npy and scripts/ to anyone who guessed
+    the URL.
     """
-    path = rel(".github", "workflows", "deploy.yml")
-    if not os.path.exists(path):
-        notes.append("no deploy workflow found, skipped workflow check")
-        return
-    txt = read(path)
-    m = re.search(r"branches:\s*\[([^\]]*)\]", txt)
-    if not m:
-        fail("deploy.yml: 找不到 push.branches 触发列表，无法确认只有 main 会自动部署")
-        return
-    branches = [b.strip() for b in m.group(1).split(",") if b.strip()]
-    if branches != ["main"]:
-        fail("deploy.yml: push 会自动部署 %s；除 main 外的分支都会在 Netlify 上留下"
-             "永不更新的公开预览站（dev 别名就是教训），预览请走 GitHub Pages"
-             % branches)
-    else:
-        notes.append("deploy.yml: 仅 main 自动部署到 Netlify")
+    dep = rel(".github", "workflows", "deploy.yml")
+    if os.path.exists(dep):
+        txt = read(dep)
+        if re.search(r"^\s*push:", txt, re.M):
+            fail("deploy.yml 仍有 push 触发——Netlify 额度用尽后每次 push 都会红一次，"
+                 "日常上线已交给 pages.yml")
+        if "exit 1" not in txt:
+            fail("deploy.yml 没有拦住非 main 分支：别名部署会在 Netlify 留下永不更新的公开预览站")
 
-    pages = rel(".github", "workflows", "pages-dev.yml")
+    pages = rel(".github", "workflows", "pages.yml")
     if not os.path.exists(pages):
-        notes.append("pages-dev.yml 不存在，跳过预览站检查")
+        fail("pages.yml 缺失——现在唯一的自动上线通道")
         return
     ptxt = read(pages)
-    if "SILICONFLOW_API_KEY" in ptxt:
-        fail("pages-dev.yml 引用了线上密钥——预览站是另一个公开域名，不得带 key")
-    if "APP_SECRETS" not in ptxt:
-        fail("pages-dev.yml 没有生成 js/secrets.js；缺这个文件预览站会 404 一个子资源")
-    if "apiKey:\"\"" not in ptxt and "apiKey:''" not in ptxt:
-        fail("pages-dev.yml 里的 secrets.js 不是空密钥，预览站会带上真实 key")
-    notes.append("pages-dev.yml: dev → GitHub Pages，且不注入线上密钥")
+    for need in ("ref: main", "ref: dev", "site/dev"):
+        if need not in ptxt:
+            fail("pages.yml 缺少 %r：生产与 dev 预览必须同时出自一次部署" % need)
+    # 预览那份必须是空 key；生产那份才允许引用密钥
+    if 'apiKey:""};\' > src-dev/js/secrets.js' not in ptxt:
+        fail("pages.yml 里 dev 预览的 secrets.js 不是空密钥，预览站会带上真实 key")
+    if "SILICONFLOW_API_KEY" not in ptxt:
+        fail("pages.yml 不再注入生产密钥，线上大模型引擎会静默失效")
+    # 发布集必须是白名单：pack() 里从源码目录搬的每一项都得是页面真正加载的东西
+    allow = {"index.html", "css", "js", "assets/avatar", "assets/pdf-imgs", "assets/textures"}
+    moved = set(re.findall(r'"\$src/([A-Za-z0-9_./-]+)"', ptxt))
+    for m in sorted(moved - allow):
+        fail("pages.yml 把 %s 也搬进了上线目录；白名单只有 %s" % (m, "、".join(sorted(allow))))
+    if not moved:
+        fail("pages.yml 里找不到 pack() 的 $src/... 搬运语句，白名单守卫失效")
+    notes.append("上线走 pages.yml（main → 根，dev → /dev/，预览不带密钥）；Netlify 仅手动")
 
 
 # --------------------------------------------------------------- git hygiene

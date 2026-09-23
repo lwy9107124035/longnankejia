@@ -94,8 +94,12 @@ function killChrome(proc) {
   }
 }
 
-const profile = path.join(os.tmpdir(), 'alan-live-qr-profile');
-fs.rmSync(profile, { recursive: true, force: true });
+// 每次一个独立的 profile：上一个 Chrome 被 taskkill 后释放目录有延迟，
+// 复用同名目录会让 rmSync 抛 EPERM，连跑两次就崩。
+const profile = path.join(os.tmpdir(), 'alan-live-qr-' + process.pid);
+try {
+  fs.rmSync(profile, { recursive: true, force: true });
+} catch { /* 清不掉就换一个，反正进程退出时会带走 */ }
 // 上一轮的残留实例会占住端口，attach() 连到旧页面就会拿一次假的通过/假的失败
 try {
   const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`, { signal: AbortSignal.timeout(1500) });

@@ -9,8 +9,14 @@ window.APP_CONFIG = {
     name: '龙南客家非遗数字助手',
     assistantName: '阿蓝',
     version: '0.2.0-demo',
-    // 公网访问地址：部署到 Netlify 后的永久网址
-    publicUrl: 'https://prismatic-syrniki-1e0e96.netlify.app'
+    // 公网访问地址。留空 = 用当前网址自己推（见 ui.js 的 currentUrl），
+    // 这样同一份构建在 Pages 根路径、Pages 的 /dev/ 子路径、馆内局域网、
+    // 本机预览上都扫得出正确的地址；写死某个域名反而会在换宿主时把入口码指错。
+    // 需要固定指向某个域名时，在「访问地址」面板里填一次即可（存 localStorage）。
+    publicUrl: '',
+    // 永久地址：印展板用的二维码（scripts/make_entry_qr_png.py）认这一行，
+    // 换正式域名时改这里，测试会解码成品图核对它没和代码脱节。
+    canonicalUrl: 'https://lwy9107124035.github.io/longnankejia/'
   },
 
   ai: {
