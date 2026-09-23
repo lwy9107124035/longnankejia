@@ -290,12 +290,13 @@ def check_diancang_pages():
 
 # ------------------------------------------------------------- deploy workflow
 def check_deploy_workflow():
-    """Only main may auto-deploy.
+    """Only main may auto-deploy to Netlify, and the Pages preview must not carry the key.
 
-    A second auto-deploying branch gets a permanent public Netlify alias URL that
-    freezes at whatever it last deployed. The old dev alias still serves the pre-fix
-    page — inline-SVG avatar and a rendered QR code — and can never update again now
-    that the branch is gone. Preview deploys must be an explicit human action.
+    A second auto-deploying Netlify branch gets a permanent public alias URL that
+    freezes at whatever it last deployed — the old dev alias did exactly that and had
+    to be deleted by hand. Preview deploys therefore go to GitHub Pages instead, and
+    that preview must never embed the live SiliconFlow key: it is a second public host,
+    and this repo has leaked that key once before.
     """
     path = rel(".github", "workflows", "deploy.yml")
     if not os.path.exists(path):
@@ -309,10 +310,23 @@ def check_deploy_workflow():
     branches = [b.strip() for b in m.group(1).split(",") if b.strip()]
     if branches != ["main"]:
         fail("deploy.yml: push 会自动部署 %s；除 main 外的分支都会在 Netlify 上留下"
-             "永不更新的公开预览站（dev 别名就是教训），预览请改用 workflow_dispatch 手动触发"
+             "永不更新的公开预览站（dev 别名就是教训），预览请走 GitHub Pages"
              % branches)
     else:
-        notes.append("deploy.yml: 仅 main 自动部署，预览走 workflow_dispatch")
+        notes.append("deploy.yml: 仅 main 自动部署到 Netlify")
+
+    pages = rel(".github", "workflows", "pages-dev.yml")
+    if not os.path.exists(pages):
+        notes.append("pages-dev.yml 不存在，跳过预览站检查")
+        return
+    ptxt = read(pages)
+    if "SILICONFLOW_API_KEY" in ptxt:
+        fail("pages-dev.yml 引用了线上密钥——预览站是另一个公开域名，不得带 key")
+    if "APP_SECRETS" not in ptxt:
+        fail("pages-dev.yml 没有生成 js/secrets.js；缺这个文件预览站会 404 一个子资源")
+    if "apiKey:\"\"" not in ptxt and "apiKey:''" not in ptxt:
+        fail("pages-dev.yml 里的 secrets.js 不是空密钥，预览站会带上真实 key")
+    notes.append("pages-dev.yml: dev → GitHub Pages，且不注入线上密钥")
 
 
 # --------------------------------------------------------------- git hygiene

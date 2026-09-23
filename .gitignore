@@ -30,3 +30,6 @@ desktop.ini
 
 # Python 构建脚本缓存
 __pycache__/
+
+# Local Netlify folder
+.netlify

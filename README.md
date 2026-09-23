@@ -159,17 +159,36 @@ python scripts/make_entry_qr_png.py    # 浏览器导出的入口码 → docs/�
 
 ## 部署
 
-推送到 GitHub 后由 Netlify 自动构建，详见 `docs/部署说明.txt`。
-`netlify.toml` 中 `publish = "."`，因此 `index.html` 必须留在仓库根目录。
+生产站：**https://prismatic-syrniki-1e0e96.netlify.app**（Netlify，`publish = "."`，
+所以 `index.html` 必须留在仓库根目录；细节见 `docs/部署说明.txt`）
 
-生产站：**https://prismatic-syrniki-1e0e96.netlify.app**
+开发预览站：**https://lwy9107124035.github.io/longnankejia/**（GitHub Pages，部署 `dev` 分支）
 
-只有 `main` 会自动部署。其他分支不再由 push 触发——别名部署会在 Netlify 上留下一个
-公开、且冻结在最后一次构建的预览站，不会随后续修改更新；需要预览时用
-`workflow_dispatch` 手动跑一次。`tests/check_static.py` 会守住这条规则。
+两条线各管各的：
+
+- `deploy.yml`：只有 `main` 会部署到 Netlify。其他分支不再由 push 触发——Netlify 的
+  别名部署会留下一个冻结在最后一次构建的公开站（`dev--…` 那个就是这么来的，已删除）。
+- `pages-dev.yml`：部署 **dev 分支**的内容到 GitHub Pages。文件放在 `main` 上是因为
+  GitHub 读的是「被 push 那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的
+  `AI_OWNER.md`），不该由我往里提交；所以它显式 `ref: dev` 取内容，靠 push dev（等两分支
+  合流后自动生效）、每小时定时、以及手动 `workflow_dispatch` 三种方式触发。
+  预览站**不注入线上密钥**（`js/secrets.js` 写成空 key，页面按设计回落到本地知识库引擎），
+  `tests/check_static.py` 会守住这一点。
+
+前提：仓库 Settings → Pages 的 Source 要选 **GitHub Actions**，否则 `deploy-pages` 会失败。
+
+### Netlify 额度现状
+
+Netlify 2025 年起按 credits 计费，免费额度用完且账号未绑卡时**只挡新的生产部署**，
+现有站点继续服务。当前就是这个状态：`e5faa90` 的 CI 在 `Deploy to Netlify` 一步失败，
+现网仍返回 200 并停在上一次成功的部署。API 给的原文是
+`Account credit usage exceeded - new deploys are blocked until credits are added`；
+额度周期从每月 14 日起算，不付费就要等下一次重置。在此之前 `main` 的改动只能靠
+GitHub Pages 那条线看效果。
 
 历史上 `dev` 分支留下的 `dev--prismatic-syrniki-1e0e96.netlify.app` 已下线：那是 19 条
 `branch=dev` 的 deploy，冻结在旧版本（内联 SVG 头像、未去水印贴图，入口码还是解不出内容的
 手写编码器画的）。清理办法记在这儿以备复用：`netlify login` 走一次 OAuth，再用
 `netlify api listSiteDeploys` 按 `branch == "dev"` 精确选中、逐条 `netlify api deleteDeploy`
 ——26 条 main deploy 一条未动，删完别名站返回 404，生产站与入口二维码复测正常。
+
