@@ -14,6 +14,8 @@
   var panX = 0, panY = 0, targetPanX = 0, targetPanY = 0;
   var autoRotate = true, idleTimer = null, textures = {};
   var touchMode = null, pinchDist = 0, pinchMidX = 0, pinchMidY = 0;
+  // 引擎 603KB + 贴图约 13MB 只在观众真的点开 3D 时才拉，见 init()/boot() 的分工
+  var booted = false, booting = null, pendingShow = null;
 
   var ITEMS = [
     { id: 'hutoumao', name: '虎头帽', subtitle: '定南客家童帽', icon: '\u{1F42F}', zoom: 4.2,
@@ -1157,6 +1159,7 @@
     });
   }
 
+  /** 首屏只做不依赖 WebGL 的部分：列表、名称、说明。引擎与贴图留给 boot()。 */
   function init() {
     var section = document.getElementById('panel3d') || document.getElementById('showcase3dSection');
     if (!section) return;
@@ -1169,46 +1172,83 @@
     var ne = document.getElementById('c3dName'), de = document.getElementById('c3dDesc');
     if (ne) ne.textContent = item0.name + ' \u00b7 ' + item0.subtitle;
     if (de) de.textContent = item0.desc;
-
-    function setProgress(msg) {
-      if (viewport) viewport.innerHTML = '<div class="c3d-loading">' + msg + '</div>';
+    if (viewport && !booted) {
+      viewport.innerHTML = '<div class="c3d-loading">3D 引擎与贴图在点开本视图时加载</div>';
     }
+  }
 
-    // 30秒超时保护
-    var timedOut = false;
-    var timer = setTimeout(function () {
-      timedOut = true;
-      setProgress('加载超时，请检查网络后刷新页面');
-    }, 30000);
+  function setProgress(msg) {
+    var viewport = document.getElementById('c3dViewport');
+    if (viewport) viewport.innerHTML = '<div class="c3d-loading">' + msg + '</div>';
+  }
 
-    setProgress('加载 3D 引擎…');
+  /** 真正拉起 three.js + 贴图 + 场景。reveal() 与 show() 都走这里，且只跑一次。 */
+  function boot() {
+    if (booted) return Promise.resolve();
+    if (booting) return booting;
+    var viewport = document.getElementById('c3dViewport');
+    if (!viewport) return Promise.reject(new Error('缺少 #c3dViewport'));
 
-    loadThree().then(function () {
-      if (timedOut) return;
-      setProgress('加载纹理资源…（约 17MB，首次加载需等待）');
-      return loadTextures();
-    }).then(function () {
-      if (timedOut) return;
-      clearTimeout(timer);
-      setProgress('构建 3D 场景…');
-      initScene(viewport);
-      showModel(ITEMS[0].id);
-      animate();
-      console.log('[3D] Scene ready');
-    }).catch(function (err) {
-      clearTimeout(timer);
-      console.error('[3D]', err);
-      if (!timedOut) {
-        viewport.innerHTML = '<div class="c3d-error">3D 加载失败：' + (err.message || err) + '<br><br>请刷新页面重试</div>';
-      }
+    booting = new Promise(function (resolve, reject) {
+      var settled = false;
+      // 30秒超时保护
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        booting = null;
+        setProgress('加载超时，请检查网络后刷新页面');
+        reject(new Error('3D 资源加载超时'));
+      }, 30000);
+
+      setProgress('加载 3D 引擎…');
+      loadThree().then(function () {
+        if (settled) return;
+        setProgress('加载纹理资源…（约 13MB，首次加载需等待）');
+        return loadTextures();
+      }).then(function () {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        setProgress('构建 3D 场景…');
+        initScene(viewport);
+        showModel(ITEMS[0].id);
+        animate();
+        booted = true;
+        booting = null;
+        console.log('[3D] Scene ready');
+        resolve();
+      }).catch(function (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        booting = null;
+        console.error('[3D]', err);
+        viewport.innerHTML = '<div class="c3d-error">3D 加载失败：' + (err.message || err)
+          + '<br><br>请刷新页面重试</div>';
+        reject(err);
+      });
     });
+    return booting;
+  }
+
+  function reveal() { return boot(); }
+
+  /** 未启动时先启动再切换；已启动时保持原来的同步行为（测试依赖这一点）。 */
+  function show(id) {
+    if (booted) { showModel(id); return; }
+    pendingShow = id;
+    boot().then(function () {
+      if (pendingShow) { showModel(pendingShow); pendingShow = null; }
+    }).catch(function () { pendingShow = null; });
   }
 
   /** 只读状态，供 tests/ 断言自动旋转角度不会无上限累加 */
   window.Showcase3D = {
     init: init,
+    reveal: reveal,
     stop: stop,
-    show: showModel,
+    show: show,
+    booted: function () { return booted; },
     items: function () { return ITEMS.map(function (it) { return { id: it.id, name: it.name }; }); },
     debugState: function () {
       return { rotX: rotX, rotY: rotY, targetRotX: targetRotX, targetRotY: targetRotY, autoRotate: autoRotate };
