@@ -33,3 +33,6 @@ __pycache__/
 
 # Local Netlify folder
 .netlify
+
+# wrangler 本地缓存（含账号 ID 与邮箱，不进公开仓库）
+.wrangler/

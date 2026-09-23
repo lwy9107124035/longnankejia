@@ -1,0 +1,55 @@
+name: Deploy to Cloudflare Pages
+
+# 公开入口。GitHub Pages 那份仍然保留作镜像，主推这里：Cloudflare Pages 免费、
+# 不计 credits，而且 *.pages.dev 在本机的代理下也通（github.io 会被加速器卡住）。
+#   main → https://longnankejia.pages.dev/
+#   dev  → https://longnankejia-dev.pages.dev/
+# 分成两个项目是因为 Pages 的非生产分支预览 URL 每次部署都换哈希前缀，不适合当固定地址。
+
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cf-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 白名单：只搬页面真正加载的东西。docs/ 是比赛通知与简历，tests/ 与 scripts/ 是
+      # 开发工具，assets/source/ 是从不上线的原图——旧的 Netlify publish="." 把这些
+      # 一起推到过公网。dev 那一份刻意用空 key：预览站是另一个公开域名。
+      - name: 组装站点
+        id: prep
+        env:
+          BRANCH: ${{ github.ref_name }}
+          CF_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+        run: |
+          set -e
+          if [ "$BRANCH" = "main" ]; then
+            PROJECT=longnankejia; KEY="$CF_KEY"
+          else
+            PROJECT=longnankejia-dev; KEY=""
+          fi
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          rm -rf _site && mkdir -p _site/assets
+          cp index.html _site/
+          cp -r css js _site/
+          cp -r assets/avatar assets/pdf-imgs assets/textures _site/assets/
+          printf 'window.APP_SECRETS={apiKey:"%s"};' "$KEY" > _site/js/secrets.js
+          echo "上线 $(du -sh _site | cut -f1)，$(find _site -type f | wc -l) 个文件，key 长度 ${#KEY}"
+
+      - name: 部署
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy _site --project-name=${{ steps.prep.outputs.project }} --branch=${{ github.ref_name }} --commit-dirty=true

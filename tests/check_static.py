@@ -336,7 +336,7 @@ def check_deploy_workflow():
 
     pages = rel(".github", "workflows", "pages.yml")
     if not os.path.exists(pages):
-        fail("pages.yml 缺失——现在唯一的自动上线通道")
+        fail("pages.yml 缺失——GitHub Pages 镜像通道")
         return
     ptxt = read(pages)
     for need in ("ref: main", "ref: dev", "site/dev"):
@@ -354,6 +354,24 @@ def check_deploy_workflow():
         fail("pages.yml 把 %s 也搬进了上线目录；白名单只有 %s" % (m, "、".join(sorted(allow))))
     if not moved:
         fail("pages.yml 里找不到 pack() 的 $src/... 搬运语句，白名单守卫失效")
+
+    # Cloudflare Pages 是现在的公开入口，同样两条规矩：dev 不带 key、只上线白名单
+    cf = rel(".github", "workflows", "cf-pages.yml")
+    if not os.path.exists(cf):
+        fail("cf-pages.yml 缺失——Cloudflare Pages 才是公开入口")
+        return
+    ctxt = read(cf)
+    if 'PROJECT=longnankejia-dev; KEY=""' not in ctxt:
+        fail("cf-pages.yml 里 dev 分支不是空 key，预览站会带上真实密钥")
+    if "SILICONFLOW_API_KEY" not in ctxt:
+        fail("cf-pages.yml 不再注入生产密钥，线上大模型引擎会静默失效")
+    if "CLOUDFLARE_API_TOKEN" not in ctxt:
+        fail("cf-pages.yml 没有用 CLOUDFLARE_API_TOKEN 认证")
+    cf_moved = set(re.findall(r'(?:cp -r |cp )"(?:_site/)?([A-Za-z0-9_./-]+)"? _site', ctxt))
+    cf_moved |= set(re.findall(r'cp -r ([A-Za-z0-9_./ -]+) _site(?:/assets)?/', ctxt))
+    for m in sorted({x for grp in cf_moved for x in grp.split() if x} - allow):
+        fail("cf-pages.yml 把 %s 也搬进了上线目录；白名单只有 %s" % (m, "、".join(sorted(allow))))
+    notes.append("公开入口 = Cloudflare Pages（main→longnankejia，dev→longnankejia-dev，dev 不带密钥）")
     notes.append("上线走 pages.yml（main → 根，dev → /dev/，预览不带密钥）；Netlify 仅手动")
 
 
