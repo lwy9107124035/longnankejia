@@ -168,7 +168,8 @@ python scripts/make_entry_qr_png.py    # 浏览器导出的入口码 → docs/�
 公开、且冻结在最后一次构建的预览站，不会随后续修改更新；需要预览时用
 `workflow_dispatch` 手动跑一次。`tests/check_static.py` 会守住这条规则。
 
-注意：历史上 `dev` 分支留下的 `dev--prismatic-syrniki-1e0e96.netlify.app` 仍是旧版本
-（内联 SVG 头像、未去水印的贴图，入口二维码用的是后来发现解不出内容的手写编码器），
-而 `dev` 分支已删除，它不会再更新。
-要清掉需在 Netlify 控制台删除该 deploy 或别名，本机未登录 Netlify CLI 所以无法代做。
+历史上 `dev` 分支留下的 `dev--prismatic-syrniki-1e0e96.netlify.app` 已下线：那是 19 条
+`branch=dev` 的 deploy，冻结在旧版本（内联 SVG 头像、未去水印贴图，入口码还是解不出内容的
+手写编码器画的）。清理办法记在这儿以备复用：`netlify login` 走一次 OAuth，再用
+`netlify api listSiteDeploys` 按 `branch == "dev"` 精确选中、逐条 `netlify api deleteDeploy`
+——26 条 main deploy 一条未动，删完别名站返回 404，生产站与入口二维码复测正常。
