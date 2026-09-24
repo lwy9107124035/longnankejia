@@ -269,6 +269,26 @@ def check_qr_entry():
     notes.append("站点入口二维码：生成器、加载、容器、渲染四处均在位")
 
 
+# ------------------------------------------ 典藏正文不得残留 PDF 页码残渣
+def check_diancang_text_clean():
+    """书页码被印在正文同一行，注入时会粘成「21421435迎龙灯…」「hhh大漆…」这类乱码。
+
+    scripts/strip_pdf_furniture.py 负责清；这条守卫保证以后重跑注入脚本、或者从
+    PDF 补新条目时，残渣不会再悄悄回到观众眼前。四位年份开头（1929年…）是正文。
+    """
+    src = read(rel("js", "diancang-data.js"))
+    junk = re.compile(r"^(?!19\d\d年|20\d\d年)[0-9a-z]{2,10}(?=[\u4e00-\u9fff])")
+    bad = []
+    for m in re.finditer(r"(?:text|desc):\s*'((?:[^'\\]|\\.)*)'", src, re.S):
+        body = m.group(1).strip()
+        if junk.match(body):
+            bad.append(body[:18])
+    for b in bad[:6]:
+        fail("典藏正文以页码残渣开头：%r —— 跑 python scripts/strip_pdf_furniture.py" % b)
+    if not bad:
+        notes.append("典藏正文无 PDF 页码残渣")
+
+
 # ------------------------------------------------- 典藏 exhibit ↔ image mapping
 def check_diancang_pages():
     """Every exhibit's illustration must be the book page that actually describes it.
@@ -397,6 +417,7 @@ def main():
     check_textures_clean()
     check_css_vars()
     check_qr_entry()
+    check_diancang_text_clean()
     check_diancang_pages()
     check_deploy_workflow()
     check_js_syntax()
