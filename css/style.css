@@ -646,6 +646,41 @@ input { font-family: inherit; }
 .dl-sub { font-size: 11px; color: var(--ink-soft); line-height: 1.7; margin-top: 4px; }
 .dl-sub strong { color: var(--accent); }
 
+/* ---------- 指哪打哪：字词检索 ---------- */
+.dl-find {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px;
+  align-items: center; margin-bottom: 8px;
+}
+.dl-find input {
+  min-width: 0; padding: 10px 12px;
+  font-family: inherit; font-size: 13px; color: var(--ink);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.dl-find input:focus { outline: none; border-color: var(--primary); }
+.dl-find-btn {
+  padding: 10px 14px; white-space: nowrap;
+  font-family: inherit; font-size: 13px; font-weight: 700;
+  color: #fff; background: var(--primary); border: none; border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.dl-find-btn:active { transform: translateY(1px); }
+.dl-find-hint {
+  grid-column: 1 / -1;
+  font-size: 11px; line-height: 1.6; color: var(--ink-soft);
+}
+.dl-find-hint strong { color: var(--accent); }
+.dl-sentence {
+  margin: 0 0 10px; padding: 9px 11px;
+  font-size: 12px; line-height: 1.75; color: var(--ink);
+  background: var(--primary-faint);
+  border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.dl-sentence mark { background: var(--accent-soft); color: var(--primary-deep); padding: 0 2px; border-radius: 2px; }
+.dl-sentence-tag {
+  display: inline-block; margin-right: 6px; padding: 1px 6px;
+  font-size: 10px; color: #fff; background: var(--primary); border-radius: 999px;
+}
+
 .dl-now {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; margin-bottom: 8px;

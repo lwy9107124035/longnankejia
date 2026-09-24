@@ -409,6 +409,27 @@ async function run() {
   check('heritage cards rendered', await until(page, `document.querySelectorAll('#heritageGrid .h-card').length > 0`));
   const n = await page.evaluate(`document.querySelectorAll('#heritageGrid .h-card').length`);
   check('at least 4 heritage cards', n >= 4, n + ' cards');
+  check('科普模块扩到 12 类', n >= 12, n + ' cards');
+  const cq = await page.evaluate(`(() => {
+    const list = window.UI.Heritage.list();
+    const strip = (h) => { const d = document.createElement('div'); d.innerHTML = h; return (d.textContent || '').trim().length; };
+    const lens = list.map(c => ({ name: c.name, len: strip(c.detail) }));
+    return {
+      total: list.length,
+      words: lens.reduce((n, x) => n + x.len, 0),
+      thin: lens.filter(x => x.len < 110).map(x => x.name + '(' + x.len + ')'),
+      noAsk: list.filter(c => !c.ask || !String(c.ask).trim()).map(c => c.name),
+      junk: list.filter(c => /hhh|5135[0-9]|[0-9]{6}/.test(String(c.detail).slice(0, 400))).map(c => c.name),
+      dupIds: list.length - new Set(list.map(c => c.id)).size,
+      catless: list.filter(c => !c.tag || c.tag.indexOf(' · ') === -1).map(c => c.name)
+    };
+  })()`);
+  check('每张科普卡正文都不少于 110 字', cq.thin.length === 0, cq.thin.join('、') || '最薄一张也达标');
+  check('科普正文总量不少于 2000 字', cq.words >= 2000, cq.words + ' 字 / ' + cq.total + ' 张');
+  check('每张卡都带「问问阿蓝」触发问题', cq.noAsk.length === 0, cq.noAsk.join('、'));
+  check('科普正文没有页码残渣', cq.junk.length === 0, cq.junk.join('、'));
+  check('科普卡 id 不重复', cq.dupIds === 0, '重复 ' + cq.dupIds);
+  check('每张卡都标了分类', cq.catless.length === 0, cq.catless.join('、'));
   await page.evaluate(`document.querySelector('#heritageGrid .h-card').click()`);
   check('detail modal opens', await until(page, `!document.getElementById('detailModal').hidden`));
   const askStyle = await page.evaluate(`(() => {
@@ -728,6 +749,27 @@ async function run() {
     `!!document.querySelector('#dlFrame iframe[src]') && !!document.querySelector('#dlFrame a.dl-open')`));
   check('当前曲目在列表里高亮', await until(page,
     `!!document.querySelector('#dlTracks .dl-track.is-active')`));
+
+  // 指哪打哪：打一个字词就要定位到说过它的那段原声
+  check('典藏 16 条二维码音频全部接上', await page.evaluate(`window.Dialect.count()`) === 16,
+    await page.evaluate(`window.Dialect.count()`) + ' 条');
+  const q1 = await page.evaluate(`(() => {
+    const r = window.Dialect.search('黄元米果');
+    return { n: r.count, name: document.getElementById('dlNowName').textContent,
+             marked: !!document.querySelector('#dlSentence mark'),
+             visible: !document.getElementById('dlSentence').hidden }; })()`);
+  check('打「黄元米果」直接切到那条原声', q1.n >= 1 && q1.name === '黄元米果', JSON.stringify(q1));
+  check('命中句被标出来给观众看', q1.visible && q1.marked, JSON.stringify(q1));
+  const q2 = await page.evaluate(`window.Dialect.find('豆腐').length`);
+  check('「豆腐」能跨条目命中并排序', q2 >= 3, q2 + ' 段讲解说到豆腐');
+  const q3 = await page.evaluate(`(() => { const r = window.Dialect.search('量子计算');
+    return { n: r.count, hint: document.getElementById('dlFindHint').textContent }; })()`);
+  check('查不到时给替代线索而不是空手而归',
+    q3.n === 0 && /换个说法|试试/.test(q3.hint), q3.hint.slice(0, 46));
+  await page.evaluate(`(() => { const i = document.getElementById('dlQuery'); i.value = '';
+    i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  check('清空搜索框回到完整曲库', await until(page,
+    `document.querySelectorAll('#dlTracks .dl-track').length === window.Dialect.count()`));
 
   // 深链：直接带 hash 打开，应落到对应视图（分享链接的前提）
   await page.send('Page.navigate', { url: BASE + '/index.html#/diancang' });
