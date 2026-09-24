@@ -16,7 +16,7 @@ window.APP_CONFIG = {
     publicUrl: '',
     // 永久地址：印展板用的二维码（scripts/make_entry_qr_png.py）认这一行，
     // 换正式域名时改这里，测试会解码成品图核对它没和代码脱节。
-    canonicalUrl: 'https://lwy9107124035.github.io/longnankejia/'
+    canonicalUrl: 'https://longnankejia.pages.dev/'
   },
 
   ai: {

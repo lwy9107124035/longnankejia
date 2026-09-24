@@ -74,7 +74,7 @@ python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密
 
 ```
 node scripts/check_live_qr.mjs            # 抓生产站入口码 → .cache/live-entry-qr.png
-node scripts/check_live_qr.mjs https://lwy9107124035.github.io/longnankejia/dev/   # 抓 dev 预览那份
+node scripts/check_live_qr.mjs https://longnankejia-dev.pages.dev/   # 抓 dev 预览那份
 QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应等于被核验的那个网址
 ```
 
@@ -161,25 +161,31 @@ node   scripts/qr_matrix.mjs <文本>     # 用页面上同一个编码器把文
 
 ## 部署
 
-生产站：**https://lwy9107124035.github.io/longnankejia/**（`main` 分支）
-开发预览：**https://lwy9107124035.github.io/longnankejia/dev/**（`dev` 分支，豆包的工作分支）
-备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，见下）
+生产站：**https://longnankejia.pages.dev/**（`main`，Cloudflare Pages）
+开发预览：**https://longnankejia-dev.pages.dev/**（`dev`，豆包的工作分支）
+镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/dev/（GitHub Pages）
+备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）
 
-`pages.yml` 一次部署同时产出上面两个地址：分别签出 `main` 与 `dev`，各自只搬页面真正
-加载的东西（`index.html`、`css/`、`js/`、`assets/{avatar,pdf-imgs,textures}`）进
-`site/` 与 `site/dev/`。**这是白名单不是排除表**——以前 Netlify 用 `publish = "."`
-把整个仓库推上公网，实测 `tests/badge-template.npy`、`scripts/scan_history_secrets.py`
-和 8MB 的 `assets/source/` 原图都能直接下载，而 `docs/` 里是比赛通知与简历。
+两条自动通道（`cf-pages.yml` 与 `pages.yml`）都只做一件事：**按白名单**把页面真正加载的
+东西（`index.html`、`css/`、`js/`、`assets/{avatar,pdf-imgs,textures}`）搬进上线目录。
+不是排除表——以前 Netlify 用 `publish = "."` 把整个仓库推上公网，实测
+`tests/badge-template.npy`、`scripts/scan_history_secrets.py` 和 8MB 的 `assets/source/`
+原图都能直接下载，而 `docs/` 里是比赛通知与简历。注意 Cloudflare 对不存在的路径回的是
+**200 + 一段 HTML 提示页**，所以核对上线集要比对 `Content-Type`，不能只看状态码。
 
-两点约定，都有守卫且跑过反向用例：
+三点约定，都有守卫且跑过反向用例：
 
 - **dev 预览不注入 API Key**（`js/secrets.js` 写空 key，页面按设计回落到本地知识库引擎）。
   预览站是另一个公开域名，不该再带一份线上密钥——这个 key 之前已经泄露过一次。
-- **工作流文件只存在于 `main`**，靠显式 `ref: dev` 取开发分支内容。GitHub 读的是「被 push
-  那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的 `AI_OWNER.md`），不该由我提交。
-  触发方式：push `main`、每小时 `:17` 定时、手动 `workflow_dispatch`。
+- **CI 用的 Cloudflare 令牌只有一项权限**：`Account → Cloudflare Pages → Edit`。
+  官方 "Edit Cloudflare Workers" 模板会连带 13 项（Workers KV/R2/Scripts、Memberships、
+  Account Settings…），对只推静态站的 CI 太宽，所以走 Custom Token。
+- **工作流文件只存在于 `main`**，靠显式 `ref: dev` 取开发分支内容（`pages.yml`）。GitHub 读的是
+  「被 push 那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的 `AI_OWNER.md`），
+  不该由我提交——所以 **dev 的 CF/GitHub Pages 更新要等 dev 同步过 main 才会自动跑**，
+  在那之前靠 `main` 的推送与每小时 `:17` 定时（仅 `pages.yml`）。
 
-前提：仓库 Settings → Pages 的 Source 要选 **GitHub Actions**，否则 `deploy-pages` 会失败。
+GitHub Pages 那条通道需要仓库 Settings → Pages 的 Source 选 **GitHub Actions**（已设好）。
 
 ### 为什么离开 Netlify
 
