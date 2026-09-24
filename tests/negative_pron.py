@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -179,10 +180,26 @@ def write(p, s):
 
 
 def run_only(sections):
-    r = subprocess.run(["node", "tests/run_site_tests.mjs", "--only=" + sections],
-                       cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    fails = re.findall(r"^\s*FAIL\s+(.+?)(?: — |$)", r.stdout, re.M)
-    return r, fails
+    """跑一节并取回 FAIL 列表。
+
+    端口被上一轮残留进程占住时，浏览器套件会直接 RUNNER ERROR 退出（rc=2、没有任何
+    断言行）。那种情况下"期望的断言没失败"是假的结论——本文件曾被这个坑骗出 13 条
+    误报。所以崩了就重试一次，再崩明确标注为跑挂了而不是断言不敏感。
+    """
+    proc = None
+    for attempt in (1, 2):
+        proc = subprocess.run(["node", "tests/run_site_tests.mjs", "--only=" + sections],
+                              cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace")
+        lines = re.findall(r"^\s*(?:pass|FAIL)\s+", proc.stdout or "", re.M)
+        if lines:
+            break
+        if attempt == 1:
+            print("   (第 %d 次跑挂了 rc=%s，重试一次)" % (attempt, proc.returncode))
+            time.sleep(3)
+    fails = re.findall(r"^\s*FAIL\s+(.+?)(?: — |$)", proc.stdout or "", re.M)
+    crashed = not re.findall(r"^\s*(?:pass|FAIL)\s+", proc.stdout or "", re.M)
+    return proc, fails, crashed
 
 
 def main():
@@ -199,9 +216,13 @@ def main():
             continue
         write(path, src.replace(old, new, 1))
         try:
-            proc, fails = run_only(sections)
+            proc, fails, crashed = run_only(sections)
             hit = [e for e in expect if any(e in f for f in fails)]
-            if len(hit) == len(expect):
+            if crashed:
+                print("%s CRASH %-26s → 这一跑没出任何断言（rc=%s），结论不作数"
+                      % (mid, desc, proc.returncode))
+                bad += 1
+            elif len(hit) == len(expect):
                 print("%s ok   %-26s → %s" % (mid, desc, "、".join(hit)))
                 ok += 1
             else:
