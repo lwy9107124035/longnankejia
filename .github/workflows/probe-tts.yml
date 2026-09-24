@@ -1,0 +1,44 @@
+name: Probe TTS capability (不写密钥到日志)
+
+# 一次性调查：这个账号的 key 能不能合成客家话语音。
+# 密钥只在 runner 内使用，脚本只打印模型名与 HTTP 元信息。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 列出语音类模型并试合成
+        env:
+          KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+        run: |
+          node - <<'NODE'
+          const key = process.env.KEY || '';
+          if (!key) { console.log('没有密钥'); process.exit(1); }
+          const H = { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
+          const BASE = 'https://api.siliconflow.cn/v1';
+          const j = await (await fetch(BASE + '/models?page_size=200', { headers: H })).json();
+          const all = j.data || [];
+          const speech = all.filter(m => /tts|speech|voice|audio|cosy|sense|fish/i.test(m.id));
+          console.log(`模型总数 ${all.length}，疑似语音类 ${speech.length}`);
+          speech.slice(0, 25).forEach(m => console.log('  ', m.id));
+          for (const model of ['FunAudioLLM/CosyVoice2-0.5B', 'fishaudio/fish-speech-1.5',
+                               'OpenAI-TTS/gpt-4o-mini-tts', 'DrMo/DrMo-TTS']) {
+            const res = await fetch(BASE + '/audio/speech', {
+              method: 'POST', headers: H,
+              body: JSON.stringify({ model, input: '客家话，食饭', voice: 'default',
+                                     response_format: 'mp3', speed: 1 }),
+              signal: AbortSignal.timeout(30000),
+            }).catch(e => ({ status: 'ERR ' + e.message, headers: new Map(), arrayBuffer: null }));
+            if (res.status === 'ERR ' + res.status) { console.log(`  ${model} -> ${res.status}`); continue; }
+            const buf = Buffer.from(await res.arrayBuffer());
+            console.log(`  ${model} -> HTTP ${res.status} ${buf.length}B type=${res.headers.get('content-type')}`);
+          }
+          NODE
