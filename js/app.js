@@ -121,6 +121,10 @@
     });
     var main = document.getElementById('main');
     if (main) main.scrollTop = 0;
+    // 3D 的引擎与贴图（约 13MB）不在首屏拉，第一次切到本视图才加载
+    if (panelId === 'panel3d' && window.Showcase3D && window.Showcase3D.reveal) {
+      window.Showcase3D.reveal();
+    }
     // 直接调用（例如「问问阿蓝」）也要让地址栏跟上，hash 相同则不会触发事件
     var routeName = window.Router && window.Router.BY_PANEL[panelId];
     if (routeName && window.location.hash !== '#/' + routeName) {

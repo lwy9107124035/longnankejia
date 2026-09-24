@@ -262,12 +262,21 @@ async function run() {
   check('说话状态口型层开始开合', talking.mouth === 'avatarMouth', talking.mouth);
   await shot(page, '01-hero');
 
+  console.log('\n2b. 3D 资源要等点开视图才加载');
+  const heavy = (u) => /vendor\/three\.min\.js|assets\/textures\//.test(u);
+  const earlyHeavy = netRequests.filter(heavy);
+  check('首屏一个 3D 资源都不请求', earlyHeavy.length === 0,
+    earlyHeavy.slice(0, 2).map((u) => u.split('/').pop()).join(' | '));
+  check('未点开时 3D 尚未启动', await page.evaluate(`window.Showcase3D.booted() === false`));
+
   console.log('\n3. tab navigation');
   for (const [tab, panel] of [['panelChat', 'panelChat'], ['panelHeritage', 'panelHeritage'], ['panel3d', 'panel3d'], ['panelDiancang', 'panelDiancang']]) {
     await page.evaluate(`document.querySelector('[data-panel="${tab}"]').click()`);
     const on = await until(page, `document.getElementById('${panel}').classList.contains('active')`, 3000);
     check('tab 打开 ' + tab, on);
   }
+  check('切到 3D 视图后才加载引擎与贴图', await until(page, `window.Showcase3D.booted()`, 25000));
+  check('three.js 确实是在这一刻才请求的', netRequests.some(heavy));
 
   console.log('\n4a. 问答 panel — 本地知识库引擎（确定性路径）');
   // The shipped config points at a live LLM endpoint, so pin the engine to the local

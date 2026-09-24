@@ -1,8 +1,12 @@
-name: Build & Deploy to Netlify
+name: Deploy to Netlify (备用宿主，手动)
+
+# 2026-09-23 起改成只手动触发：Netlify 转成 credits 计费后，这个账号的免费额度用完
+# 且未绑卡，任何新的生产部署都会被挡（CI 里那一步的报错是
+# "Account credit usage exceeded - new deploys are blocked until credits are added"）。
+# 日常上线走 .github/workflows/pages.yml（GitHub Pages，没有 credits 闸门）。
+# 这份留着是因为 Netlify 站点仍在服务上一次成功的部署，等额度重置后可以手动再推一次。
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -27,16 +31,14 @@ jobs:
           npm install -g netlify-cli
           BRANCH="${GITHUB_REF#refs/heads/}"
           echo "Deploying branch: $BRANCH"
-          # 只有 main 能自动部署。别名分支不再由 push 触发（dev 分支已删除，
-          # 它的预览站会永久停在旧内容上），需要预览时用 workflow_dispatch 手动跑。
           if [ "$BRANCH" = "main" ]; then
             netlify deploy --dir . --prod \
               --auth "$NETLIFY_AUTH_TOKEN" \
               --site "$NETLIFY_SITE_ID"
           else
-            netlify deploy --dir . --alias "$BRANCH" \
-              --auth "$NETLIFY_AUTH_TOKEN" \
-              --site "$NETLIFY_SITE_ID"
+            echo "非 main 分支不再往 Netlify 推别名站（会留下永不更新的公开预览站，"
+            echo "dev 别名就是教训）。预览请用 GitHub Pages。"
+            exit 1
           fi
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}

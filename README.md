@@ -70,11 +70,12 @@ node tests/probe_framing.mjs          # 量每个 3D 模型是否被视口裁切
 python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密钥
 ```
 
-部署之后另跑一次线上核验（本地全绿不代表 Netlify 上那一份也换了）：
+部署之后另跑一次线上核验（本地全绿不代表线上那一份也换了）：
 
 ```
-node scripts/check_live_qr.mjs            # 用 headless Chrome 抓线上入口二维码 → .cache/live-entry-qr.png
-QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应打印公网地址
+node scripts/check_live_qr.mjs            # 抓生产站入口码 → .cache/live-entry-qr.png
+node scripts/check_live_qr.mjs https://longnankejia-dev.pages.dev/   # 抓 dev 预览那份
+QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应等于被核验的那个网址
 ```
 
 `scan_history_secrets.py` 的由来：`js/secrets.js` 一直在 `.gitignore` 里，但三个
@@ -136,7 +137,8 @@ python scripts/build_avatar.py      # 数字人形象.png → 抠图 / 裁切 / 
 python scripts/strip_watermark.py   # 就地去除贴图角标，可重复执行
 python scripts/sync_diancang_pages.py  # 重建展品的 PDF 页序映射 + data/exhibit-openings.json
 python scripts/sync_diancang_text.py   # 从 PDF 注入展品原文全文到 diancang-data.js
-python scripts/make_entry_qr_png.py    # 浏览器导出的入口码 → docs/入口二维码.png（1148px，自检解码）
+python scripts/make_entry_qr_png.py    # 按 config.js 的 canonicalUrl 画展板成品图并自检解码
+node   scripts/qr_matrix.mjs <文本>     # 用页面上同一个编码器把文本打成模块矩阵（上面那脚本调它）
 ```
 
 `strip_watermark.py` 不依赖任何缓存目录：它先用 `tests/badge-template.npy` 量每张图与角标
@@ -159,16 +161,46 @@ python scripts/make_entry_qr_png.py    # 浏览器导出的入口码 → docs/�
 
 ## 部署
 
-推送到 GitHub 后由 Netlify 自动构建，详见 `docs/部署说明.txt`。
-`netlify.toml` 中 `publish = "."`，因此 `index.html` 必须留在仓库根目录。
+生产站：**https://longnankejia.pages.dev/**（`main`，Cloudflare Pages）
+开发预览：**https://longnankejia-dev.pages.dev/**（`dev`，豆包的工作分支）
+镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/dev/（GitHub Pages）
+备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）
 
-生产站：**https://prismatic-syrniki-1e0e96.netlify.app**
+两条自动通道（`cf-pages.yml` 与 `pages.yml`）都只做一件事：**按白名单**把页面真正加载的
+东西（`index.html`、`css/`、`js/`、`assets/{avatar,pdf-imgs,textures}`）搬进上线目录。
+不是排除表——以前 Netlify 用 `publish = "."` 把整个仓库推上公网，实测
+`tests/badge-template.npy`、`scripts/scan_history_secrets.py` 和 8MB 的 `assets/source/`
+原图都能直接下载，而 `docs/` 里是比赛通知与简历。注意 Cloudflare 对不存在的路径回的是
+**200 + 一段 HTML 提示页**，所以核对上线集要比对 `Content-Type`，不能只看状态码。
 
-只有 `main` 会自动部署。其他分支不再由 push 触发——别名部署会在 Netlify 上留下一个
-公开、且冻结在最后一次构建的预览站，不会随后续修改更新；需要预览时用
-`workflow_dispatch` 手动跑一次。`tests/check_static.py` 会守住这条规则。
+三点约定，都有守卫且跑过反向用例：
 
-注意：历史上 `dev` 分支留下的 `dev--prismatic-syrniki-1e0e96.netlify.app` 仍是旧版本
-（内联 SVG 头像、未去水印的贴图，入口二维码用的是后来发现解不出内容的手写编码器），
-而 `dev` 分支已删除，它不会再更新。
-要清掉需在 Netlify 控制台删除该 deploy 或别名，本机未登录 Netlify CLI 所以无法代做。
+- **dev 预览不注入 API Key**（`js/secrets.js` 写空 key，页面按设计回落到本地知识库引擎）。
+  预览站是另一个公开域名，不该再带一份线上密钥——这个 key 之前已经泄露过一次。
+- **CI 用的 Cloudflare 令牌只有一项权限**：`Account → Cloudflare Pages → Edit`。
+  官方 "Edit Cloudflare Workers" 模板会连带 13 项（Workers KV/R2/Scripts、Memberships、
+  Account Settings…），对只推静态站的 CI 太宽，所以走 Custom Token。
+- **工作流文件只存在于 `main`**，靠显式 `ref: dev` 取开发分支内容（`pages.yml`）。GitHub 读的是
+  「被 push 那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的 `AI_OWNER.md`），
+  不该由我提交——所以 **dev 的 CF/GitHub Pages 更新要等 dev 同步过 main 才会自动跑**，
+  在那之前靠 `main` 的推送与每小时 `:17` 定时（仅 `pages.yml`）。
+
+GitHub Pages 那条通道需要仓库 Settings → Pages 的 Source 选 **GitHub Actions**（已设好）。
+
+### 为什么离开 Netlify
+
+Netlify 2025 年起按 credits 计费。这个账号的免费额度用完且未绑卡，之后**任何新的生产部署**
+都会被挡，报错原文是 `Account credit usage exceeded - new deploys are blocked until credits are added`
+（CLI 只回一个 `Forbidden`，得直接打 REST 接口才看得到这句）。现网不受影响，仍返回 200
+并停在上一次成功的部署上。额度周期从每月 14 日起算。
+
+`deploy.yml` 因此改成**只手动触发**，留作额度恢复后的备用通道；它现在还挡住了非 main 分支，
+避免重演 `dev--…` 那种永不更新的别名站（那个站已按 `branch == "dev"` 精确删掉 19 条 deploy）。
+
+### 入口二维码与地址
+
+页面上的码**跟随当前网址**：部署到哪儿就扫出哪儿，`app.publicUrl` 留空即可，
+换宿主不用再改代码（`file://` 直接双击预览时才退回 `app.canonicalUrl`）。
+印展板的成品图另说——它取 `js/config.js` 的 `app.canonicalUrl`，由
+`python scripts/make_entry_qr_png.py` 用**页面上同一个编码器**（经 `scripts/qr_matrix.mjs`）
+生成，写完自检解码；`check_static.py` 会核对成品图与 `canonicalUrl` 一致，脱节直接 FAIL。

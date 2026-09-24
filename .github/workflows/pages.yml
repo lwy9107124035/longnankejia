@@ -1,0 +1,75 @@
+name: Deploy to GitHub Pages
+
+# 一个 Pages 站同时挂两份：
+#   https://lwy9107124035.github.io/longnankejia/      ← main（生产）
+#   https://lwy9107124035.github.io/longnankejia/dev/  ← dev（豆包的预览分支）
+#
+# 工作流只存在于 main 上，靠显式 ref 取两个分支的内容——GitHub 读的是「被 push 那个
+# ref」里的工作流文件，而 dev 是豆包的专属分支（见 dev 上的 AI_OWNER.md），不该由我提交。
+# 所以 dev 的更新由每小时定时与 main 的推送带出来，不依赖 dev 里有这个文件。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.page.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: src-prod
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: src-dev
+
+      # 生产那份带线上 key（与 Netlify 时期一致）；预览站是另一个公开域名，刻意写空 key，
+      # 页面按设计回落到本地知识库引擎。tests/check_static.py 会守住这条。
+      - name: 生成 secrets.js
+        run: |
+          echo 'window.APP_SECRETS={apiKey:"${{ secrets.SILICONFLOW_API_KEY }}"};' > src-prod/js/secrets.js
+          echo 'window.APP_SECRETS={apiKey:""};' > src-dev/js/secrets.js
+
+      # 白名单发布：只上线页面真正加载的东西。docs/ 里是通知与简历、tests/ 与 scripts/
+      # 是开发工具、assets/source/ 是 8MB 从不上线的原图——它们在 Netlify 上曾一起被
+      # publish = "." 推到公网（badge-template.npy、scan_history_secrets.py 都能直接下载）。
+      - name: 组装站点
+        run: |
+          set -e
+          pack() {
+            dest="$1"; src="$2"
+            mkdir -p "$dest"
+            cp "$src/index.html" "$dest/"
+            cp -r "$src/css" "$src/js" "$dest/"
+            mkdir -p "$dest/assets"
+            cp -r "$src/assets/avatar" "$src/assets/pdf-imgs" "$src/assets/textures" "$dest/assets/"
+          }
+          rm -rf site
+          pack site src-prod
+          pack site/dev src-dev
+          echo "上线内容 $(du -sh site | cut -f1)，其中 dev 预览 $(du -sh site/dev | cut -f1)"
+          find site -maxdepth 1 -mindepth 1 | sort
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: page
+        uses: actions/deploy-pages@v4

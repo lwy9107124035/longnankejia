@@ -327,7 +327,13 @@
     }
 
     function target() {
-      return normalizeUrl(getPublicUrl()) || currentUrl();
+      var t = normalizeUrl(getPublicUrl()) || currentUrl();
+      if (!isHttpUrl(t)) {
+        // 双击 index.html 直接预览时 location 是 file://，扫不出也打不开，退回永久地址
+        var cfg = window.APP_CONFIG && window.APP_CONFIG.app;
+        t = normalizeUrl((cfg && cfg.canonicalUrl) || '');
+      }
+      return t;
     }
 
     function copyAddress() {
