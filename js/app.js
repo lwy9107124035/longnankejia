@@ -66,10 +66,15 @@
         var statusEl = document.getElementById('engineStatus');
         if (statusEl) {
           var label = engine.label || engine.name;
-          if (result.source === 'rules' && result.matched) {
+          if (result.source === 'api') {
+            statusEl.textContent = '当前引擎：本地未命中 → 大模型作答';
+          } else if (result.matched) {
             statusEl.textContent = '当前引擎：本地知识库 · 命中「' + result.matched + '」';
+          } else if (result.nearest) {
+            statusEl.textContent = '当前引擎：本地知识库 · 最接近的馆内资料（'
+              + result.nearest.join('、') + '）';
           } else if (result.fallback) {
-            statusEl.textContent = '当前引擎：本地知识库 · 未命中，已启用兜底引导';
+            statusEl.textContent = '当前引擎：本地知识库 · 该词未收录，已给相关线索';
           } else {
             statusEl.textContent = '当前引擎：' + label;
           }
@@ -81,7 +86,15 @@
       console.error(err);
       window.UI.Avatar.thinking(false);
       window.UI.Avatar.talking(false);
-      bubble.textContent = '阿蓝刚才走神了，抱歉~ 请再试一次。';
+      // 整条链路都炸了也不能只丢一句道歉：本地兜底还在，就把最接近的馆内资料端出来
+      var text = '';
+      try {
+        var eng = window.AnswerEngine.getEngine();
+        var local = eng._fallback || eng;
+        if (local.rank && local.nearest) text = local.nearest(local.rank(question), question).text;
+      } catch (e) { console.error('[app] 本地兜底也失败了：', e); }
+      bubble.textContent = text || '阿蓝刚才卡了一下。蓝染、竹编、织带、围屋、山歌、客家话，'
+        + '随便挑一个问，阿蓝都在。';
     }).then(function () {
       setBusy(false);
       if (input) input.focus();

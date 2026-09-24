@@ -345,6 +345,65 @@ async function run() {
   check('回落来源标注为本地知识库', fb.source === 'rules', String(fb.source));
   check('不再返回丢弃知识库的兜底套话', (fb.text || '').indexOf('网络似乎不太稳定') === -1);
 
+  console.log('\n4d. 本地优先 → 未命中转大模型 → 绝不拒答');
+  const routing = await page.evaluate(`(async () => {
+    const words = ['回答不了','我还不知道','还在学习中','不敢乱答','暂时无法','无法回答','帮不上忙'];
+    const refusal = (t) => words.some((s) => String(t).indexOf(s) > -1);
+    const orig = window.fetch;
+    let calls = 0;
+    const e = new window.AnswerEngine.ApiEngine();
+    const minScore = (window.APP_CONFIG.ai.minScore) || 1.0;
+
+    // A. 知识库命中：一次接口都不该发
+    window.fetch = function () { calls++; return orig.apply(this, arguments); };
+    const hit = await e.ask('什么是客家蓝染？');
+    window.fetch = orig;
+
+    // B. 知识库未命中 + 接口失败：必须回到馆内最接近的资料
+    const q2 = '潮汕工夫茶的冲泡步骤是什么';
+    const ranked = e._fallback.rank(q2);
+    window.fetch = () => Promise.reject(new Error('forced failure'));
+    const weak = await e.ask(q2);
+    window.fetch = orig;
+
+    // C. 知识库未命中 + 接口可用：应当真的转大模型
+    let live = null;
+    try { live = await e.ask(q2); } catch (err) { live = { err: String(err) }; }
+
+    return {
+      hit: { source: hit.source, matched: hit.matched || '', calls: calls, refusal: refusal(hit.text) },
+      bestScore: ranked.scored.length ? +ranked.scored[0].score.toFixed(2) : 0,
+      bestMatched: ranked.scored.length ? ranked.scored[0].matched.length : 0,
+      hasHit: !!ranked.hit,
+      minScore: minScore,
+      weak: { source: weak.source, fallback: !!weak.fallback,
+              nearest: (weak.nearest || []).length, topics: !!weak.topics,
+              refusal: refusal(weak.text), head: String(weak.text).slice(0, 24) },
+      live: live ? { source: live.source, len: String(live.text || '').length,
+                     refusal: refusal(live.text || ''), err: live.err || '' } : null
+    };
+  })()`, true);
+  check('知识库命中时一次接口都不调', routing.hit.calls === 0, routing.hit.calls + ' 次请求');
+  check('知识库命中直接给馆内答案', routing.hit.source === 'rules' && !!routing.hit.matched,
+    routing.hit.matched);
+  check('馆外话题不算本地命中（无关键词字面出现）',
+    !routing.hasHit && routing.bestMatched === 0,
+    'score=' + routing.bestScore + ' matched=' + routing.bestMatched);
+  // 封顶是独立的一道保险：不封顶时长问句会靠 2-gram 累加把分数堆过阈值（实测 1.35）
+  check('2-gram 部分重合的贡献被封顶在 1.2', routing.bestScore <= 1.2 + 1e-9,
+    '该问题最高分 ' + routing.bestScore);
+  check('接口失败时仍端出内容（最接近资料或馆内话题），不许空手',
+    routing.weak.fallback && (routing.weak.nearest >= 1 || routing.weak.topics === true),
+    routing.weak.head + ' / nearest=' + routing.weak.nearest + ' topics=' + routing.weak.topics);
+  check('三条路径都不出现拒答措辞',
+    !routing.hit.refusal && !routing.weak.refusal && !(routing.live && routing.live.refusal),
+    JSON.stringify({ h: routing.hit.refusal, w: routing.weak.refusal, l: routing.live && routing.live.refusal }));
+  // 接口通不通取决于现场网络，两种结果都算通过：要么真由大模型答，要么回到馆内资料
+  check('未命中时要么大模型作答、要么馆内兜底（不许空手而归）',
+    !!routing.live && ((routing.live.source === 'api' && routing.live.len > 4)
+      || (routing.live.fallback === true) || (routing.live.source === 'rules')),
+    JSON.stringify(routing.live));
+
   console.log('\n5. 科普 panel');
   await page.evaluate(`document.querySelector('[data-panel="panelHeritage"]').click()`);
   check('heritage cards rendered', await until(page, `document.querySelectorAll('#heritageGrid .h-card').length > 0`));

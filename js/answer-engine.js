@@ -81,6 +81,7 @@
   RulesEngine.prototype.scoreEntry = function (entry, tokens) {
     var score = 0;
     var matched = [];
+    var ngram = 0;
 
     entry.keywords.forEach(function (kw) {
       var kwLow = kw.toLowerCase();
@@ -98,57 +99,90 @@
         // 2-gram 命中 → 累加
         tokens.forEach(function (t) {
           if (t.length >= 2 && v.indexOf(t) !== -1) {
-            score += 0.45;
+            ngram += 0.45;
           }
         });
       });
     });
 
-    return { score: score, matched: matched };
+    // 2-gram 的部分重合封顶再计入。不封顶的话，问题越长分越高：
+    // 实测「潮汕工夫茶的冲泡步骤是什么」靠 23 个 2-gram 蹭到 1.35，越过了阈值，
+    // 把自我介绍当成答案端给一个馆外话题。
+    return { score: score + Math.min(ngram, 1.2), matched: matched };
+  };
+
+  /** 给问题打分并排序；命中与"最接近"两种结果都从这里出，避免两套判据打架。 */
+  RulesEngine.prototype.rank = function (question) {
+    var self = this;
+    var tokens = tokenize(question);
+    if (!tokens.length) return { tokens: tokens, scored: [], hit: null, minScore: 1.0 };
+    var minScore = (window.APP_CONFIG && window.APP_CONFIG.ai.minScore) || 1.0;
+    var scored = this.entries.map(function (entry) {
+      var r = self.scoreEntry(entry, tokens);
+      return { entry: entry, score: r.score, matched: r.matched };
+    }).filter(function (s) { return s.score > 0; })
+      .sort(function (a, b) { return b.score - a.score; });
+    // 命中必须"问题里真的出现了某个关键词"。只靠 2-gram 部分重合的不算命中——
+    // 那是馆外话题蹭进了本地库，答非所问还挡住大模型。
+    var top = scored[0] || null;
+    var hit = (top && top.score >= minScore && top.matched.length > 0) ? top : null;
+    return { tokens: tokens, scored: scored, minScore: minScore, hit: hit };
+  };
+
+  function headLine(answer, max) {
+    var first = String(answer).split('\n')[0].trim();
+    return first.length > (max || 46) ? first.slice(0, max || 46) + '…' : first;
+  }
+
+  /** 未命中时的答案：给馆内最接近的资料，绝不回"答不了/还在学习中"。 */
+  RulesEngine.prototype.nearest = function (ranked, question) {
+    // 只列关键词真的在问题里出现过的条目。没有一条对得上却硬凑前三，
+    // 就会把「潮汕工夫茶」答成自我介绍——那是答非所问，不是兜底。
+    var top = (ranked.scored || []).filter(function (s) { return s.matched.length > 0; }).slice(0, 3);
+    if (!top.length) {
+      return {
+        text: '「' + String(question).slice(0, 24) + '」这个词阿蓝的馆内资料里还没收录，'
+          + '不过龙南的非遗是连成一片的——蓝染的布会用到竹编的染架，围屋的堂屋里唱着山歌，'
+          + '客家话把这些手艺一代代念下来。你换个说法，或者直接点上面任意一个话题，'
+          + '阿蓝都能给你讲一段。',
+        source: 'rules',
+        fallback: true,
+        topics: true
+      };
+    }
+    var lines = top.map(function (s) {
+      return '· ' + s.entry.title + '：' + headLine(s.entry.answer);
+    });
+    return {
+      text: '馆内资料里没有和「' + String(question).slice(0, 20) + '」完全对上的一条，'
+        + '阿蓝先把最接近的几块讲给你：\n' + lines.join('\n')
+        + '\n想听哪一块，说个名字，阿蓝展开讲。',
+      source: 'rules',
+      fallback: true,
+      nearest: top.map(function (s) { return s.entry.title; })
+    };
   };
 
   RulesEngine.prototype.ask = function (question) {
     var self = this;
     return mockDelay().then(function () {
-      var tokens = tokenize(question);
-      if (!tokens.length) {
+      var ranked = self.rank(question);
+      if (!ranked.scored.length) {
         return {
           text: '嗯嗯？阿蓝好像没听清，换个说法再问问看吧~',
           source: 'rules'
         };
       }
-
-      var best = null;
-      var bestScore = 0;
-
-      self.entries.forEach(function (entry) {
-        var r = self.scoreEntry(entry, tokens);
-        if (r.score > bestScore) {
-          bestScore = r.score;
-          best = { entry: entry, matched: r.matched };
-        }
-      });
-
-      var minScore = (window.APP_CONFIG && window.APP_CONFIG.ai.minScore) || 1.0;
-
-      if (best && bestScore >= minScore) {
+      var best = ranked.hit;
+      if (best) {
         return {
           text: best.entry.answer,
           source: 'rules',
           matched: best.entry.title,
-          score: bestScore
+          score: best.score
         };
       }
-
-      // 兜底：不编造，引导到热门问题
-      return {
-        text:
-          '这个问题阿蓝还在学习中，暂时不敢乱答~\n' +
-          '目前我比较擅长：蓝染、竹编、客家织带、围屋、山歌童谣、客家方言等话题。\n' +
-          '你可以点上方的快捷问题，或换种方式问我试试！',
-        source: 'rules',
-        fallback: true
-      };
+      return self.nearest(ranked, question);
     });
   };
 
@@ -167,19 +201,24 @@
     }
   }
 
-  ApiEngine.prototype.ask = function (question) {
-    var self = this;
-    if (!this.cfg.apiKey) {
-      return this._fallback.ask(question);
-    }
+  /** 把馆内最接近的资料节选塞进系统提示，让大模型贴着馆藏说，而不是自由发挥。 */
+  function kbContext(ranked) {
+    var top = (ranked.scored || []).slice(0, 3);
+    if (!top.length) return '';
+    return '\n\n【馆内资料节选，优先据此回答；资料没覆盖的可依据客家非遗通识作答，'
+      + '但不要编造具体年代与人名】\n' + top.map(function (s) {
+        return '· ' + s.entry.title + '：' + headLine(s.entry.answer, 90);
+      }).join('\n');
+  }
 
+  ApiEngine.prototype.callApi = function (question, ranked) {
     var api = this.cfg;
     var messages = [
-      { role: 'system', content: api.systemPrompt || '你是非遗数字助手。' },
+      { role: 'system', content: (api.systemPrompt || '你是非遗数字助手。') + kbContext(ranked) },
       { role: 'user', content: String(question || '') }
     ];
 
-    // 带超时的 fetch（15 秒无响应则回退本地知识库）
+    // 带超时的 fetch（15 秒无响应则回退）
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, 15000);
 
@@ -216,9 +255,39 @@
       if (text.length > 300) text = text.slice(0, 300) + '……';
       return { text: text, source: 'api' };
     }).catch(function (err) {
-      clearTimeout(timer);
-      console.error('[answer-engine] API 调用失败，回退本地知识库：', err);
-      return self._fallback.ask(question);
+      clearTimeout(timer);   // 失败路径也要收表，否则 15 秒后会对已结束的请求补一枪
+      throw err;
+    });
+  };
+
+  /**
+   * 本地优先：知识库命中就直接答（离线可用、确定性、省一次接口调用）；
+   * 未命中才转大模型；接口没有 key、报错或超时，就回到馆内最接近的资料。
+   * 三条路径都必须给出内容——任何情况下都不回"回答不了"。
+   */
+  ApiEngine.prototype.ask = function (question) {
+    var self = this;
+    var ranked = this._fallback.rank(question);
+
+    if (ranked.hit) {
+      var top = ranked.hit;
+      return mockDelay().then(function () {
+        return {
+          text: top.entry.answer,
+          source: 'rules',
+          matched: top.entry.title,
+          score: top.score
+        };
+      });
+    }
+
+    if (!this.cfg.apiKey) {
+      return mockDelay().then(function () { return self._fallback.nearest(ranked, question); });
+    }
+
+    return this.callApi(question, ranked).catch(function (err) {
+      console.error('[answer-engine] 大模型不可用，回到馆内资料：', err);
+      return self._fallback.nearest(ranked, question);
     });
   };
 
