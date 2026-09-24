@@ -174,6 +174,129 @@
     mask.hidden = false;
   }
 
+  /* ---------- 指哪打哪：输入字词 → 定位到正文里讲它的展品 ---------- */
+
+  function norm(s) {
+    return String(s == null ? '' : s).replace(/[\s，。、；：！？（）()《》「」“”‘’·、]/g, '');
+  }
+
+  /** 按句末标点切句；不用 lookbehind，旧内核更稳。 */
+  function splitSentences(text) {
+    var out = [], buf = '', s = String(text || '');
+    for (var i = 0; i < s.length; i++) {
+      buf += s[i];
+      if ('。！？；\n'.indexOf(s[i]) !== -1) { out.push(buf.trim()); buf = ''; }
+    }
+    if (buf.trim()) out.push(buf.trim());
+    return out.filter(function (x) { return x.length > 1; });
+  }
+
+  function allItems() {
+    var out = [];
+    if (!data) return out;
+    data.chapters.forEach(function (ch) {
+      (ch.items || []).forEach(function (it) { out.push({ item: it, chapter: ch.title }); });
+    });
+    return out;
+  }
+
+  /**
+   * 打分：展品名字面出现最高，其次正文出现该词，最后退到两字以上子串的部分重合。
+   * 每条命中都带回"到底是哪句话说了它"，观众要的从来不是列表而是那一句。
+   */
+  function searchExhibits(query) {
+    var q = norm(query);
+    if (!q) return [];
+    return allItems().map(function (rec) {
+      var it = rec.item;
+      var name = norm(it.name), chapter = norm(rec.chapter);
+      var body = norm(it.text || '') + norm(it.desc || '') + norm(it.ipa || '');
+      var score = 0;
+      if (name === q) score += 100;
+      else if (name.indexOf(q) !== -1) score += 60;
+      else if (q.indexOf(name) !== -1 && name.length >= 2) score += 45;
+      if (chapter.indexOf(q) !== -1) score += 12;
+      if (body.indexOf(q) !== -1) score += 30;
+
+      var frag = 0;
+      for (var len = Math.min(q.length, 6); len >= 2 && !frag; len--) {
+        for (var s = 0; s + len <= q.length; s++) {
+          if (body.indexOf(q.slice(s, s + len)) !== -1) { frag = len; break; }
+        }
+      }
+      if (!score && frag) score += frag * 3;
+
+      var sentence = '';
+      var list = splitSentences(it.text || '').concat(splitSentences(it.desc || ''));
+      for (var k = 0; k < list.length; k++) {
+        if (norm(list[k]).indexOf(q) !== -1) {
+          sentence = list[k];
+          score += Math.max(0, 8 - Math.round(list[k].length / 24));
+          break;
+        }
+      }
+      if (!sentence && frag) {
+        for (var k2 = 0; k2 < list.length; k2++) {
+          if (norm(list[k2]).indexOf(q.slice(0, frag)) !== -1) { sentence = list[k2]; break; }
+        }
+      }
+      return { item: it, chapter: rec.chapter, score: score, sentence: sentence };
+    }).filter(function (h) { return h.score > 0; })
+      .sort(function (a, b) { return b.score - a.score; });
+  }
+
+  function markTerm(sentence, query) {
+    var q = String(query || '').trim();
+    if (!q) return esc(sentence);
+    var at = sentence.indexOf(q);
+    if (at === -1) return esc(sentence);
+    return esc(sentence.slice(0, at)) + '<mark>' + esc(sentence.substr(at, q.length))
+      + '</mark>' + esc(sentence.slice(at + q.length));
+  }
+
+  function runFind() {
+    var input = document.getElementById('dcQuery');
+    var hint = document.getElementById('dcFindHint');
+    var listEl = document.getElementById('dcFindList');
+    if (!input || !hint || !listEl) return;
+    var q = String(input.value || '').trim();
+    if (!norm(q)) {
+      hint.textContent = '';
+      listEl.innerHTML = '';
+      return;
+    }
+    var hits = searchExhibits(q);
+    if (!hits.length) {
+      hint.textContent = '42 件展品的正文里没有「' + q + '」。换个说法，或者只打两个字试试。';
+      listEl.innerHTML = '';
+      return;
+    }
+    var audio = hits.filter(function (h) { return h.item.videoUrl; }).length;
+    hint.innerHTML = '命中 <strong>' + hits.length + '</strong> 件展品'
+      + (audio ? '，其中 ' + audio + ' 件有客家话原声' : '') + '，点一条直接翻到那一页。';
+    listEl.innerHTML = hits.slice(0, 12).map(function (h, i) {
+      return '<li><button class="dc-find-item" type="button" data-i="' + i + '">'
+        + '<span class="dc-find-name">' + esc(h.item.name) + (h.item.videoUrl ? ' 🔊' : '') + '</span>'
+        + '<span class="dc-find-sub">' + esc(h.chapter) + ' · 第 ' + esc(h.item.page) + ' 页</span>'
+        + '<span class="dc-find-sent">' + (h.sentence ? markTerm(h.sentence, q) : esc(h.item.desc || '')) + '</span>'
+        + '</button></li>';
+    }).join('');
+    listEl.querySelectorAll('.dc-find-item').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        showItemDetail(hits[parseInt(btn.getAttribute('data-i'), 10)].item);
+      });
+    });
+  }
+
+  function bindFind() {
+    var btn = document.getElementById('dcFindBtn');
+    var input = document.getElementById('dcQuery');
+    if (btn) btn.addEventListener('click', runFind);
+    if (input) input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') runFind();
+    });
+  }
+
   function init() {
     try {
       data = window.DIANCANG;
@@ -195,6 +318,7 @@
       if (videoMask) videoMask.addEventListener('click', function (e) { if (e.target === videoMask) videoMask.hidden = true; });
 
       renderChapterTabs();
+      bindFind();
       selectChapter(data.chapters[0].id);
       var total = data.chapters.reduce(function(s,c){return s+c.items.length;},0);
       var withVideo = data.chapters.reduce(function(s,c){return s + c.items.filter(function(i){return i.videoUrl;}).length;},0);
@@ -228,6 +352,8 @@
     init: init,
     switchToChat: switchToChat,
     findRelatedVideos: findRelatedVideos,
+    search: searchExhibits,
+    searchFrom: runFind,
     playVideo: showVideoPlayer,
     /** 所有带客家话讲解视频的展品，方言语音库用 */
     videoExhibits: function () {

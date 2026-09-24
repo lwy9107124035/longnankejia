@@ -53,6 +53,9 @@
         <button class="main-tab" data-panel="panelDiancang" type="button">
           <span class="main-tab-icon">📖</span>典藏
         </button>
+        <button class="main-tab" data-panel="panelHometown" type="button">
+          <span class="main-tab-icon">🗺</span>家乡
+        </button>
         <button class="main-tab" data-panel="viewDialect" type="button">
           <span class="main-tab-icon">🗣</span>方言
         </button>
@@ -109,25 +112,54 @@
           <button class="dc-tool-btn" id="dcPrefaceBtn" type="button">📜 前言</button>
           <button class="dc-tool-btn" id="dcEpilogueBtn" type="button">✍ 后记</button>
         </div>
+        <!-- 指哪打哪：打一个字词，定位到正文里说过它的那件展品 -->
+        <div class="dc-find">
+          <input type="text" id="dcQuery" autocomplete="off" enterkeyhint="search"
+                 placeholder="打个字词，定位到讲它的展品（42 件全文）">
+          <button class="dc-find-btn" id="dcFindBtn" type="button">指哪打哪</button>
+          <div class="dc-find-hint" id="dcFindHint" aria-live="polite"></div>
+          <ol class="dc-find-list" id="dcFindList"></ol>
+        </div>
+
         <div class="dc-tabs" id="dcTabs"></div>
         <div id="dcContent"></div>
       </div>
 
+      <!-- ======== 家乡：点地图上的地点，看它的客家话读法与书里的讲解 ======== -->
+      <div class="tab-panel" id="panelHometown">
+        <div class="hm-wrap">
+          <div class="hm-map" id="hmMap"></div>
+          <div class="hm-text" id="hmText" aria-live="polite"></div>
+        </div>
+      </div>
+
       <!-- ======== 客家方言语音库 ======== -->
       <div class="tab-panel" id="viewDialect">
+        <!-- 字 → 客家话读音：本馆书内注音 / 萌典六县腔 / 原声出处，三层分开标来源 -->
+        <div class="pr-box">
+          <div class="pr-head">
+            <div class="pr-title">打个字，听它用客家话怎么念</div>
+            <div class="pr-sub">
+              三层来源分开给，不混为一谈：<b>①本馆书内国际音标</b>（龙南宁龙片，只覆盖书里出现过的词）、
+              <b>②萌典客家语</b>（台湾四县/海陆等六腔，参照用）、<b>③原声</b>（16 段讲解里说过它的地方）。
+              没有客家话语音合成模型，所以这里不合成、不假装会念。
+            </div>
+          </div>
+          <div class="pr-find">
+            <input type="text" id="prQuery" autocomplete="off" enterkeyhint="search"
+                   placeholder="任意字或词，如「客」「米果」「寿」">
+            <button class="pr-btn" id="prBtn" type="button">查读音</button>
+          </div>
+          <div class="pr-status" id="prStatus" aria-live="polite"></div>
+          <div class="pr-out" id="prOut"></div>
+        </div>
+
         <div class="dl-head">
           <div class="dl-title">客家方言语音库</div>
           <div class="dl-sub">
             文化典藏里 <strong id="dlCount">0</strong> 件展品的客家话原声讲解。这些音频原本要扫展品旁的二维码才能听到，
             这里已经把内容直接列出来，点一条就能听。
           </div>
-        </div>
-
-        <div class="dl-find">
-          <input type="text" id="dlQuery" autocomplete="off" enterkeyhint="search"
-                 placeholder="打个字词，直接定位到说它的那段原声">
-          <button class="dl-find-btn" id="dlFindBtn" type="button">指哪打哪</button>
-          <div class="dl-find-hint" id="dlFindHint">试试「黄元米果」「豆腐」「狮」「寿」</div>
         </div>
 
         <div class="dl-now" id="dlNow">
@@ -138,7 +170,6 @@
           </div>
         </div>
         <div class="dl-frame" id="dlFrame" hidden></div>
-        <p class="dl-sentence" id="dlSentence" hidden></p>
 
         <ol class="dl-tracks" id="dlTracks"></ol>
         <div class="dl-note">
@@ -232,7 +263,11 @@
   <script src="js/textures.js"></script>
   <script src="js/showcase3d.js"></script>
   <script src="js/diancang.js"></script>
+  <script src="js/data-hometown.js"></script>
   <script src="js/dialect.js"></script>
+  <script src="js/data-s2t.js"></script>
+  <script src="js/pron.js"></script>
+  <script src="js/hometown.js"></script>
   <script src="js/router.js"></script>
   <script src="js/app.js"></script>
 </body>

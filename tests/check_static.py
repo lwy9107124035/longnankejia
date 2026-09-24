@@ -408,6 +408,115 @@ def check_gitignore():
         fail(".gitignore still contains mis-encoded lines: %s" % bad)
 
 
+# ------------------------------------------------------- 字→读音（pron.js）
+def check_pron_layers():
+    """读音查询的三条硬约束：来源必须分层标清、简繁表要先加载、不许假装会念。
+
+    萌典的 p 字段里全是不可见字符（U+20DE 组合符、U+FFF9-FFFB 标记）。这些字符一旦
+    以明文写进源码，任何一次"顺手整理"都可能把它们吃掉，而解析只是安静地少几个腔调。
+    所以这里要求源码里用 \\u 转义写，明文不可见字符一个都不留。
+    """
+    html = read(rel("index.html"))
+    refs = re.findall(r'<script[^>]*\ssrc="([^"]+)"', html)
+    if "js/data-s2t.js" not in refs or "js/pron.js" not in refs:
+        fail("pron 模块没有被 index.html 加载：%s" % [r for r in ("js/data-s2t.js", "js/pron.js") if r not in refs])
+        return
+    if refs.index("js/data-s2t.js") > refs.index("js/pron.js"):
+        fail("js/data-s2t.js 必须在 js/pron.js 之前加载，否则简体转繁体永远拿不到表")
+
+    src = read(rel("js", "pron.js"))
+    invisible = sorted({ord(c) for c in src
+                        if 0x300 <= ord(c) <= 0x36f or 0x20d0 <= ord(c) <= 0x20f0
+                        or 0xfe20 <= ord(c) <= 0xfe2f or 0xfff9 <= ord(c) <= 0xfffb})
+    if invisible:
+        fail("js/pron.js 里残留不可见字符明文（应写成 \\u 转义）：%s" % [hex(c) for c in invisible])
+    if "\\u20d0" not in src:
+        fail("js/pron.js 的解析正则不再剥 U+20DE，萌典读音会被解析成「四\\u20de...」这种残句")
+    # 台湾腔不是龙南腔：这句话是学术诚实的底线，不能被当成装饰删掉
+    if "台湾客家语" not in src or "宁龙片" not in src:
+        fail("js/pron.js 丢了「这是台湾客家语，不是龙南宁龙片」的来源提醒")
+    for fake in ("speechSynthesis", "SpeechSynthesis", " tts", "AudioContext"):
+        if fake in src.lower():
+            fail("js/pron.js 出现了合成语音（%s）：本站没有客家话 TTS，不许假装会念" % fake.strip())
+
+    s2t = read(rel("js", "data-s2t.js"))
+    m = re.search(r"window\.S2T\s*=\s*(\{.*\})", s2t, re.S)
+    if not m:
+        fail("js/data-s2t.js 没有 window.S2T 赋值")
+        return
+    table = json.loads(m.group(1))
+    if len(table) < 2000:
+        fail("简繁表只剩 %d 字，像是生成脚本读错了 Unihan 字段" % len(table))
+    for simp, trad in (("寿", "壽"), ("蓝", "藍"), ("黄", "黃")):
+        if table.get(simp) is None or trad not in table[simp]:
+            fail("简繁表缺「%s→%s」，观众打这个字会被误报成查不到" % (simp, trad))
+    if any(k == v for k, v in table.items()):
+        fail("简繁表里有自身映射自身的条目，会让 pron 白跑一次请求")
+    notes.append("简繁转换表 %d 字，萌典层已具备简体入口" % len(table))
+
+    gen = read(rel("scripts", "build_s2t_table.py"))
+    if "Unihan_Variants.txt" not in gen or "kSimplifiedVariant" not in gen:
+        fail("build_s2t_table.py 不再从 Unihan_Variants 的 kSimplifiedVariant 取数")
+    if "len(table) < 1000" not in gen:
+        fail("build_s2t_table.py 丢了「解析到 0 条就报错退出」的守卫，空表会安静地产出")
+
+
+# ------------------------------------------------------------- 家乡地图
+def check_hometown_map():
+    """家乡那页的地图必须是真实地理数据，且来源、日期、精度都要留在文件里。
+
+    这一条守的是"不许编"：博物馆里把围屋画错地方就是错信息。所以既检查数据形状
+    （点数、点位是否落在县界内），也检查来源标注还在不在——被精简掉时界面就没法自证。
+    """
+    html = read(rel("index.html"))
+    refs = re.findall(r'<script[^>]*\ssrc="([^"]+)"', html)
+    for need in ("js/data-hometown.js", "js/hometown.js"):
+        if need not in refs:
+            fail("家乡模块没有被 index.html 加载：%s" % need)
+    if "js/diancang.js" not in refs or refs.index("js/diancang.js") > refs.index("js/hometown.js"):
+        fail("js/hometown.js 必须在 js/diancang.js 之后加载，否则展品关联绑不上")
+    if 'data-panel="panelHometown"' not in html:
+        fail("顶部 Tab 栏没有「家乡」入口")
+
+    src = read(rel("js", "hometown.js"))
+    if "speechSynthesis" in src or "AudioContext" in src:
+        fail("js/hometown.js 出现了合成语音：本站没有客家话 TTS，不许假装会念")
+    for kw in ("国家基础地理信息中心", "没有以这个地方为出处"):
+        if kw not in src and kw not in read(rel("js", "data-hometown.js")):
+            fail("js/hometown.js 丢了「%s」这句话" % kw)
+
+    raw = read(rel("js", "data-hometown.js"))
+    m = re.search(r"window\.HOMETOWN\s*=\s*(\{.*\})", raw, re.S)
+    if not m:
+        fail("js/data-hometown.js 没有 window.HOMETOWN 赋值")
+        return
+    data = json.loads(m.group(1))
+    ring, places, bbox = data.get("outline") or [], data.get("places") or [], data.get("bbox") or []
+    if len(ring) < 80:
+        fail("县界只有 %d 个点，不像真实边界（生成脚本大概简化过头）" % len(ring))
+    if len(places) < 12:
+        fail("地图只有 %d 个点位，取数源大概抖了" % len(places))
+    if len(bbox) != 4:
+        fail("data-hometown.js 缺 bbox")
+        return
+    out = [p["name"] for p in places
+           if not (bbox[0] <= p["lon"] <= bbox[2] and bbox[1] <= p["lat"] <= bbox[3])]
+    if out:
+        fail("这些点位落在龙南市边界外，坐标或底图有一方是错的：%s" % "、".join(out))
+    if not data.get("source", {}).get("outline") or not data.get("retrieved"):
+        fail("data-hometown.js 丢了来源或取数日期")
+    if len(set(p["name"] for p in places)) != len(places):
+        fail("地图上有重名点位，点击会选错地方")
+    notes.append("家乡地图：%d 点县界 + %d 个真实坐标点位（%s 取数）"
+                 % (len(ring), len(places), data.get("retrieved")))
+
+    gen = read(rel("scripts", "build_hometown_map.py"))
+    if "360783" not in gen or "FALLBACK_COORDS" not in gen:
+        fail("build_hometown_map.py 不再取龙南市(360783)边界或缺少坐标兜底表")
+    if "落在龙南边界外" not in gen:
+        fail("build_hometown_map.py 丢了「点位必须在县界内」的自检")
+
+
 def main():
     os.chdir(ROOT)
     html = check_index_tags()
@@ -419,6 +528,8 @@ def main():
     check_qr_entry()
     check_diancang_text_clean()
     check_diancang_pages()
+    check_pron_layers()
+    check_hometown_map()
     check_deploy_workflow()
     check_js_syntax()
     check_gitignore()

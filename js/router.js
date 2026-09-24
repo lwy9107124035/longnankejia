@@ -12,6 +12,7 @@
     science: 'panelHeritage',
     model3d: 'panel3d',
     diancang: 'panelDiancang',
+    hometown: 'panelHometown',
     dialect: 'viewDialect'
   };
 
