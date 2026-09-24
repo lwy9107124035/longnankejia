@@ -702,7 +702,6 @@ input { font-family: inherit; }
 .pr-out:empty { display: none; }
 .pr-layer { margin-top: 10px; padding: 10px 11px; border-radius: var(--radius-sm); border: 1px solid var(--line); }
 .pr-layer h4 { margin: 0 0 6px; font-size: 12px; color: var(--primary-deep); }
-.pr-word { margin: 12px 0 4px; font-size: 13px; color: var(--primary-deep); }
 .pr-local { background: var(--primary-faint); border-color: var(--primary); }
 .pr-moe { background: var(--paper); }
 .pr-audio { background: var(--accent-soft); }

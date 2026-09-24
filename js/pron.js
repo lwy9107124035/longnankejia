@@ -155,7 +155,7 @@
     });
     // 命中词形和观众打的不一样时（简体打「寿」、书里是「壽」），必须说清楚
     var note = word !== asked ? '<span class="pr-src">繁体字形「' + esc(word) + '」条目</span>' : '';
-    return '<section class="pr-layer pr-moe"><h4>② 萌典客家语 · 台湾六县腔 ' + esc(asked || word) + note + '</h4>'
+    return '<section class="pr-layer pr-moe"><h4>② 萌典客家语 · 台湾六县腔 ' + esc(word) + note + '</h4>'
       + Object.keys(byDialect).map(function (d) {
           return '<div class="pr-row"><b>' + esc(d) + '</b><code>' + esc(byDialect[d].join(' / ')) + '</code></div>';
         }).join('')
@@ -195,7 +195,7 @@
       var html = '';
       if (got.length) {
         html += got.map(function (m) {
-          return '<h4 class="pr-word">' + esc(m.word) + '</h4>' + renderMoedict(m.word, m.res, q);
+          return renderMoedict(m.word, m.res, q);
         }).join('');
       } else {
         var net = moe.filter(function (m) { return m.res.why === 'network'; }).length;
