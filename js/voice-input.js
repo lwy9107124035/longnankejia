@@ -43,7 +43,7 @@
     }
     if (!apiKey()) return '这个地址没有配置语音识别服务';
     return '';
-    }
+  }
 
   function setState(s, msg) {
     state = s;
