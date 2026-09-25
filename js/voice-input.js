@@ -41,7 +41,7 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
       return '这个浏览器没有录音接口，请用文字输入';
     }
-    if (!apiKey()) return '还没配置语音识别服务（管理入口里填密钥后可用）';
+    if (!apiKey()) return '还没配置语音识别服务，在管理入口里填密钥后可用';
     return '';
     }
 
@@ -148,7 +148,7 @@
     if (!btn || !input) return;
     btn.addEventListener('click', toggle);
     var why = unavailable();
-    setState('idle', why ? why + '（文字输入照常可用）' : '');
+    setState('idle', why ? why + '，文字输入照常可用' : '');
   }
 
   window.VoiceInput = { init: init, toggle: toggle, stop: stop, start: start,
