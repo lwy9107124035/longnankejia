@@ -589,7 +589,7 @@ async function run() {
     return out;
   })()`);
   check('没配语音服务时不开始录音并说明原因',
-    noKey.state === 'idle' && /没配置语音识别服务/.test(noKey.why) && /没配置语音识别服务/.test(noKey.hint),
+    noKey.state === 'idle' && /没有配置语音识别服务/.test(noKey.why) && /没有配置语音识别服务/.test(noKey.hint),
     JSON.stringify(noKey));
 
 await page.evaluate(`(() => { window.fetch = window.__origFetch;
