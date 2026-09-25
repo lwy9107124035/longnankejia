@@ -142,9 +142,8 @@
     if (!top.length) {
       return {
         text: '「' + String(question).slice(0, 24) + '」这个词阿蓝的馆内资料里还没收录，'
-          + '不过龙南的非遗是连成一片的——蓝染的布会用到竹编的染架，围屋的堂屋里唱着山歌，'
-          + '客家话把这些手艺一代代念下来。你换个说法，或者直接点上面任意一个话题，'
-          + '阿蓝都能给你讲一段。',
+          + '龙南这几样手艺本来就缠在一起：蓝染的布要用竹编的染架，围屋的堂屋里唱着山歌。'
+          + '换个说法，或者点上面任意一个话题，阿蓝都能讲一段。',
         source: 'rules',
         fallback: true,
         topics: true
@@ -169,7 +168,7 @@
       var ranked = self.rank(question);
       if (!ranked.scored.length) {
         return {
-          text: '嗯嗯？阿蓝好像没听清，换个说法再问问看吧~',
+          text: '嗯嗯？阿蓝没听清，换个说法再问一次。',
           source: 'rules'
         };
       }

@@ -1,7 +1,7 @@
 """为「典藏检索 / 字→读音 / 家乡地图」三组新断言跑反向用例：每条都必须能失败一次。
 
-    python tests/negative_pron.py                # 全部变异（约 25 分钟）
-    python tests/negative_pron.py M3 H1          # 只跑指定编号
+    python tests/negative_checks.py                # 全部变异（约 25 分钟）
+    python tests/negative_checks.py M3 H1          # 只跑指定编号
 
 做法：把源码里的某一处理智地改坏（或干脆删掉），只跑相关的那一节浏览器测试，
 要求对应的断言出现在 FAIL 列表里；然后原样还原。
@@ -22,6 +22,7 @@ except (AttributeError, OSError):
     pass
 
 DC = "js/diancang.js"
+UI = "js/ui.js"
 HT = "js/hometown.js"
 VI = "js/voice-input.js"
 HM = "js/data-hometown.js"
@@ -176,6 +177,9 @@ MUTATIONS = [
      + "  var sr = SR ? new SR() : null;" + chr(10)
      + "  window.VoiceInput = { init: init, toggle: toggle, stop: stop, start: start,",
      ["语音模块不依赖谷歌那套 webkitSpeechRecognition"], "4e"),
+    ("S1", "套话被改回界面文案", UI,
+     "tag: '草木染 · 板蓝根制靛',", "tag: '草木染 · 靛蓝匠心',",
+     ["界面文案又长出套话"], "static"),
     ("V11", "麦克风按钮从输入条里挪走", IDX,
      "          <button class=\"mic-btn\" id=\"micBtn\" type=\"button\" aria-label=\"按住说话：语音输入\" aria-pressed=\"false\">",
      "          <button class=\"mic-btn\" id=\"micBtn\" type=\"button\" aria-hidden=\"true\">",
@@ -189,6 +193,16 @@ def read(p):
 
 def write(p, s):
     io.open(os.path.join(ROOT, p), "w", encoding="utf-8", newline="\n").write(s)
+
+
+def run_static(expect):
+    """静态检查类变异：跑 check_static.py，看它有没有把这条报出来。"""
+    proc = subprocess.run([sys.executable, "tests/check_static.py"],
+                          cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace")
+    out = proc.stdout or ""
+    fails = re.findall(r"^\s*FAIL\s+(.+?)$", out, re.M)
+    return proc, fails, proc.returncode == 0
 
 
 def run_only(sections):
@@ -228,7 +242,22 @@ def main():
             continue
         write(path, src.replace(old, new, 1))
         try:
-            proc, fails, crashed = run_only(sections)
+            if sections == "static":
+                proc, crashed = None, False
+                _, fails, clean = run_static(expect)
+                hit = [e for e in expect if any(e in f for f in fails)]
+                if clean or len(hit) != len(expect):
+                    print("%s BAD  %-26s → 期望静态检查报错却没有：%s（FAIL 行：%s）"
+                          % (mid, desc, "仍全绿" if clean else "缺 " + "、".join(set(expect) - set(hit)),
+                             "、".join(fails) or "无"))
+                    bad += 1
+                else:
+                    print("%s ok   %-26s → %s" % (mid, desc, "、".join(hit)))
+                    ok += 1
+                write(path, src)
+                continue
+            else:
+                proc, fails, crashed = run_only(sections)
             hit = [e for e in expect if any(e in f for f in fails)]
             if crashed:
                 print("%s CRASH %-26s → 这一跑没出任何断言（rc=%s），结论不作数"

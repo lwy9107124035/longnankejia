@@ -161,7 +161,7 @@
 
     if (!list.length) {
       // 地图上的点都该有出处；真走到这里就是数据出错，宁可明说也不要拿别处的话凑
-      html += '<p class="hm-note">这一版地图上不该出现没有出处的地点——'
+      html += '<p class="hm-note">这一版地图上不该出现没有出处的地点：'
         + '书里没查到「' + esc(p.name) + '」，请反馈给讲解员。</p>';
     } else {
       html += list.slice(0, 5).map(function (h) {
@@ -194,7 +194,7 @@
       return;
     }
     render();
-    textEl.innerHTML = '<div class="hm-lead">这是<b>龙南市</b>的行政边界图，上面标的是'
+    textEl.innerHTML = '<div class="hm-lead">这是龙南市的行政边界图，上面标的是'
       + '《文化典藏》<b>真的写到</b>的地方。点一个地名，下面给出书里讲到它的原句；'
       + '配了客家话录音的那段，点 ▶ 就能听。名字后面的数字是书里提到它的处数。'
       + '<br><span class="hm-src">底图：' + esc(data.source.outline)

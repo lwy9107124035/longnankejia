@@ -478,6 +478,20 @@ def check_hometown_map():
         fail("build_hometown_map.py 丢了「点位必须在县界内」的自检")
 
 
+def check_copy_tells():
+    """界面文案不许再长出套话。量法复用 tests/check_copy_tells.py，避免两处判得不一样。"""
+    try:
+        import check_copy_tells as tells
+    except ImportError:
+        notes.append("check_copy_tells.py 读不到，跳过套话检查")
+        return
+    for rel, hits in tells.scan(ROOT):
+        for word, n in hits.items():
+            fail("界面文案又长出套话：%s 里 %s×%d" % (rel, word, n))
+    notes.append("界面文案套话 0 处（%d 个词、%d 个文件，注释与典藏原文不计）"
+                 % (len(tells.TELLS), len(tells.FILES)))
+
+
 def main():
     os.chdir(ROOT)
     html = check_index_tags()
@@ -490,6 +504,7 @@ def main():
     check_diancang_text_clean()
     check_diancang_pages()
     check_hometown_map()
+    check_copy_tells()
     check_deploy_workflow()
     check_js_syntax()
     check_gitignore()
