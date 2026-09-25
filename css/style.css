@@ -331,6 +331,27 @@ input { font-family: inherit; }
 .send-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: #FFF8EE; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; }
 .send-btn:active { background: var(--primary-deep); transform: scale(0.94); }
 
+/* 语音输入：录音时红圈呼吸，转写时灰底；不可用直接置灰，不藏起来 */
+.mic-btn {
+  width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--primary); background: var(--primary-faint);
+  border: 1px solid var(--line); cursor: pointer; transition: all 0.15s;
+}
+.mic-btn:hover { border-color: var(--primary); }
+.mic-btn:disabled { color: var(--muted); background: var(--paper-deep); cursor: not-allowed; }
+.mic-btn.is-listening {
+  color: #FFF8EE; background: var(--accent); border-color: var(--accent);
+  animation: micPulse 1.15s ease-in-out infinite;
+}
+.mic-btn.is-busy { color: var(--accent); border-color: var(--accent); border-style: dashed; }
+@keyframes micPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(196, 92, 38, 0.45); }
+  55% { box-shadow: 0 0 0 7px rgba(196, 92, 38, 0); }
+}
+.mic-hint { min-height: 14px; margin-top: 5px; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
+.mic-hint:empty { display: none; }
+
 .voice-row { display: flex; justify-content: flex-end; margin-top: 5px; }
 .voice-toggle { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
 .voice-toggle input { display: none; }
@@ -744,7 +765,7 @@ input { font-family: inherit; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .msg, .tab-panel.active, .modal-mask, .modal-card { animation: none; }
+  .msg, .tab-panel.active, .modal-mask, .modal-card, .mic-btn.is-listening { animation: none; }
   .typing-cursor, .thinking-dots span { animation: none; }
   .avatar-stage, .avatar-blink, .avatar-mouth,
   .avatar-wrap.is-talking .avatar-stage, .avatar-wrap.is-thinking .avatar-stage,

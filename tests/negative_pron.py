@@ -23,6 +23,7 @@ except (AttributeError, OSError):
 
 DC = "js/diancang.js"
 HT = "js/hometown.js"
+VI = "js/voice-input.js"
 HM = "js/data-hometown.js"
 RT = "js/router.js"
 IDX = "index.html"
@@ -135,6 +136,50 @@ MUTATIONS = [
      '"places":[{"name":"临塘乡","kind":"town","lat":24.87846,"lon":114.80563,"wiki":"临塘乡","src":"x"},'
      '{"name":"龙南镇"',
      ["每个地点的角标都 ≥1（不画没有出处的点）"], "7d"),
+    # ---------------- 语音输入（js/voice-input.js） ----------------
+    ("V1", "没配密钥也让人按", VI,
+     "    if (!apiKey()) return '还没配置语音识别服务（管理入口里填密钥后可用）';", "",
+     ["没配语音服务时不开始录音并说明原因"], "4e"),
+    ("V2", "转写完自动替观众发出去", VI,
+     "      finish('');",
+     "      finish('');" + chr(10) + "      document.getElementById('sendBtn').click();",
+     ["转写完成不自动发送（说错了观众能改）"], "4e"),
+    ("V3", "没听清也当成功", VI,
+     "      if (!text || text === '🎼') { finish('没听清，再说一次？'); return; }",
+     "      if (false) { finish('没听清，再说一次？'); return; }",
+     ["识别为空时如实说没听清"], "4e"),
+    ("V4", "失败时顺手清掉输入框", VI,
+     "      if (!text || text === '🎼') { finish('没听清，再说一次？'); return; }",
+     "      if (!text) { if (input) input.value = ''; finish('没听清，再说一次？'); return; }",
+     ["识别失败不动已输入的文字"], "4e"),
+    ("V5", "服务报错不吭声", VI,
+     "      finish('语音识别服务没回应（' + String((err && err.message) || err).slice(0, 40)",
+     "      finish(String((err && err.message) || err).slice(0, 0)",
+     ["服务报错时说明原因并回到可点状态"], "4e"),
+    ("V6", "麦克风被拒只说打不开", VI,
+     "      setState('idle', name === 'NotAllowedError' ? '麦克风权限被拒绝，文字输入照常可用'",
+     "      setState('idle', name === 'NotAllowedError' ? '打不开麦克风'",
+     ["麦克风被拒时给出具体原因"], "4e"),
+    ("V7", "说到时限不自动收", VI,
+     "      timer = setTimeout(function () { if (state === 'listening') stop(); }, cfg().maxMs);",
+     "      timer = null;",
+     ["说到最长时限自动停止并转写"], "4e"),
+    ("V8", "上传不带密钥", VI,
+     "      headers: { Authorization: 'Bearer ' + apiKey() },", "      headers: {},",
+     ["上传确实打到了 ASR 接口（POST + Bearer + 录音）"], "4e"),
+    ("V9", "根本没开始采集", VI,
+     "      rec.start();", "      void rec;",
+     ["按下后真的开始采集麦克风"], "4e"),
+    ("V10", "把谷歌那套接回来", VI,
+     "  window.VoiceInput = { init: init, toggle: toggle, stop: stop, start: start,",
+     "  var SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;" + chr(10)
+     + "  var sr = SR ? new SR() : null;" + chr(10)
+     + "  window.VoiceInput = { init: init, toggle: toggle, stop: stop, start: start,",
+     ["语音模块不依赖谷歌那套 webkitSpeechRecognition"], "4e"),
+    ("V11", "麦克风按钮从输入条里挪走", IDX,
+     "          <button class=\"mic-btn\" id=\"micBtn\" type=\"button\" aria-label=\"按住说话：语音输入\" aria-pressed=\"false\">",
+     "          <button class=\"mic-btn\" id=\"micBtn\" type=\"button\" aria-hidden=\"true\">",
+     ["输入条里有麦克风按钮（图标 + 无障碍标签）"], "4e"),
 ]
 
 

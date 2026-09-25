@@ -156,6 +156,7 @@
     try { window.Diancang.init(); } catch (e) { console.error('Diancang.init error:', e); }
     try { window.Dialect.init(); } catch (e) { console.error('Dialect.init error:', e); }
     try { if (window.Hometown) window.Hometown.init(); } catch (e) { console.error('Hometown.init error:', e); }
+    try { if (window.VoiceInput) window.VoiceInput.init(); } catch (e) { console.error('VoiceInput.init error:', e); }
 
     // 主内容 Tab 切换：走 Router，让每个视图都有可分享的地址
     var tabs = document.querySelectorAll('.main-tab');

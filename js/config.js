@@ -41,6 +41,16 @@ window.APP_CONFIG = {
         '每次回答控制在 120 字以内，可适当使用一个 emoji。'
     },
 
+    // 语音输入（问答框的麦克风）：录音走 MediaRecorder，转写用国内可直连的 ASR 接口，
+    // 与问答共用同一个 apiKey。刻意不用 Chrome 自带的 webkitSpeechRecognition——
+    // 那个要把音频发到谷歌服务器，馆内网络连不通，点了只会转到超时。
+    asr: {
+      url: 'https://api.siliconflow.cn/v1/audio/transcriptions',
+      model: 'FunAudioLLM/SenseVoiceSmall',
+      language: 'zh',
+      maxMs: 20000
+    },
+
     // 规则引擎：最低置信度阈值，低于此值走兜底回答
     minScore: 1.0,
     // 命中后模拟的思考延迟（毫秒），让演示节奏更自然

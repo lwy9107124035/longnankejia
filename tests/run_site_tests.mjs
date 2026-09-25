@@ -24,7 +24,7 @@ const PORT = 8931;
 const CDP_PORT = 9333;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-// --only=7c,7d 只跑指定小节（反向用例逐个变异时要跑几十遍，整套一遍 4 分钟跑不起）
+// --only=7c,7d,4e 只跑指定小节（反向用例逐个变异时要跑几十遍，整套一遍 4 分钟跑不起）
 const ONLY = ((process.argv.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -142,6 +142,9 @@ async function launchChrome(headed) {
     '--user-data-dir=' + path.join(os.tmpdir(), 'alan-chrome-profile'),
     '--no-first-run', '--no-default-browser-check', '--disable-gpu',
     '--allow-file-access-from-files',
+    // 语音输入那节要真的走一遍录音：无头环境给一个假麦克风（发的是嘟嘟音），
+    // 并自动同意授权弹窗——被拒那条路径另有断言，用 stub 显式制造。
+    '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream',
     headed ? '' : '--headless=new',
     'about:blank',
   ].filter(Boolean);
@@ -225,10 +228,11 @@ async function run() {
   check('title is the assistant', (await page.evaluate('document.title')).includes('龙南客家非遗数字助手'));
 
   if (ONLY.length) {
-    // 7c / 7d 两节只依赖冷启动后的 DOM（面板元素一直在文档里），可以单独跑
+    // 7c / 7d / 4e 各节只依赖冷启动后的 DOM（面板元素一直在文档里），可以单独跑
     await page.evaluate(`document.querySelector('[data-panel="panelDiancang"]').click()`);
     if (ONLY.includes('7c')) await sectionDcFind();
     if (ONLY.includes('7d')) await sectionHometown();
+    if (ONLY.includes('4e')) { await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`); await sectionVoice(); }
     return { passed, failed, results };
   }
 
@@ -414,6 +418,185 @@ async function run() {
     !!routing.live && ((routing.live.source === 'api' && routing.live.len > 4)
       || (routing.live.fallback === true) || (routing.live.source === 'rules')),
     JSON.stringify(routing.live));
+
+  async function sectionVoice() {
+  console.log('\n4e. 问答框的语音输入');
+  await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`);
+  const vb = await page.evaluate(`(() => { const b = document.getElementById('micBtn');
+    const svg = b && b.querySelector('svg');
+    return { present: !!b, label: b ? b.getAttribute('aria-label') : '',
+             pressed: b ? b.getAttribute('aria-pressed') : '', inBar: !!(b && b.closest('.input-bar')),
+             hasIcon: !!svg, disabled: b ? b.disabled : null,
+             unavailable: window.VoiceInput.unavailable(),
+             cfg: window.APP_CONFIG.ai.asr }; })()`);
+  check('输入条里有麦克风按钮（图标 + 无障碍标签）',
+    vb.present && vb.inBar && vb.hasIcon && /语音输入/.test(vb.label || ''), JSON.stringify(vb).slice(0, 90));
+  check('可用性判断与置灰一致',
+    (vb.unavailable ? vb.disabled : !vb.disabled), JSON.stringify({ u: vb.unavailable, d: vb.disabled }));
+  check('语音走国内可直连的 ASR，不用谷歌那套',
+    /siliconflow/.test(vb.cfg.url) && vb.cfg.model.indexOf('SenseVoice') > -1,
+    vb.cfg.url + ' · ' + vb.cfg.model);
+  // 直接把模块源码读回来查：Chrome 自带的识别要把音频发到谷歌服务器，
+  // 馆内网络连不通，一旦有人"顺手加回去"这条会红。
+  const srcText = await page.evaluate(`fetch('js/voice-input.js').then((r) => r.text())`, true);
+  // 模块头注释里就写着"为什么不用 webkitSpeechRecognition"，所以判的是有没有实例化它
+  // 头注释里就写着「为什么不用 webkitSpeechRecognition」，所以判的是代码里有没有：
+  // 先把块注释和行注释剥掉，别名（var SR = window.SpeechRecognition; new SR()）也躲不过。
+  // 先剥掉注释行再判：模块头注释里写着「为什么不用 webkitSpeechRecognition」，
+  // 那是在解释不用它，不是用了它；而别名 var SR = window.SpeechRecognition 是代码行，
+  // 剥不掉，所以这条能抓到把谷歌那套接回来的改动。
+  const codeOnly = srcText.split('\n').filter((l) => {
+    const t = l.trim();
+    return !(t.indexOf('\/\/') === 0 || t.indexOf('*') === 0
+      || t.indexOf('\/*') === 0);
+  }).join('\n');
+  check('语音模块不依赖谷歌那套 webkitSpeechRecognition',
+    !/SpeechRecognition/.test(codeOnly) && /new MediaRecorder/.test(codeOnly),
+    '注释之外仍出现 ' + (/SpeechRecognition/.test(codeOnly) ? 'SpeechRecognition' : '无')
+      + ' / ' + (/new MediaRecorder/.test(codeOnly) ? '有 MediaRecorder' : '没有 MediaRecorder'));
+  // 把上传换成可控替身：状态机每条分支都要能单独验，不能靠真服务的脸色
+  await page.evaluate(`(() => {
+    window.__calls = [];
+    window.__origFetch = window.fetch;
+    window.__origGum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    window.__reply = { status: 200, body: { text: '龙南围屋有什么特点' } };
+    window.fetch = function (url, opt) {
+      window.__calls.push({ url: String(url), method: opt && opt.method,
+        auth: opt && opt.headers && (opt.headers.Authorization || opt.headers.authorization || ''),
+        body: opt && opt.body });
+      if (window.__reply.status !== 200) {
+        return Promise.resolve({ ok: false, status: window.__reply.status,
+          text: function () { return Promise.resolve('boom'); } });
+      }
+      return Promise.resolve({ ok: true, status: 200,
+        json: function () { return Promise.resolve(window.__reply.body); } });
+    };
+  })()`);
+  const press = () => page.evaluate(`document.getElementById('micBtn').click()`);
+  const micState = () => page.evaluate(`(() => ({ state: window.VoiceInput.state(),
+    pressed: document.getElementById('micBtn').getAttribute('aria-pressed'),
+    hint: document.getElementById('micHint').textContent,
+    value: document.getElementById('chatInput').value,
+    disabled: document.getElementById('micBtn').disabled }))()`);
+
+  // 按第一次只是"开始请求麦克风"，getUserMedia 回来之后才真的在录；
+  // 不等它就按第二次，录到的是 0 字节，测的就不是同一条路径了。
+  // 整套跑下来前面已经聊过几句，只能比“有没有多出新的气泡”，不能要求历史为空
+  const msgBefore = await page.evaluate(`document.querySelectorAll('.msg-user, .msg-bot').length`);
+  const arm = () => page.evaluate(`(() => { document.getElementById('chatInput').value = '';
+    document.getElementById('micBtn').click(); return true; })()`);
+  const waitCapture = () => until(page, `window.VoiceInput.capturing()`, 6000);
+  await arm();
+  check('按下后真的开始采集麦克风', await waitCapture());
+  await sleep(400);
+  const listening = await micState();
+  check('点一下进入"正在听"，按钮标成按下态',
+    listening.state === 'listening' && listening.pressed === 'true' && /正在听/.test(listening.hint),
+    JSON.stringify(listening));
+  await press();
+  const ok = await until(page, `window.VoiceInput.state() === 'idle'`, 12000);
+  const done = await micState();
+  const up = await page.evaluate(`window.__calls.map((c) => ({ url: c.url, method: String(c.method),
+    hasAuth: /^Bearer sk-/.test(c.auth || ''), isForm: !!(c.body && c.body.get) }))`);
+  check('再点一下结束并把文字填进输入框',
+    ok && done.value === '龙南围屋有什么特点' && done.state === 'idle', JSON.stringify(done));
+  check('上传确实打到了 ASR 接口（POST + Bearer + 录音）',
+    up.length === 1 && /transcriptions/.test(up[0].url) && up[0].method === 'POST'
+      && up[0].hasAuth && up[0].isForm, JSON.stringify(up));
+  const formFields = await page.evaluate(`(() => {
+    const b = window.__calls[0] && window.__calls[0].body;
+    if (!b || !b.get) return null;
+    return { model: b.get('model'), lang: b.get('language'),
+             file: b.get('file') && b.get('file').size > 0 ? '有' : '空' }; })()`);
+  check('表单带 model / language / 非空音频', !!formFields && !!formFields.model && formFields.file === '有',
+    JSON.stringify(formFields));
+  check('转写完成不自动发送（说错了观众能改）', await page.evaluate(
+    `document.querySelectorAll('.msg-user, .msg-bot').length === ${msgBefore}
+      && !document.getElementById('sendBtn').disabled`));
+
+  // 服务返回空 → 明说"没听清"
+  await page.evaluate(`(() => { document.getElementById('chatInput').value = '';
+    window.__reply = { status: 200, body: { text: '' } }; })()`);
+  await arm(); await waitCapture(); await sleep(300); await press();
+  const empty = await until(page, `window.VoiceInput.state() === 'idle'
+    && /没听清/.test(document.getElementById('micHint').textContent)`, 12000);
+  check('识别为空时如实说没听清', empty, JSON.stringify(await micState()));
+
+  // 上一轮没听清，不能顺手把观众已经打好的字清掉
+  // 这条不能用 arm()：arm 会把输入框清空，那就等于自己把要保护的东西擦掉了
+  await page.evaluate(`document.getElementById('chatInput').value = '留着的话'`);
+  await press(); await waitCapture(); await sleep(300); await press();
+  await until(page, `window.VoiceInput.state() === 'idle'`, 12000);
+  check('识别失败不动已输入的文字', await page.evaluate(
+    `document.getElementById('chatInput').value === '留着的话'`));
+
+  // 服务 500 → 说明原因并回到可点状态，不能卡在转写
+  await page.evaluate(`(() => { window.__reply = { status: 500, body: {} }; })()`);
+  await arm(); await waitCapture(); await sleep(300); await press();
+  const err = await until(page, `window.VoiceInput.state() === 'idle'
+    && /语音识别服务没回应/.test(document.getElementById('micHint').textContent)`, 12000);
+  const errState = await micState();
+  check('服务报错时说明原因并回到可点状态', err && !errState.disabled, JSON.stringify(errState));
+
+  // 麦克风被拒 → 说清是被拒，且文字输入照常
+  await page.evaluate(`navigator.mediaDevices.getUserMedia = () => Promise.reject(
+      Object.assign(new Error('denied'), { name: 'NotAllowedError' }));`);
+  await arm();
+  const denied = await until(page, `window.VoiceInput.state() === 'idle'
+    && /权限被拒绝/.test(document.getElementById('micHint').textContent)`, 6000);
+  check('麦克风被拒时给出具体原因', denied, JSON.stringify(await micState()));
+  check('被拒之后文字输入仍可用', await page.evaluate(
+    `!document.getElementById('chatInput').disabled && !document.getElementById('sendBtn').disabled`));
+  await page.evaluate(`navigator.mediaDevices.getUserMedia = window.__origGum;`);
+
+  // 说到超时自动收：把上限压到 900ms
+  await page.evaluate(`(() => { document.getElementById('chatInput').value = '';
+    window.__reply = { status: 200, body: { text: '自动收尾' } };
+    window.APP_CONFIG.ai.asr.maxMs = 900; })()`);
+  await arm(); await waitCapture();
+  const autoStopped = await until(page, `window.VoiceInput.state() !== 'listening'`, 8000);
+  const auto = await until(page, `document.getElementById('chatInput').value === '自动收尾'`, 15000);
+  check('说到最长时限自动停止并转写', autoStopped && auto, JSON.stringify(await micState()));
+  await page.evaluate(`window.APP_CONFIG.ai.asr.maxMs = 20000;`);
+
+  // 真链路（不 stub fetch）：假麦克风录的是嘟嘟音，识别结果可能为空——
+  // 但无论哪条分支都必须留下可读的状态，绝不允许静默。
+  const live = await page.evaluate(`(async () => {
+    window.fetch = window.__origFetch;
+    const before = document.getElementById('chatInput').value;
+    document.getElementById('micBtn').click();
+    await new Promise((r) => setTimeout(r, 700));
+    document.getElementById('micBtn').click();
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      if (window.VoiceInput.state() === 'idle') break;
+    }
+    return { state: window.VoiceInput.state(), hint: document.getElementById('micHint').textContent,
+             changed: document.getElementById('chatInput').value !== before };
+  })()`, true);
+  check('真实上传要么出字、要么说明原因（不许静默）',
+    live.state === 'idle' && (live.changed || live.hint.length > 0), JSON.stringify(live));
+    // 没配密钥时不能让人对着一个坏掉的按钮空按：要说清楚为什么。
+  // 密钥有两个来源（secrets.js 的运行时值 + config.js 里加载时的快照），要一起清掉才算。
+  const noKey = await page.evaluate(`(() => {
+    const keepS = window.APP_SECRETS.apiKey, keepC = window.APP_CONFIG.ai.api.apiKey;
+    window.APP_SECRETS.apiKey = ''; window.APP_CONFIG.ai.api.apiKey = '';
+    const why = window.VoiceInput.unavailable();
+    document.getElementById('micBtn').click();
+    const out = { hint: document.getElementById('micHint').textContent,
+                  state: window.VoiceInput.state(), why: why };
+    window.APP_SECRETS.apiKey = keepS; window.APP_CONFIG.ai.api.apiKey = keepC;
+    return out;
+  })()`);
+  check('没配语音服务时不开始录音并说明原因',
+    noKey.state === 'idle' && /没配置语音识别服务/.test(noKey.why) && /没配置语音识别服务/.test(noKey.hint),
+    JSON.stringify(noKey));
+
+await page.evaluate(`(() => { window.fetch = window.__origFetch;
+    document.getElementById('chatInput').value = ''; })()`);
+  }
+
+  await sectionVoice();
 
   console.log('\n5. 科普 panel');
   await page.evaluate(`document.querySelector('[data-panel="panelHeritage"]').click()`);
