@@ -681,96 +681,18 @@ input { font-family: inherit; }
 .dc-find-sent mark { background: var(--accent-soft); color: var(--primary-deep); padding: 0 2px; border-radius: 2px; }
 
 /* ---------- 方言：字 → 客家话读音（三层来源） ---------- */
-.pr-box {
-  margin-bottom: 14px; padding: 12px;
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+/* 家乡：书里讲到这个地方的原句 */
+.hm-quote {
+  margin: 10px 0 0; padding: 10px 12px; background: var(--paper);
+  border-left: 3px solid var(--primary); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
-.pr-title { font-family: "KaiTi", serif; font-size: 17px; font-weight: 700; color: var(--primary-deep); }
-.pr-sub { font-size: 11px; line-height: 1.7; color: var(--ink-soft); margin-top: 4px; }
-.pr-find { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; margin-top: 10px; }
-.pr-find input {
-  min-width: 0; padding: 10px 12px;
-  font-family: inherit; font-size: 14px; color: var(--ink);
-  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm);
-}
-.pr-find input:focus { outline: none; border-color: var(--primary); }
-.pr-btn {
-  padding: 10px 14px; font-family: inherit; font-size: 13px; font-weight: 700;
-  color: #fff; background: var(--primary); border: none; border-radius: var(--radius-sm); cursor: pointer;
-}
-.pr-status { margin-top: 8px; font-size: 11px; color: var(--muted); }
-.pr-out:empty { display: none; }
-.pr-layer { margin-top: 10px; padding: 10px 11px; border-radius: var(--radius-sm); border: 1px solid var(--line); }
-.pr-layer h4 { margin: 0 0 6px; font-size: 12px; color: var(--primary-deep); }
-.pr-local { background: var(--primary-faint); border-color: var(--primary); }
-.pr-moe { background: var(--paper); }
-.pr-audio { background: var(--accent-soft); }
-.pr-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 4px 0; font-size: 13px; }
-.pr-row b { color: var(--primary-deep); min-width: 3.5em; }
-.pr-row code { font-size: 13px; color: var(--ink); background: rgba(255, 255, 255, 0.7); padding: 1px 6px; border-radius: 4px; }
-.pr-src { font-size: 10px; color: var(--muted); }
-.pr-sent { font-size: 11px; color: var(--ink-soft); }
-.pr-note { margin: 6px 0 0; font-size: 10px; line-height: 1.6; color: var(--muted); }
-.pr-warn { color: #8A5A00; }
-.pr-miss { color: var(--muted); font-style: italic; }
-.pr-play {
-  padding: 4px 10px; font-family: inherit; font-size: 12px;
-  color: var(--primary-deep); background: #fff;
-  border: 1px solid var(--primary); border-radius: 999px; cursor: pointer;
-}
-
-/* ======== 家乡：真实边界地图 + 地点说明框 ======== */
-/* 整站是 440px 的手机形栏目，这里不做左右分栏：两栏会把地图压到看不清。 */
-.hm-wrap { display: block; }
-.hm-map {
-  padding: 6px; background: var(--paper);
-  border: 1px solid var(--line); border-radius: var(--radius);
-}
-.hm-svg { display: block; width: 100%; height: auto; max-height: 54vh; }
-.hm-land {
-  fill: var(--primary-faint); stroke: var(--primary);
-  stroke-width: 1.6; stroke-linejoin: round;
-}
-.hm-place { cursor: pointer; }
-.hm-place:focus { outline: none; }
-.hm-place:focus .hm-dot { stroke: var(--accent); stroke-width: 2.6; }
-.hm-dot { fill: var(--primary); stroke: #fff; stroke-width: 1.2; }
-.hm-kind-site { fill: var(--accent); }
-.hm-kind-seat { fill: var(--primary-deep); }
-.hm-place:hover .hm-dot, .hm-place.is-active .hm-dot { fill: var(--accent); stroke-width: 2; }
-.hm-label {
-  font-size: 12px; fill: var(--ink); pointer-events: none;
-  /* 描边当底色，标签压在县界线上也读得清 */
-  paint-order: stroke; stroke: var(--paper); stroke-width: 3px; stroke-linejoin: round;
-}
-.hm-badge { font-size: 9px; fill: var(--accent); }
-.hm-leader { stroke: var(--muted); stroke-width: 0.8; }
-.hm-text {
-  padding: 12px 13px; background: var(--card);
-  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
-}
-.hm-lead { font-size: 12px; line-height: 1.8; color: var(--ink-soft); }
-.hm-src { display: block; margin-top: 8px; font-size: 10px; line-height: 1.7; color: var(--muted); }
-.hm-name { font-family: "KaiTi", serif; font-size: 19px; font-weight: 700; color: var(--primary-deep); }
-.hm-geo { display: block; margin-top: 2px; font-size: 10px; color: var(--muted); font-family: inherit; font-weight: 400; }
-.hm-rough { margin-left: 6px; color: #8A5A00; }
-.hm-h { margin: 12px 0 4px; font-size: 12px; color: var(--primary-deep); }
-.hm-loading, .hm-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; color: var(--muted); }
-.hm-items { margin: 4px 0 0; padding: 0; list-style: none; }
-.hm-items li { margin-top: 6px; }
-.hm-item {
-  display: grid; gap: 2px; width: 100%; padding: 8px 10px; text-align: left;
-  font-family: inherit; background: var(--paper); border: 1px solid var(--line);
-  border-radius: var(--radius-sm); cursor: pointer;
-}
+.hm-quote-text { margin: 0; font-size: 13px; line-height: 1.85; color: var(--ink); }
+.hm-quote-text mark { background: var(--accent-soft); color: var(--accent); padding: 0 2px; }
+.hm-quote-src { margin-top: 6px; font-size: 10px; color: var(--muted); }
+.hm-play { margin-top: 8px; padding: 5px 11px; font-family: inherit; font-size: 12px;
+  color: var(--primary-deep); background: #fff; border: 1px solid var(--primary);
+  border-radius: 999px; cursor: pointer; }
 .hm-item:disabled { cursor: default; opacity: 0.72; }
-.hm-item-name { font-size: 13px; font-weight: 700; color: var(--ink); }
-.hm-item-sub { font-size: 10px; color: var(--muted); }
-.hm-item-sent { font-size: 11px; line-height: 1.6; color: var(--ink-soft); }
-@media (max-width: 900px) {
-  .hm-wrap { grid-template-columns: 1fr; }
-  .hm-svg { max-height: 52vh; }
-}
 
 .dl-now {
   display: flex; align-items: center; gap: 10px;

@@ -1,14 +1,12 @@
 /**
- * 「家乡」地图：点龙南的一个地方，看它用客家话怎么念、书里有没有讲它。
+ * 「家乡」地图：点龙南的一个地方，看书里怎么讲它、听它的客家话原声讲解。
  *
  * 底图与点位坐标都是真实数据（来源与取数日期见 js/data-hometown.js 的注释），不是手绘示意：
- * 博物馆里把围屋画错地方就是错信息，所以生成脚本拿不到坐标时宁可少画一个点。
+ * 博物馆里把围屋画错地方就是错信息，所以生成脚本拿不到坐标的点宁可少画。
  *
- * 一个地方给两层内容：
- *  ① 地名本身的客家话读音 —— 复用方言模块的三层来源（书内注音 / 萌典六腔 / 原声），
- *     萌典那层是台湾客家腔，界面上照旧带着那句提醒。
- *  ② 《文化典藏》里以这个地方为出处的展品 —— 有原声的直接点开听。
- * 书里没记的地方（例如临塘乡）就明说没记，只给读音，不编内容。
+ * 地图上只画《文化典藏》真的写到的地方。书里没记的乡镇（临塘乡、武当镇等）不标——
+ * 点了没东西可讲的点，等于让观众白点一次；与其给一句空话，不如不画。
+ * 介绍文字一律取自书中原文，不做任何补写。
  */
 (function () {
   'use strict';
@@ -20,6 +18,14 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  }
+
+  /** 把书里提到地名的那几个字标出来，给观众一眼看到出处。 */
+  function markWord(sentence, word) {
+    var at = String(sentence || '').indexOf(word);
+    if (!word || at === -1) return esc(sentence || '');
+    return esc(sentence.slice(0, at)) + '<mark>' + esc(word) + '</mark>'
+      + esc(sentence.slice(at + word.length));
   }
 
   /** 等距投影，经度按中纬度压缩，再整体居中——不压缩的话县界会被横向拉长。 */
@@ -71,37 +77,39 @@
   }
 
   /**
-   * 这个地方在书里对应哪些展品。必须真的写到这个名字（含去掉"镇/乡"后缀的通名，
-   * 因为书里常写"汶龙"而不是"汶龙镇"）——检索的片段兜底只保证"有两个字重合"，
-   * 直接用会把"太平桥"绑到只是提到"太平"的地方，那就是编关联了。
+   * 这个地方在书里对应哪些展品。必须真的写到这个名字——检索的片段兜底只保证
+   * "有两个字重合"，直接用会把"太平桥"绑到只是提到"太平"的地方，那就是编关联了。
+   * 书里常写通名（"汶龙"而不是"汶龙镇"），所以全名查不到时才退到去掉"镇/乡"的通名：
+   * 一上来就两个都查，"龙南镇"会退成"龙南"，全县 29 处都算它头上，角标就成了噪声。
    */
   function exhibitsFor(name) {
     if (!window.Diancang || !window.Diancang.search || !name) return [];
     var words = [name];
     var core = String(name).replace(/(镇|乡|县城)$/, '');
     if (core && core !== name) words.push(core);
-    var out = [];
-    words.forEach(function (w) {
-      window.Diancang.search(w).forEach(function (h) {
-        var dup = out.some(function (x) { return x.item === h.item; });
-        if (!dup && mentions(h.item, w)) out.push(h);
+    for (var w = 0; w < words.length; w++) {
+      var picked = [];
+      window.Diancang.search(words[w]).forEach(function (h) {
+        var dup = picked.some(function (x) { return x.item === h.item; });
+        if (!dup && mentions(h.item, words[w])) picked.push(h);
       });
-    });
-    return out.slice(0, 6);
+      if (picked.length) return picked;
+    }
+    return [];
   }
 
   function render() {
     var proj = projector();
     var svg = ['<svg viewBox="0 0 ' + W + ' ' + H + '" class="hm-svg" role="group" '
-      + 'aria-label="龙南市家乡地图，点一个地名看它的客家话读音">'];
+      + 'aria-label="龙南市家乡地图，点一个地名看书里怎么讲它">'];
     svg.push('<path class="hm-land" d="' + outlinePath(proj) + '"></path>');
     placeSpots(proj).forEach(function (d) {
       var p = data.places[d.idx];
       var n = exhibitsFor(p.name).length;
       svg.push('<g class="hm-place" data-i="' + d.idx + '" tabindex="0" role="button"'
-        + ' aria-label="' + esc(p.name) + (n ? '，书里有 ' + n + ' 件相关展品' : '，书里没有以这里为地点的展品') + '">'
+        + ' aria-label="' + esc(p.name) + '，书里有 ' + n + ' 处讲到它">'
         + '<text class="hm-label" x="' + d.x.toFixed(1) + '" y="' + d.ly.toFixed(1) + '" text-anchor="middle">'
-        + esc(p.name) + (n ? '<tspan class="hm-badge">' + n + '</tspan>' : '') + '</text>'
+        + esc(p.name) + '<tspan class="hm-badge">' + n + '</tspan></text>'
         + '<line class="hm-leader" x1="' + d.x.toFixed(1) + '" y1="' + (d.ly + 3).toFixed(1)
         + '" x2="' + d.x.toFixed(1) + '" y2="' + (d.y - 6).toFixed(1) + '"></line>'
         + '<circle class="hm-dot hm-kind-' + esc(p.kind) + '" cx="' + d.x.toFixed(1) + '" cy="' + d.y.toFixed(1)
@@ -120,71 +128,60 @@
     });
   }
 
-  function exhibitRows(list) {
-    if (!list.length) {
-      return '<p class="hm-note">《文化典藏》里没有以这个地方为出处的展品，所以下面只给读法，'
-        + '不编内容。想听原声，点地图上带数字角标的地点。</p>';
-    }
-    return '<ul class="hm-items">' + list.map(function (h) {
-      return '<li><button class="hm-item" type="button"'
-        + ' data-name="' + esc(h.item.name) + '"'
-        + (h.item.videoUrl ? ' data-url="' + esc(h.item.videoUrl) + '"' : ' disabled') + '>'
-        + '<span class="hm-item-name">' + esc(h.item.name) + (h.item.videoUrl ? ' 🔊' : '') + '</span>'
-        + '<span class="hm-item-sub">第 ' + esc(h.item.page) + ' 页 · ' + esc(h.chapter) + '</span>'
-        + '<span class="hm-item-sent">' + esc((h.sentence || h.item.desc || '').slice(0, 74)) + '</span>'
-        + '</button></li>';
-    }).join('') + '</ul>';
+  /** 一处原文：展品名 + 书里页码 + 提到这个地名的那句话 + 有原声就能听。 */
+  function quoteBlock(h, word) {
+    var it = h.item;
+    var sent = h.sentence || it.desc || '';
+    var audio = it.videoUrl
+      ? '<button class="hm-item hm-play" type="button" data-name="' + esc(it.name)
+        + '" data-url="' + esc(it.videoUrl) + '">▶ 听这段客家话讲解</button>'
+      : '';
+    return '<blockquote class="hm-quote">'
+      + '<p class="hm-quote-text">' + markWord(sent, word) + '</p>'
+      + '<footer class="hm-quote-src">——《文化典藏》第 ' + esc(it.page) + ' 页 · '
+      + esc(it.name) + '（' + esc(h.chapter) + '）' + (it.videoUrl ? ' · 有原声' : '') + '</footer>'
+      + audio + '</blockquote>';
   }
 
   function select(p) {
     if (!p) return;
     selected = p;
     Array.prototype.forEach.call(mapEl.querySelectorAll('.hm-place'), function (g) {
-      var on = parseInt(g.getAttribute('data-i'), 10) === data.places.indexOf(p);
-      g.classList.toggle('is-active', on);
+      g.classList.toggle('is-active', parseInt(g.getAttribute('data-i'), 10) === data.places.indexOf(p));
     });
+
+    var word = String(p.name).replace(/(镇|乡|县城)$/, '');
     var list = exhibitsFor(p.name);
-    var rough = p.kind === 'site' ? '<span class="hm-rough">条目坐标只精确到约 1 公里</span>' : '';
-    // 展品列表是本地数据，先画出来；读法那层要等萌典接口，慢的时候不能把整块都拖空
-    textEl.innerHTML = '<div class="hm-name">' + esc(p.name) + '</div>'
+    var withAudio = list.filter(function (h) { return h.item.videoUrl; });
+    var html = '<div class="hm-name">' + esc(p.name) + '</div>'
       + '<div class="hm-geo">' + p.lat.toFixed(4) + '°N&nbsp;&nbsp;' + p.lon.toFixed(4) + '°E'
-      + rough + '</div>'
-      + '<div class="hm-loading">正在查「' + esc(p.name) + '」的客家话读法…</div>'
-      + '<h4 class="hm-h">书里讲到这里的东西</h4>' + exhibitRows(list);
-    bindItems();
+      + (p.kind === 'site' ? '<span class="hm-rough">条目坐标只精确到约 1 公里</span>' : '') + '</div>'
+      + '<p class="hm-lead">《文化典藏》里有 <b>' + list.length + '</b> 处讲到这里，其中 <b>'
+      + withAudio.length + '</b> 处配了客家话原声。下面这些句子都是书里的原文。</p>';
 
-    function paintReadings(html) {
-      if (selected !== p) return;              // 连点两个地方时，旧结果不再上屏
-      var box = textEl.querySelector('.hm-loading');
-      var holder = document.createElement('div');
-      holder.innerHTML = '<h4 class="hm-h">这里的客家话读法</h4>' + html;
-      if (box && box.parentNode) box.parentNode.replaceChild(holder, box);
-      bindItems();
-    }
-
-    function bindItems() {
-      // 读法那层的 ▶ 按钮是 pron.js 生成的，交给它自己绑，行为与方言面板一致
-      if (window.Pron && window.Pron.bindPlay) window.Pron.bindPlay(textEl);
-      Array.prototype.forEach.call(textEl.querySelectorAll('.hm-item'), function (b) {
-        b.addEventListener('click', function () {
-          var url = b.getAttribute('data-url');
-          if (url && window.Diancang) {
-            window.Diancang.playVideo({ name: b.getAttribute('data-name'), videoUrl: url });
-          }
-        });
-      });
-    }
-
-    if (window.Pron && window.Pron.layers) {
-      window.Pron.layers(p.name).then(function (r) {
-        paintReadings(r.html);
-      }, function () {
-        paintReadings('<p class="hm-note">读法没查到（萌典那一层要联网）。</p>');
-      });
+    if (!list.length) {
+      // 地图上的点都该有出处；真走到这里就是数据出错，宁可明说也不要拿别处的话凑
+      html += '<p class="hm-note">这一版地图上不该出现没有出处的地点——'
+        + '书里没查到「' + esc(p.name) + '」，请反馈给讲解员。</p>';
     } else {
-      paintReadings('<p class="hm-note">读音模块没加载。</p>');
+      html += list.slice(0, 5).map(function (h) {
+        return quoteBlock(h, mentions(h.item, p.name) ? p.name : word);
+      }).join('');
+      if (list.length > 5) {
+        html += '<p class="hm-note">另有 ' + (list.length - 5) + ' 处提到，可在「典藏」里搜「'
+          + esc(word) + '」看全。</p>';
+      }
     }
-    bindItems();
+    textEl.innerHTML = html;
+
+    Array.prototype.forEach.call(textEl.querySelectorAll('.hm-play'), function (b) {
+      b.addEventListener('click', function () {
+        var url = b.getAttribute('data-url');
+        if (url && window.Diancang) {
+          window.Diancang.playVideo({ name: b.getAttribute('data-name'), videoUrl: url });
+        }
+      });
+    });
   }
 
   function init() {
@@ -197,9 +194,9 @@
       return;
     }
     render();
-    textEl.innerHTML = '<div class="hm-lead">这是<b>龙南市</b>的行政边界图。点一个地名：'
-      + '上面给它的<b>客家话读法</b>，下面列《文化典藏》里<b>以这个地方为出处</b>的展品，'
-      + '带 🔊 的直接点开就能听原声；名字后面的数字就是相关展品的件数。'
+    textEl.innerHTML = '<div class="hm-lead">这是<b>龙南市</b>的行政边界图，上面标的是'
+      + '《文化典藏》<b>真的写到</b>的地方。点一个地名，下面给出书里讲到它的原句；'
+      + '配了客家话录音的那段，点 ▶ 就能听。名字后面的数字是书里提到它的处数。'
       + '<br><span class="hm-src">底图：' + esc(data.source.outline)
       + '<br>坐标：' + esc(data.source.points) + '，' + esc(data.retrieved) + ' 取数</span></div>';
   }
