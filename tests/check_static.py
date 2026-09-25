@@ -30,6 +30,12 @@ def fail(msg):
     failures.append(msg)
 
 
+def has_rule(css, cls):
+    """CSS 里有没有这个类的选择器。必须整段匹配到结尾，
+    否则 .hm-kind-town-off 会被当成 .hm-kind-town 命中。"""
+    return re.search(r"\." + re.escape(cls) + r"(?![\w-])", css) is not None
+
+
 def read(path):
     with open(path, encoding="utf-8") as f:
         return f.read()
@@ -468,6 +474,33 @@ def check_hometown_map():
     if r.returncode:
         tail = [l for l in (r.stdout or "").splitlines() if l.startswith("  FAIL")]
         fail("家乡地图有点位在书里查不到出处：%s" % ("；".join(tail) or (r.stderr or "")[-120:]))
+    # 这一整块面板是纯展示：JS 里写出来的每个类名都必须在样式里有规则。
+    # 曾经删 .pr-* 时把 .hm-land 一起带走了，SVG 没有 fill 就默认涂黑，
+    # 县界变成一团黑影，而 193 项断言全绿——因为没人检查计算样式。
+    css = read(rel("css", "style.css"))
+    panel = re.search(r'id="panelHometown"[\s\S]*?</div>\s*</div>', html)
+    used = set()
+    for blob in (src, panel.group(0) if panel else ""):
+        for m in re.finditer(r'class="([^"]+)"', blob):
+            # 只要合法类名字符：源码里 class="hm-dot hm-kind-" + esc(kind) 这种拼接，
+            # 正则截出来的是带引号和加号的碎块，得先过滤掉
+            used.update(c for c in m.group(1).split()
+                        if re.fullmatch(r"[a-z][a-z0-9-]*", c) and c.startswith("hm-"))
+    for m in re.finditer(r'classList\.toggle\("([^"]+)"', src):
+        used.add(m.group(1))
+    # 选择器要整个匹配：用 in 判断的话 .hm-kind-town-off 也算命中 .hm-kind-town
+    orphan = sorted(c for c in used if not has_rule(css, c))
+    if orphan:
+        fail("家乡面板这些类名在样式表里没有规则（会退回浏览器默认样式）：%s" % "、".join(orphan))
+    # 点位的三种类型（县城/乡镇/文保点）各自的配色也得在，否则点会全是同一个颜色
+    kinds = {p.get("kind") for p in places if p.get("kind")}
+    miss_kind = sorted("hm-kind-" + k for k in kinds if not has_rule(css, "hm-kind-" + k))
+    if miss_kind:
+        fail("这些点位类型没有对应样式，圆点会缺色：%s" % "、".join(miss_kind))
+    if not has_rule(css, "hm-land") or "fill" not in css.split(".hm-land")[1][:120]:
+        fail(".hm-land 没有 fill：SVG 默认涂黑，整张地图会变成一团黑影")
+    notes.append("家乡面板 %d 个类名全部有样式，县界 fill 在位" % len(used))
+
     notes.append("家乡地图：%d 点县界 + %d 个真实坐标点位（%s 取数），每点均有书内出处"
                  % (len(ring), len(places), data.get("retrieved")))
 

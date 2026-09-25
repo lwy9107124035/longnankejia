@@ -28,6 +28,7 @@ VI = "js/voice-input.js"
 HM = "js/data-hometown.js"
 RT = "js/router.js"
 IDX = "index.html"
+CSS = "css/style.css"
 
 # (编号, 说明, 文件, 原文片段, 替换片段, 期望失败的断言名列表, 只跑哪些节)
 MUTATIONS = [
@@ -177,6 +178,24 @@ MUTATIONS = [
      + "  var sr = SR ? new SR() : null;" + chr(10)
      + "  window.VoiceInput = { init: init, toggle: toggle, stop: stop, start: start,",
      ["语音模块不依赖谷歌那套 webkitSpeechRecognition"], "4e"),
+    ("S2", "删掉县界的填充色", CSS,
+     "  fill: var(--primary-faint); stroke: var(--primary);", "  stroke: var(--primary);",
+     ["县界有填充色而不是 SVG 默认的黑"], "7d"),
+    ("S3", "整条 .hm-land 规则改名", CSS,
+     ".hm-land {", ".hm-land-off {",
+     ["县界有填充色而不是 SVG 默认的黑", "县界描边用主色"], "7d"),
+    ("S4", "删掉地名标签的描边底色", CSS,
+     "  paint-order: stroke; stroke: var(--paper); stroke-width: 3px; stroke-linejoin: round;",
+     "  stroke-width: 3px; stroke-linejoin: round;",
+     ["地名标签带描边底色，压在线上也读得清"], "7d"),
+    ("S5", "删掉乡镇点的显式配色", CSS,
+     ".hm-kind-town { fill: var(--primary); }",
+     ".hm-kind-town-off { fill: var(--primary); }",
+     ["这些点位类型没有对应样式，圆点会缺色"], "static"),
+    ("S6", "删掉地图容器的底色", CSS,
+     "  margin-bottom: 12px; padding: 6px; background: var(--paper);",
+     "  margin-bottom: 12px; padding: 6px;",
+     ["地图容器有自己的底色"], "7d"),
     ("S1", "套话被改回界面文案", UI,
      "tag: '草木染 · 板蓝根制靛',", "tag: '草木染 · 靛蓝匠心',",
      ["界面文案又长出套话"], "static"),

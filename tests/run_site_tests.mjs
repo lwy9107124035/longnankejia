@@ -930,6 +930,31 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   check('地图渲染成真实边界而不是示意图', hm.vertices >= 80, hm.vertices + ' 个顶点');
   check('数据里有几个地点就画几个点', hm.spots.length === hm.places && hm.places >= 6,
     hm.spots.length + ' / ' + hm.places);
+  // 样式没加载时 SVG 会退回默认涂黑，县界变成一团黑影——这个回归真的上线过一次，
+  // 而当时 193 项断言全绿：没有人检查计算样式。下面这几项就是补这一课。
+  const styled = await page.evaluate(`(() => {
+    const q = (sel) => document.querySelector(sel);
+    const cs = (el, p) => (el ? getComputedStyle(el).getPropertyValue(p) : '');
+    const box = q('#hmMap svg') ? q('#hmMap svg').getBoundingClientRect() : { width: 0, height: 0 };
+    return { fill: cs(q('#hmMap .hm-land'), 'fill'), stroke: cs(q('#hmMap .hm-land'), 'stroke'),
+             dot: cs(q('#hmMap .hm-dot'), 'fill'), seat: cs(q('#hmMap .hm-kind-seat'), 'fill'),
+             town: cs(q('#hmMap .hm-kind-town'), 'fill'),
+             halo: cs(q('#hmMap .hm-label'), 'paint-order'),
+             cursor: cs(q('#hmMap .hm-place'), 'cursor'),
+             mapBg: cs(document.getElementById('hmMap'), 'background-color'),
+             w: Math.round(box.width), h: Math.round(box.height) };
+  })()`);
+  check('县界有填充色而不是 SVG 默认的黑',
+    !!styled.fill && styled.fill !== 'rgb(0, 0, 0)' && /240, 246, 243/.test(styled.fill), styled.fill);
+  check('县界描边用主色', /47, 93, 80/.test(styled.stroke), styled.stroke);
+  check('三种点位类型各有配色',
+    [styled.dot, styled.town, styled.seat].every((c) => c && c !== 'rgb(0, 0, 0)')
+      && styled.seat !== styled.dot, [styled.dot, styled.town, styled.seat].join(' / '));
+  check('地名标签带描边底色，压在线上也读得清', /stroke/.test(styled.halo), styled.halo || '无');
+  check('点位显示为可点（cursor: pointer）', styled.cursor === 'pointer', styled.cursor);
+  check('地图容器有自己的底色', styled.mapBg && styled.mapBg !== 'rgba(0, 0, 0, 0)', styled.mapBg);
+  check('地图按容器宽度铺开', styled.w > 200 && styled.h > 200, styled.w + 'x' + styled.h);
+
   const outside = await page.evaluate(`(() => { const d = window.HOMETOWN, b = d.bbox;
     return d.places.filter((p) => p.lon < b[0] || p.lon > b[2] || p.lat < b[1] || p.lat > b[3]).length; })()`);
   check('每个点位都落在龙南市范围内', outside === 0, outside + ' 个点跑出县界');

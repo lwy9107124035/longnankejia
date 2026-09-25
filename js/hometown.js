@@ -133,7 +133,7 @@
     var it = h.item;
     var sent = h.sentence || it.desc || '';
     var audio = it.videoUrl
-      ? '<button class="hm-item hm-play" type="button" data-name="' + esc(it.name)
+      ? '<button class="hm-play" type="button" data-name="' + esc(it.name)
         + '" data-url="' + esc(it.videoUrl) + '">▶ 听这段客家话讲解</button>'
       : '';
     return '<blockquote class="hm-quote">'

@@ -701,7 +701,50 @@ input { font-family: inherit; }
 .dc-find-sent { font-size: 11px; line-height: 1.6; color: var(--ink-soft); }
 .dc-find-sent mark { background: var(--accent-soft); color: var(--primary-deep); padding: 0 2px; border-radius: 2px; }
 
-/* ---------- 方言：字 → 客家话读音（三层来源） ---------- */
+/* ======== 家乡：真实边界地图 + 地点说明框 ======== */
+/* 整站是 440px 的手机形栏目，这里不做左右分栏：两栏会把地图压到看不清。 */
+.hm-wrap { display: block; }
+.hm-map {
+  margin-bottom: 12px; padding: 6px; background: var(--paper);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.hm-svg { display: block; width: 100%; height: auto; max-height: 54vh; }
+/* .hm-land 的 fill 是这块最关键的一条：没有它 SVG 默认涂黑，
+   整个县变成一团黑影（这个回归真的上线过一次，测试全绿）。 */
+.hm-land {
+  fill: var(--primary-faint); stroke: var(--primary);
+  stroke-width: 1.6; stroke-linejoin: round;
+}
+.hm-place { cursor: pointer; }
+.hm-place:focus { outline: none; }
+.hm-place:focus .hm-dot { stroke: var(--accent); stroke-width: 2.6; }
+.hm-dot { fill: var(--primary); stroke: #FFF; stroke-width: 1.2; }
+.hm-kind-town { fill: var(--primary); }   /* 乡镇点用默认色，也写成显式规则，守卫才有得查 */
+.hm-kind-site { fill: var(--accent); }
+.hm-kind-seat { fill: var(--primary-deep); }
+.hm-place:hover .hm-dot, .hm-place.is-active .hm-dot { fill: var(--accent); stroke-width: 2; }
+.hm-label {
+  font-size: 12px; fill: var(--ink); pointer-events: none;
+  /* 描边当底色，标签压在县界线上也读得清 */
+  paint-order: stroke; stroke: var(--paper); stroke-width: 3px; stroke-linejoin: round;
+}
+.hm-badge { font-size: 9px; fill: var(--accent); }
+.hm-leader { stroke: var(--muted); stroke-width: 0.8; }
+.hm-text {
+  padding: 12px 13px; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.hm-lead { font-size: 12px; line-height: 1.8; color: var(--ink-soft); }
+.hm-src { display: block; margin-top: 8px; font-size: 10px; line-height: 1.7; color: var(--muted); }
+.hm-name { font-family: "KaiTi", serif; font-size: 19px; font-weight: 700; color: var(--primary-deep); }
+.hm-geo { margin-top: 2px; font-size: 10px; color: var(--muted); }
+.hm-rough { margin-left: 6px; color: #8A5A00; }
+.hm-h { margin: 12px 0 4px; font-size: 12px; color: var(--primary-deep); }
+.hm-loading, .hm-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; color: var(--muted); }
+@media (max-width: 900px) {
+  .hm-svg { max-height: 46vh; }
+}
+
 /* 家乡：书里讲到这个地方的原句 */
 .hm-quote {
   margin: 10px 0 0; padding: 10px 12px; background: var(--paper);
@@ -713,7 +756,6 @@ input { font-family: inherit; }
 .hm-play { margin-top: 8px; padding: 5px 11px; font-family: inherit; font-size: 12px;
   color: var(--primary-deep); background: #fff; border: 1px solid var(--primary);
   border-radius: 999px; cursor: pointer; }
-.hm-item:disabled { cursor: default; opacity: 0.72; }
 
 .dl-now {
   display: flex; align-items: center; gap: 10px;
