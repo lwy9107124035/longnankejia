@@ -587,17 +587,7 @@ input { font-family: inherit; }
 .footer { margin-top: 20px; padding: 14px 8px 6px; text-align: center; border-top: 1px dashed rgba(47,93,80,0.15); }
 .footer-brand { font-family: "KaiTi", serif; font-size: 13px; font-weight: 700; color: var(--primary-deep); letter-spacing: 2px; margin-bottom: 4px; }
 .footer-meta { font-size: 10px; color: var(--muted); line-height: 1.6; }
-.footer-ai-note {
-  max-width: 420px;
-  margin: 8px auto 0;
-  font-size: 10px;
-  line-height: 1.6;
-  color: var(--muted);
-  padding: 6px 10px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.admin-entry { display: block; margin: 8px auto 0; font-size: 10px; color: var(--muted); background: none; border: 1px dashed rgba(47,93,80,0.2); border-radius: 999px; padding: 3px 10px; letter-spacing: 0.5px; }
+.admin-entry { display: block; margin: 12px auto 0; font-size: 10px; color: var(--muted); background: none; border: 1px dashed rgba(47,93,80,0.2); border-radius: 999px; padding: 3px 10px; letter-spacing: 0.5px; }
 .admin-entry:active { background: var(--primary-faint); color: var(--primary); }
 
 /* ---------- Admin (compact) ---------- */
@@ -667,7 +657,7 @@ input { font-family: inherit; }
 .dl-sub { font-size: 11px; color: var(--ink-soft); line-height: 1.7; margin-top: 4px; }
 .dl-sub strong { color: var(--accent); }
 
-/* ---------- 典藏：指哪打哪（字词 → 讲它的展品） ---------- */
+/* ---------- 典藏：全文检索（字词 → 讲它的展品） ---------- */
 .dc-find {
   display: grid; grid-template-columns: 1fr auto; gap: 8px;
   align-items: center; margin-bottom: 10px;

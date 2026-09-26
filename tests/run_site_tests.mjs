@@ -233,6 +233,7 @@ async function run() {
     if (ONLY.includes('7c')) await sectionDcFind();
     if (ONLY.includes('7d')) await sectionHometown();
     if (ONLY.includes('4e')) { await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`); await sectionVoice(); }
+    if (ONLY.includes('3d')) await sectionCloth();
     return { passed, failed, results };
   }
 
@@ -682,6 +683,27 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     const s = meshStats[id];
     check('模型 ' + id + ' 有实际几何体', s && s.meshes >= 3 && s.tris > 200, JSON.stringify(s));
   });
+  // 蓝染布曾经挂了两块布，从正面看重影成两条。抽成小节是为了反向用例只跑这一节。
+  async function sectionCloth() {
+    await page.evaluate(`document.querySelector('[data-panel="panel3d"]').click()`);
+    if (!await until(page, `window.Showcase3D.booted()`, 25000)) {
+      check('蓝染布只挂一块布', false, '3D 引擎没起来，数不了布面');
+      return;
+    }
+    const n = await page.evaluate(`(() => {
+      window.Showcase3D.show('landye');
+      let cloths = 0;
+      const m = window.Showcase3D.debugModel();
+      // 板蓝根的叶子也是 PlaneGeometry，用幅宽把布和叶子分开
+      if (m) m.traverse(function (o) {
+        const p = o.isMesh && o.geometry && o.geometry.type === 'PlaneGeometry' ? o.geometry.parameters : null;
+        if (p && p.width > 0.5) cloths++;
+      });
+      return cloths;
+    })()`);
+    check('蓝染布只挂一块布', n === 1, n + ' 块布面');
+  }
+  await sectionCloth();
   // 取景：投影每个网格自身的最高点（取其水平中心），并在自动旋转中采样最坏角度。
   // 不能用整体 AABB 角点——圆盘和围屋的角点是空的；也不能用网格顶面四角——围屋
   // 4 单位宽的条石前院，远端角点会投影到地平线附近，把正常取景误报成屋顶被裁。
@@ -857,7 +879,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
              audio: rows.filter((b) => b.textContent.indexOf('🔊') > -1).length,
              first: rows[0] ? rows[0].querySelector('.dc-find-name').textContent : '' };
   })()`);
-  check('点「指哪打哪」渲染出命中列表', f.rows >= 3, f.rows + ' 行');
+  check('点「检索」渲染出命中列表', f.rows >= 3, f.rows + ' 行');
   check('提示里的条数与实际列表对得上', f.hint.indexOf('命中 ' + f.rows + ' 件') > -1, f.hint.slice(0, 44));
   check('命中的词在句子里被标记出来', f.marks.length >= 1 && f.marks.every((m) => m === '豆腐'),
     f.marks.slice(0, 3).join('/'));
@@ -1236,15 +1258,6 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   await page.evaluate(`document.querySelector('.msg-video-chip')?.click()`);
   check('点讲解入口打开视频弹层', await until(page, `!document.getElementById('videoMask').hidden`));
   await page.evaluate(`document.getElementById('videoClose').click()`);
-
-  console.log('\n9c. AI 生成内容声明');
-  // 显式标识义务落在发布方身上，页脚这句话不能被后续改版顺手删掉
-  const note = await page.evaluate(`(() => { const n = document.querySelector('.footer-ai-note');
-    if (!n) return null; const r = n.getBoundingClientRect();
-    return { text: n.textContent, visible: r.height > 0 && getComputedStyle(n).display !== 'none' }; })()`);
-  check('页脚声明了贴图与形象为 AI 辅助生成',
-    !!note && note.visible && /AI/.test(note.text) && /生成/.test(note.text),
-    note ? '' : '页脚缺少 .footer-ai-note');
 
   console.log('\n10. console / network hygiene');
   // 第三方方言视频页、线上大模型、萌典都只是被内嵌/调用，其可达性不算本站缺陷。

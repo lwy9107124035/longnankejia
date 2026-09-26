@@ -585,19 +585,6 @@
     cloth.receiveShadow = true;
     g.add(cloth);
 
-    // ---- 第二层布（后面，错落） ----
-    var cloth2Geo = new THREE.PlaneGeometry(clothW * 0.8, clothH * 0.85, 24, 24);
-    var cp2 = cloth2Geo.attributes.position;
-    for (var j = 0; j < cp2.count; j++) {
-      var x2 = cp2.getX(j), y2 = cp2.getY(j);
-      cp2.setZ(j, Math.sin(x2 * 5 + 1) * 0.04 + Math.cos(y2 * 3) * 0.02);
-    }
-    cloth2Geo.computeVertexNormals();
-    var cloth2 = new THREE.Mesh(cloth2Geo, clothMat.clone());
-    cloth2.position.set(0.15, rodY - clothH * 0.85 / 2 - 0.1, -0.2);
-    cloth2.rotation.y = 0.1;
-    g.add(cloth2);
-
     // ---- 挂钩 ----
     [-0.55, -0.2, 0.2, 0.55].forEach(function (hx) {
       var hook = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.007, 6, 12),

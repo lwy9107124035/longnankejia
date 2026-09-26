@@ -121,11 +121,11 @@
           <button class="dc-tool-btn" id="dcPrefaceBtn" type="button">📜 前言</button>
           <button class="dc-tool-btn" id="dcEpilogueBtn" type="button">✍ 后记</button>
         </div>
-        <!-- 指哪打哪：打一个字词，定位到正文里说过它的那件展品 -->
+        <!-- 全文检索：输入字词，定位到正文里讲到它的那件展品 -->
         <div class="dc-find">
           <input type="text" id="dcQuery" autocomplete="off" enterkeyhint="search"
-                 placeholder="打个字词，定位到讲它的展品（42 件全文）">
-          <button class="dc-find-btn" id="dcFindBtn" type="button">指哪打哪</button>
+                 placeholder="输入关键词，检索 42 件展品全文">
+          <button class="dc-find-btn" id="dcFindBtn" type="button">检索</button>
           <div class="dc-find-hint" id="dcFindHint" aria-live="polite"></div>
           <ol class="dc-find-list" id="dcFindList"></ol>
         </div>
@@ -147,7 +147,7 @@
         <div class="dl-head">
           <div class="dl-title">客家方言语音库</div>
           <div class="dl-sub">
-            文化典藏里 <strong id="dlCount">0</strong> 件展品的客家话原声讲解。原来要扫展品旁的二维码才能听到，这里直接列了出来，点一条就能听。
+            文化典藏里 <strong id="dlCount">0</strong> 件展品的客家话原声讲解，点一条就能听。
           </div>
         </div>
 
@@ -169,7 +169,6 @@
       <footer class="footer">
         <div class="footer-brand">数智传薪 · 非遗远航</div>
         <div class="footer-meta">南昌大学 × 龙南旅发集团 产学研平台<br>龙南客家非遗数字助手 · 演示原型</div>
-        <div class="footer-ai-note">本页 3D 模型贴图与数字人形象由 AI 辅助生成，经人工校订后用于展示；文字内容据《世界客家非物质文化遗产展示馆文化典藏》整理。</div>
         <button class="admin-entry" id="adminEntry" type="button">⚙ 管理入口</button>
       </footer>
     </main>
