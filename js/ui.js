@@ -384,13 +384,11 @@
   /* ================================================================
      访问地址面板
      ----------------------------------------------------------------
-     顶栏「扫码访问」把站点地址画成二维码，同时给出可点链接；
-     书里那些二维码背后的讲解页，直接列成链接，不要求观众扫码。
+     顶栏「扫码访问」把站点地址画成二维码，同时给出可点链接，并按主机名如实
+     说明这条地址谁能打开（公网 / 局域网 / 只有本机）。
      ================================================================ */
   var AccessPanel = (function () {
-    var modal, addrRow, modeHint, listEl;
-    var publicInput, publicSave, publicHint;
-    var LS_KEY = 'nfyj_public_url';
+    var modal, addrRow, modeHint, canonRow;
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -402,22 +400,30 @@
       return window.location.href.split('#')[0];
     }
 
-    // 读取公网地址：localStorage > config.app.publicUrl
+    // 固定入口地址：config.app.publicUrl 非空时以它为准，否则用当前网址自己推。
+    // 这里不再提供"填一个地址存进 localStorage"的口子——那是还没有公网域名时的
+    // 开发期脚手架，现在印展板用的固定地址是 config.app.canonicalUrl。
     function getPublicUrl() {
-      try {
-        var saved = localStorage.getItem(LS_KEY);
-        if (saved) return saved;
-      } catch (e) {}
       var cfg = window.APP_CONFIG && window.APP_CONFIG.app;
       return (cfg && cfg.publicUrl) || '';
     }
 
-    function setPublicUrl(url) {
-      try {
-        if (url) localStorage.setItem(LS_KEY, url);
-        else localStorage.removeItem(LS_KEY);
-      } catch (e) {}
+    /** 谁能打开这条地址，只看主机名：私有网段出不了这个网，回环只有本机。 */
+    function addrKind(u) {
+      var h = (String(u || '').match(/^https?:\/\/([^\/:?#]+)/i) || [])[1] || '';
+      if (!h) return 'file';
+      if (/^127\./.test(h) || h === 'localhost' || h === '::1' || h === '[::1]') return 'loop';
+      if (/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(h)) return 'lan';
+      if (/\.local$/i.test(h) || h.indexOf('.') === -1) return 'lan';
+      return 'public';
     }
+
+    var KIND_HINT = {
+      public: '公网地址：任何网络都能打开，手机不必和电脑连同一个 Wi-Fi',
+      lan: '局域网地址：手机要和电脑连同一个 Wi-Fi，出了这个网就打不开',
+      loop: '本机地址：只有这台电脑能打开，别人扫了也进不来',
+      file: '本地文件预览：请运行 qidong.bat 后用局域网地址'
+    };
 
     function normalizeUrl(raw) {
       var u = String(raw || '').trim();
@@ -479,77 +485,35 @@
         addrRow.innerHTML = '<div class="addr-empty">当前是本地文件预览，无法生成可分享的地址</div>';
       }
       renderQr(isHttpUrl(t) ? t : '');
-      modeHint.textContent = pub
-        ? '当前：公网地址（任何网络都能打开，扫码即进）'
-        : (/^https?:\/\//i.test(t)
-            ? '当前：局域网地址（手机需与电脑同一 Wi-Fi）'
-            : '当前：本地文件预览（请运行 qidong.bat）');
-      publicInput.value = pub;
-      publicHint.classList.toggle('is-public', !!pub);
-    }
-
-    /** 书里每个展品旁的二维码，解码后就是这条客家话讲解链接，这里直接列出来 */
-    function renderExhibitLinks() {
-      var items = [];
-      var data = window.DIANCANG;
-      if (data && data.chapters) {
-        data.chapters.forEach(function (ch) {
-          (ch.items || []).forEach(function (it) { if (it.videoUrl) items.push(it); });
-        });
+      modeHint.textContent = '当前：' + (KIND_HINT[addrKind(t)] || KIND_HINT.file);
+      // 预览地址和印在展板上的那个不是一回事，扫错码的人会进到一个随时会换的地址
+      var canon = normalizeUrl((window.APP_CONFIG && window.APP_CONFIG.app || {}).canonicalUrl || '');
+      if (canon && normalizeUrl(canon) !== normalizeUrl(t)) {
+        canonRow.hidden = false;
+        canonRow.innerHTML = '展板上的码指向 <a class="addr-canon" href="' + esc(canon)
+          + '" target="_blank" rel="noopener">' + esc(canon) + '</a>，那是永久地址；'
+          + '上面这条是当前这个部署自己的地址。';
+      } else {
+        canonRow.hidden = true;
+        canonRow.innerHTML = '';
       }
-      var countEl = document.getElementById('addrLinkCount');
-      if (countEl) countEl.textContent = items.length;
-      if (!items.length) {
-        listEl.innerHTML = '<li class="addr-empty">暂无讲解链接</li>';
-        return;
-      }
-      listEl.innerHTML = items.map(function (it) {
-        return '<li class="addr-item">' +
-          '<span class="addr-item-page">第 ' + esc(it.page) + ' 页</span>' +
-          '<span class="addr-item-name">' + esc(it.name) + '</span>' +
-          '<a class="addr-item-link" href="' + esc(it.videoUrl) + '" target="_blank" rel="noopener">客家话讲解 →</a>' +
-          '</li>';
-      }).join('');
     }
 
     function init() {
       modal = document.getElementById('accessModal');
       addrRow = document.getElementById('addrRow');
       modeHint = document.getElementById('addrModeHint');
-      listEl = document.getElementById('addrLinkList');
-      publicInput = document.getElementById('addrPublicInput');
-      publicSave = document.getElementById('addrPublicSave');
-      publicHint = document.getElementById('addrPublicHint');
+      canonRow = document.getElementById('addrCanonical');
 
       document.getElementById('accessBtn').addEventListener('click', open);
       document.getElementById('addrClose').addEventListener('click', close);
       modal.addEventListener('click', function (e) {
         if (e.target === modal) close();
       });
-
-      publicSave.addEventListener('click', function () {
-        var u = normalizeUrl(publicInput.value);
-        if (u && !isHttpUrl(u)) {
-          publicHint.textContent = '地址格式不正确，请以 https:// 开头';
-          publicHint.classList.remove('is-public');
-          return;
-        }
-        setPublicUrl(u);
-        renderAddress();
-        publicHint.textContent = u
-          ? '已保存，链接已切换为公网地址（任何网络可打开）'
-          : '已清除公网地址，恢复局域网模式';
-        publicHint.classList.toggle('is-public', !!u);
-      });
-
-      publicInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { e.preventDefault(); publicSave.click(); }
-      });
     }
 
     function open() {
       renderAddress();
-      renderExhibitLinks();
       modal.hidden = false;
     }
 
@@ -557,7 +521,7 @@
       modal.hidden = true;
     }
 
-    return { init: init, open: open, close: close };
+    return { init: init, open: open, close: close, addrKind: addrKind, target: target };
   })();
 
   /* ================================================================

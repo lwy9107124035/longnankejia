@@ -192,7 +192,7 @@
     </div>
   </div>
 
-  <!-- ======== 访问地址弹层：入口地址既给码也给链接，典藏讲解页直接列出无需扫码 ======== -->
+  <!-- ======== 访问地址弹层：入口地址既给码也给链接，并如实说明这条地址谁能打开 ======== -->
   <div class="modal-mask" id="accessModal" hidden>
     <div class="modal-card">
       <button class="modal-close" id="addrClose" type="button" aria-label="关闭">×</button>
@@ -200,24 +200,8 @@
 
       <div class="addr-qr" id="addrQr"></div>
       <div class="addr-row" id="addrRow"></div>
-      <div class="modal-hint" id="addrModeHint">当前：局域网模式（需同一 Wi-Fi）</div>
-
-      <div class="addr-url-row">
-        <label class="addr-url-label" for="addrPublicInput">公网访问地址（可选）</label>
-        <div class="addr-url-form">
-          <input type="url" id="addrPublicInput" placeholder="https://your-site.netlify.app" autocomplete="off" spellcheck="false">
-          <button type="button" id="addrPublicSave">保存</button>
-        </div>
-        <div class="addr-url-hint" id="addrPublicHint">
-          留空即用当前网址（部署到哪儿就扫出来是哪儿）；填入某个固定域名并保存后，上方二维码即指向该地址
-        </div>
-      </div>
-
-      <div class="addr-links-head">展品讲解链接 · <span id="addrLinkCount">0</span> 条</div>
-      <div class="addr-links-sub">
-        文化典藏每页旁的二维码，指向的就是下面这些客家话讲解页面，直接点开即可，无需扫码。
-      </div>
-      <ul class="addr-links" id="addrLinkList"></ul>
+      <div class="modal-hint" id="addrModeHint">当前：正在读取访问地址</div>
+      <div class="addr-canon-row" id="addrCanonical" hidden></div>
     </div>
   </div>
 

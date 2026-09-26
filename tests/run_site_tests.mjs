@@ -234,6 +234,7 @@ async function run() {
     if (ONLY.includes('7d')) await sectionHometown();
     if (ONLY.includes('4e')) { await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`); await sectionVoice(); }
     if (ONLY.includes('3d')) await sectionCloth();
+    if (ONLY.includes('8')) await sectionAccess();
     return { passed, failed, results };
   }
 
@@ -535,7 +536,7 @@ async function run() {
   await page.evaluate(`(() => { window.__reply = { status: 500, body: {} }; })()`);
   await arm(); await waitCapture(); await sleep(300); await press();
   const err = await until(page, `window.VoiceInput.state() === 'idle'
-    && /语音识别服务没回应/.test(document.getElementById('micHint').textContent)`, 12000);
+    && /语音识别服务报错/.test(document.getElementById('micHint').textContent)`, 12000);
   const errState = await micState();
   check('服务报错时说明原因并回到可点状态', err && !errState.disabled, JSON.stringify(errState));
 
@@ -561,20 +562,30 @@ async function run() {
   await page.evaluate(`window.APP_CONFIG.ai.asr.maxMs = 20000;`);
 
   // 真链路（不 stub fetch）：假麦克风录的是嘟嘟音，识别结果可能为空——
-  // 但无论哪条分支都必须留下可读的状态，绝不允许静默。
+  // 但无论哪条分支都必须留下可读的状态，绝不允许静默。实测这个接口要等 24～58 秒，
+  // 所以中途还要看一眼"已等 N 秒"的计数在走，否则用户面对的就是一个卡死的页面。
   const live = await page.evaluate(`(async () => {
     window.fetch = window.__origFetch;
     const before = document.getElementById('chatInput').value;
+    const hintEl = document.getElementById('micHint');
     document.getElementById('micBtn').click();
     await new Promise((r) => setTimeout(r, 700));
     document.getElementById('micBtn').click();
-    for (let i = 0; i < 60; i++) {
+    let midway = '';
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      if (window.VoiceInput.state() !== 'transcribing') break;
+      midway = hintEl.textContent;
+    }
+    for (let i = 0; i < 320; i++) {
       await new Promise((r) => setTimeout(r, 300));
       if (window.VoiceInput.state() === 'idle') break;
     }
-    return { state: window.VoiceInput.state(), hint: document.getElementById('micHint').textContent,
+    return { midway: midway, state: window.VoiceInput.state(), hint: hintEl.textContent,
              changed: document.getElementById('chatInput').value !== before };
   })()`, true);
+  check('等待期间如实报出已等秒数',
+    live.midway === '' || /已等/.test(live.midway), live.midway);
   check('真实上传要么出字、要么说明原因（不许静默）',
     live.state === 'idle' && (live.changed || live.hint.length > 0), JSON.stringify(live));
     // 没配密钥时不能让人对着一个坏掉的按钮空按：要说清楚为什么。
@@ -1093,60 +1104,84 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   }
   await sectionHometown();
 
-  console.log('\n8. 访问地址面板（入口扫码 + 讲解链接直列）');
-  await page.evaluate(`document.getElementById('accessBtn').click()`);
-  check('访问地址面板打开', await until(page, `!document.getElementById('accessModal').hidden`));
-  const addr = await page.evaluate(`(() => { const a = document.querySelector('#addrRow a.addr-link');
-    return a ? { href: a.href } : null; })()`);
-  check('地址以可点链接直接呈现', !!addr && /^http/.test(addr.href), addr && addr.href);
-  const linkCount = await page.evaluate(`document.querySelectorAll('#addrLinkList .addr-item').length`);
-  const dataCount = await page.evaluate(`window.DIANCANG.chapters.reduce((n, c) => n + c.items.filter(i => i.videoUrl).length, 0)`);
-  check('二维码背后的讲解内容全部直列出来', linkCount === dataCount && linkCount >= 14,
-    linkCount + ' / ' + dataCount);
-  const sampleHref = await page.evaluate(`(document.querySelector('#addrLinkList .addr-item-link') || {}).href || ''`);
-  check('每条都能直接点开', sampleHref.indexOf('hlcode.pro') > -1, sampleHref.slice(0, 44));
-  // 站点入口码：馆内观众扫它进页面。之前这里断言的是「不得有二维码」，方向反了。
-  const qr = await page.evaluate(`(() => {
-    const c = document.querySelector('#addrQr canvas');
-    if (!c || !c.width) return { present: false };
-    const px = (cv) => cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
-    const a = px(c);
-    let black = 0;
-    for (let i = 0; i < a.length; i += 4) { if (a[i] < 128) black++; }
-    // 用同一个编码器按面板展示的地址重画一张逐像素比对，证明屏上这张码的内容
-    // 就是给用户看的那条链接。取 getAttribute 而不是 .href：DOM 属性会把
-    // https://host 规范化成 https://host/，多出的尾斜杠会让两张码对不上。
-    const shown = (document.querySelector('#addrRow a.addr-link') || {}).getAttribute('href') || '';
-    const ref = document.createElement('canvas');
-    const okRef = shown ? window.QR.render(shown, ref, 4) : false;
-    let same = false;
-    if (okRef && ref.width === c.width && ref.height === c.height) {
-      const b = px(ref);
-      same = a.length === b.length;
-      for (let i = 0; same && i < a.length; i += 4) same = a[i] === b[i];
+  console.log('\n8. 访问地址面板（入口扫码 + 地址性质如实说明）');
+  await sectionAccess();
+
+  // 抽成小节是为了反向用例只跑这一节（--only=8）
+  async function sectionAccess() {
+    await page.evaluate(`document.getElementById('accessBtn').click()`);
+    check('访问地址面板打开', await until(page, `!document.getElementById('accessModal').hidden`));
+    const addr = await page.evaluate(`(() => { const a = document.querySelector('#addrRow a.addr-link');
+      return a ? { href: a.href } : null; })()`);
+    check('地址以可点链接直接呈现', !!addr && /^http/.test(addr.href), addr && addr.href);
+    // 讲解链接列表和"填一个地址存进浏览器"的编辑框都不在这个面板里了：前者方言
+    // 模块整个列着，后者是没公网域名时的开发期脚手架。
+    const dom = await page.evaluate(`(() => ({
+      left: document.querySelectorAll('#addrLinkList, .addr-item, #addrPublicInput, .addr-url-row').length,
+      hint: (document.getElementById('addrModeHint') || {}).textContent || '',
+      canon: (() => { const c = document.getElementById('addrCanonical');
+        return c && !c.hidden ? c.textContent.trim() : ''; })()
+    }))()`);
+    check('面板不再列讲解链接、不再让人手填地址', dom.left === 0, dom.left + ' 个残留元素');
+    // 谁能打开一条地址，只看主机名——这是一张能核完的表，不必真去那几个网络里试
+    const kinds = await page.evaluate(`(() => { const f = window.UI.Access.addrKind;
+      return { pub: f('https://longnankejia.pages.dev/'), pub2: f('https://hlcode.pro/x'),
+               lan: f('http://192.168.1.7:8000/index.html'), lan2: f('http://10.0.0.5/'),
+               lan3: f('http://ncw-wiki.local:8000/'), lan4: f('http://myhost/'),
+               loop: f('http://127.0.0.1:8931/'), loop2: f('http://localhost:8931/'),
+               file: f('file:///C:/x/index.html') }; })()`);
+    check('公网/局域网/本机/本地文件按主机名分得对',
+      kinds.pub === 'public' && kinds.pub2 === 'public' && kinds.lan === 'lan'
+      && kinds.lan2 === 'lan' && kinds.lan3 === 'lan' && kinds.lan4 === 'lan'
+      && kinds.loop === 'loop' && kinds.loop2 === 'loop' && kinds.file === 'file',
+      JSON.stringify(kinds));
+    check('面板提示与判定一致（本机地址不许写成公网）',
+      /本机地址/.test(dom.hint) && !/公网/.test(dom.hint), dom.hint);
+    check('当前地址不是展板地址时把永久地址摆出来',
+      /longnankejia\.pages\.dev/.test(dom.canon), dom.canon.slice(0, 70));
+    // 站点入口码：馆内观众扫它进页面。之前这里断言的是「不得有二维码」，方向反了。
+    const qr = await page.evaluate(`(() => {
+      const c = document.querySelector('#addrQr canvas');
+      if (!c || !c.width) return { present: false };
+      const px = (cv) => cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      const a = px(c);
+      let black = 0;
+      for (let i = 0; i < a.length; i += 4) { if (a[i] < 128) black++; }
+      // 用同一个编码器按面板展示的地址重画一张逐像素比对，证明屏上这张码的内容
+      // 就是给用户看的那条链接。取 getAttribute 而不是 .href：DOM 属性会把
+      // https://host 规范化成 https://host/，多出的尾斜杠会让两张码对不上。
+      const shown = (document.querySelector('#addrRow a.addr-link') || {}).getAttribute('href') || '';
+      const ref = document.createElement('canvas');
+      const okRef = shown ? window.QR.render(shown, ref, 4) : false;
+      let same = false;
+      if (okRef && ref.width === c.width && ref.height === c.height) {
+        const b = px(ref);
+        same = a.length === b.length;
+        for (let i = 0; same && i < a.length; i += 4) same = a[i] === b[i];
+      }
+      return { present: true, w: c.width, ratio: +(black / (c.width * c.height)).toFixed(3),
+               matchesUrl: same, shown: shown };
+    })()`);
+    check('入口二维码已渲染', qr.present, JSON.stringify(qr));
+    check('入口码尺寸足够扫读', qr.present && qr.w >= 140, qr.w + 'px');
+    check('码面非空白（黑白模块比例合理）', !!qr.present && qr.ratio > 0.15 && qr.ratio < 0.85,
+      'black ratio=' + qr.ratio);
+    check('码内容与面板展示的地址一致', !!qr.matchesUrl, qr.shown);
+    // 导出 PNG 供 decode_entry_qr.py 用 OpenCV 独立解码——自证一致只能说明
+    // 「屏上是这个 URL 的编码」，解码通过才能说明观众的手机真扫得出来
+    const dataUrl = await page.evaluate(`(() => {
+      const c = document.querySelector('#addrQr canvas');
+      return c ? c.toDataURL('image/png') : '';
+    })()`);
+    if (dataUrl.startsWith('data:image/png')) {
+      fs.mkdirSync(SHOTS, { recursive: true });
+      fs.writeFileSync(path.join(SHOTS, 'entry-qr.png'),
+        Buffer.from(dataUrl.split(',')[1], 'base64'));
     }
-    return { present: true, w: c.width, ratio: +(black / (c.width * c.height)).toFixed(3),
-             matchesUrl: same, shown: shown };
-  })()`);
-  check('入口二维码已渲染', qr.present, JSON.stringify(qr));
-  check('入口码尺寸足够扫读', qr.present && qr.w >= 140, qr.w + 'px');
-  check('码面非空白（黑白模块比例合理）', !!qr.present && qr.ratio > 0.15 && qr.ratio < 0.85,
-    'black ratio=' + qr.ratio);
-  check('码内容与面板展示的地址一致', !!qr.matchesUrl, qr.shown);
-  // 导出 PNG 供 decode_entry_qr.py 用 OpenCV 独立解码——自证一致只能说明
-  // 「屏上是这个 URL 的编码」，解码通过才能说明观众的手机真扫得出来
-  const dataUrl = await page.evaluate(`(() => {
-    const c = document.querySelector('#addrQr canvas');
-    return c ? c.toDataURL('image/png') : '';
-  })()`);
-  if (dataUrl.startsWith('data:image/png')) {
-    fs.mkdirSync(SHOTS, { recursive: true });
-    fs.writeFileSync(path.join(SHOTS, 'entry-qr.png'),
-      Buffer.from(dataUrl.split(',')[1], 'base64'));
+    await shot(page, '06-access');
+    await page.evaluate(`document.getElementById('addrClose').click()`);
+    check('面板关闭', await until(page, `document.getElementById('accessModal').hidden`));
   }
-  await shot(page, '06-access');
-  await page.evaluate(`document.getElementById('addrClose').click()`);
-  check('面板关闭', await until(page, `document.getElementById('accessModal').hidden`));
 
   console.log('\n8b. 管理面板：登录、改知识库、刷新后是否还在');
   await page.evaluate(`document.getElementById('adminEntry').click()`);

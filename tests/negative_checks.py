@@ -31,6 +31,7 @@ IDX = "index.html"
 CSS = "css/style.css"
 S3D = "js/showcase3d.js"
 CF = ".github/workflows/cf-pages.yml"
+CFG = "js/config.js"
 
 # (编号, 说明, 文件, 原文片段, 替换片段, 期望失败的断言名列表, 只跑哪些节)
 MUTATIONS = [
@@ -157,8 +158,9 @@ MUTATIONS = [
      "      if (!text) { if (input) input.value = ''; finish('没听清，再说一次？'); return; }",
      ["识别失败不动已输入的文字"], "4e"),
     ("V5", "服务报错不吭声", VI,
-     "      finish('语音识别服务没回应（' + String((err && err.message) || err).slice(0, 40)",
-     "      finish(String((err && err.message) || err).slice(0, 0)",
+     "          : '语音识别服务报错（' + String((err && err.message) || err).slice(0, 40)\n"
+     "            + '），文字输入照常可用');",
+     "          : '');",
      ["服务报错时说明原因并回到可点状态"], "4e"),
     ("V6", "麦克风被拒只说打不开", VI,
      "      setState('idle', name === 'NotAllowedError' ? '麦克风权限被拒绝，文字输入照常可用'",
@@ -221,6 +223,31 @@ MUTATIONS = [
      '          else' + chr(10) + '            KEY=""',
      '          else' + chr(10) + '            KEY="$CF_KEY"',
      ["不再给其余分支留空密钥"], "static"),
+    # ---------------- 语音超时阈值（实测接口要等 24～58 秒） ----------------
+    ("V12", "超时阈值改回 15 秒", CFG,
+     "timeoutMs: 90000", "timeoutMs: 15000",
+     ["asr.timeoutMs 只有 15000 毫秒"], "static"),
+    ("V13", "超时不读配置写死数字", VI,
+     "}, cfg().timeoutMs);", "}, 15000);",
+     ["abort 的超时是写死的数字"], "static"),
+    # ---------------- 扫码访问面板 ----------------
+    ("A1", "把私有网段也算成公网", UI,
+     "      if (/^(10" + chr(92) + ".|192" + chr(92) + ".168" + chr(92) + ".|172"
+     + chr(92) + ".(1[6-9]|2[0-9]|3[01])" + chr(92) + ".)/.test(h)) return 'lan';",
+     "      if (false) return 'lan';",
+     ["公网/局域网/本机/本地文件按主机名分得对"], "8"),
+    ("A2", "提示语写死成公网地址", UI,
+     "      modeHint.textContent = '当前：' + (KIND_HINT[addrKind(t)] || KIND_HINT.file);",
+     "      modeHint.textContent = '当前：公网地址：任何网络都能打开';",
+     ["面板提示与判定一致（本机地址不许写成公网）"], "8"),
+    ("A3", "把讲解链接列表加回面板", IDX,
+     "      <div class=\"addr-canon-row\" id=\"addrCanonical\" hidden></div>",
+     "      <div class=\"addr-canon-row\" id=\"addrCanonical\" hidden></div>" + chr(10)
+     + "      <ul class=\"addr-links\"><li class=\"addr-item\">采茶戏</li></ul>",
+     ["面板不再列讲解链接、不再让人手填地址"], "8"),
+    ("A4", "不再交代展板上的永久地址", UI,
+     "        canonRow.hidden = false;", "        canonRow.hidden = true;",
+     ["当前地址不是展板地址时把永久地址摆出来"], "8"),
 ]
 
 
