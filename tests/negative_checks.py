@@ -231,23 +231,13 @@ MUTATIONS = [
      "}, cfg().timeoutMs);", "}, 15000);",
      ["abort 的超时是写死的数字"], "static"),
     # ---------------- 扫码访问面板 ----------------
-    ("A1", "把私有网段也算成公网", UI,
-     "      if (/^(10" + chr(92) + ".|192" + chr(92) + ".168" + chr(92) + ".|172"
-     + chr(92) + ".(1[6-9]|2[0-9]|3[01])" + chr(92) + ".)/.test(h)) return 'lan';",
-     "      if (false) return 'lan';",
-     ["公网/局域网/本机/本地文件按主机名分得对"], "8"),
-    ("A2", "提示语写死成公网地址", UI,
-     "      modeHint.textContent = KIND_HINT[addrKind(t)] || KIND_HINT.file;",
-     "      modeHint.textContent = '这是一个公网地址：任何网络都能打开';",
-     ["面板提示与判定一致（本机地址不许写成公网）"], "8"),
-    ("A3", "把讲解链接列表加回面板", IDX,
-     "      <div class=\"addr-canon-row\" id=\"addrCanonical\" hidden></div>",
-     "      <div class=\"addr-canon-row\" id=\"addrCanonical\" hidden></div>" + chr(10)
+    ("A1", "把链接列表、地址编辑框和两句解释塞回面板", IDX,
+     "      <div class=\"addr-row\" id=\"addrRow\"></div>",
+     "      <div class=\"addr-row\" id=\"addrRow\"></div>" + chr(10)
+     + "      <div class=\"modal-hint\" id=\"addrModeHint\">当前：局域网模式（需同一 Wi-Fi）</div>" + chr(10)
+     + "      <div class=\"addr-url-row\"><input type=\"url\" id=\"addrPublicInput\"></div>" + chr(10)
      + "      <ul class=\"addr-links\"><li class=\"addr-item\">采茶戏</li></ul>",
-     ["面板不再列讲解链接、不再让人手填地址"], "8"),
-    ("A4", "不再交代展板上的永久地址", UI,
-     "        canonRow.hidden = false;", "        canonRow.hidden = true;",
-     ["当前地址不是展板地址时把永久地址摆出来"], "8"),
+     ["面板只留入口本身：码、地址、复制按钮"], "8"),
 ]
 
 

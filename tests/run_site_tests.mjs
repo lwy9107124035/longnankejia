@@ -1114,31 +1114,11 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     const addr = await page.evaluate(`(() => { const a = document.querySelector('#addrRow a.addr-link');
       return a ? { href: a.href } : null; })()`);
     check('地址以可点链接直接呈现', !!addr && /^http/.test(addr.href), addr && addr.href);
-    // 讲解链接列表和"填一个地址存进浏览器"的编辑框都不在这个面板里了：前者方言
-    // 模块整个列着，后者是没公网域名时的开发期脚手架。
-    const dom = await page.evaluate(`(() => ({
-      left: document.querySelectorAll('#addrLinkList, .addr-item, #addrPublicInput, .addr-url-row').length,
-      hint: (document.getElementById('addrModeHint') || {}).textContent || '',
-      canon: (() => { const c = document.getElementById('addrCanonical');
-        return c && !c.hidden ? c.textContent.trim() : ''; })()
-    }))()`);
-    check('面板不再列讲解链接、不再让人手填地址', dom.left === 0, dom.left + ' 个残留元素');
-    // 谁能打开一条地址，只看主机名——这是一张能核完的表，不必真去那几个网络里试
-    const kinds = await page.evaluate(`(() => { const f = window.UI.Access.addrKind;
-      return { pub: f('https://longnankejia.pages.dev/'), pub2: f('https://hlcode.pro/x'),
-               lan: f('http://192.168.1.7:8000/index.html'), lan2: f('http://10.0.0.5/'),
-               lan3: f('http://ncw-wiki.local:8000/'), lan4: f('http://myhost/'),
-               loop: f('http://127.0.0.1:8931/'), loop2: f('http://localhost:8931/'),
-               file: f('file:///C:/x/index.html') }; })()`);
-    check('公网/局域网/本机/本地文件按主机名分得对',
-      kinds.pub === 'public' && kinds.pub2 === 'public' && kinds.lan === 'lan'
-      && kinds.lan2 === 'lan' && kinds.lan3 === 'lan' && kinds.lan4 === 'lan'
-      && kinds.loop === 'loop' && kinds.loop2 === 'loop' && kinds.file === 'file',
-      JSON.stringify(kinds));
-    check('面板提示与判定一致（本机地址不许写成公网）',
-      /本机地址/.test(dom.hint) && !/公网/.test(dom.hint), dom.hint);
-    check('当前地址不是展板地址时把永久地址摆出来',
-      /longnankejia\.pages\.dev/.test(dom.canon), dom.canon.slice(0, 70));
+    // 面板只留入口本身：讲解链接（方言模块列着）、手填地址的编辑框（开发期脚手架）、
+    // 两句解释性提示（地址性质与展板永久地址）都不该在这里。
+    const left = await page.evaluate(`document.querySelectorAll('#addrLinkList, .addr-item,'
+      + ' #addrPublicInput, .addr-url-row, #addrModeHint, #addrCanonical').length`);
+    check('面板只留入口本身：码、地址、复制按钮', left === 0, left + ' 个已删掉的元素又回来了');
     // 站点入口码：馆内观众扫它进页面。之前这里断言的是「不得有二维码」，方向反了。
     const qr = await page.evaluate(`(() => {
       const c = document.querySelector('#addrQr canvas');

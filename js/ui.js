@@ -388,7 +388,7 @@
      说明这条地址谁能打开（公网 / 局域网 / 只有本机）。
      ================================================================ */
   var AccessPanel = (function () {
-    var modal, addrRow, modeHint, canonRow;
+    var modal, addrRow;
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -407,23 +407,6 @@
       var cfg = window.APP_CONFIG && window.APP_CONFIG.app;
       return (cfg && cfg.publicUrl) || '';
     }
-
-    /** 谁能打开这条地址，只看主机名：私有网段出不了这个网，回环只有本机。 */
-    function addrKind(u) {
-      var h = (String(u || '').match(/^https?:\/\/([^\/:?#]+)/i) || [])[1] || '';
-      if (!h) return 'file';
-      if (/^127\./.test(h) || h === 'localhost' || h === '::1' || h === '[::1]') return 'loop';
-      if (/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(h)) return 'lan';
-      if (/\.local$/i.test(h) || h.indexOf('.') === -1) return 'lan';
-      return 'public';
-    }
-
-    var KIND_HINT = {
-      public: '这是一个公网地址：任何网络都能打开，手机不必和电脑连同一个 Wi-Fi',
-      lan: '这是一个局域网地址：手机要和电脑连同一个 Wi-Fi，出了这个网就打不开',
-      loop: '这是本机地址：只有这台电脑能打开，别人扫了也进不来',
-      file: '这是本地文件预览：请运行 qidong.bat 后用局域网地址'
-    };
 
     function normalizeUrl(raw) {
       var u = String(raw || '').trim();
@@ -485,25 +468,11 @@
         addrRow.innerHTML = '<div class="addr-empty">当前是本地文件预览，无法生成可分享的地址</div>';
       }
       renderQr(isHttpUrl(t) ? t : '');
-      modeHint.textContent = KIND_HINT[addrKind(t)] || KIND_HINT.file;
-      // 预览地址和印在展板上的那个不是一回事，扫错码的人会进到一个随时会换的地址
-      var canon = normalizeUrl((window.APP_CONFIG && window.APP_CONFIG.app || {}).canonicalUrl || '');
-      if (canon && normalizeUrl(canon) !== normalizeUrl(t)) {
-        canonRow.hidden = false;
-        canonRow.innerHTML = '展板上的码指向 <a class="addr-canon" href="' + esc(canon)
-          + '" target="_blank" rel="noopener">' + esc(canon) + '</a>，那是永久地址；'
-          + '上面这条是当前这个部署自己的地址。';
-      } else {
-        canonRow.hidden = true;
-        canonRow.innerHTML = '';
-      }
     }
 
     function init() {
       modal = document.getElementById('accessModal');
       addrRow = document.getElementById('addrRow');
-      modeHint = document.getElementById('addrModeHint');
-      canonRow = document.getElementById('addrCanonical');
 
       document.getElementById('accessBtn').addEventListener('click', open);
       document.getElementById('addrClose').addEventListener('click', close);
@@ -521,7 +490,7 @@
       modal.hidden = true;
     }
 
-    return { init: init, open: open, close: close, addrKind: addrKind, target: target };
+    return { init: init, open: open, close: close };
   })();
 
   /* ================================================================

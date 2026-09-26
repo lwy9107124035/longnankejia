@@ -554,15 +554,6 @@ input { font-family: inherit; }
 .addr-copy:active { background: var(--primary-deep); }
 .addr-empty { font-size: 11px; color: var(--muted); line-height: 1.55; }
 
-/* 当前地址不是展板上那个时，把永久地址也摆出来，免得有人扫了预览码当正式入口 */
-.addr-canon-row {
-  margin-top: 8px; padding: 7px 9px; text-align: left;
-  font-size: 10.5px; line-height: 1.6; color: var(--ink-soft);
-  background: var(--accent-soft); border-radius: 6px;
-}
-.addr-canon { color: var(--accent); font-weight: 600; word-break: break-all; }
-.modal-hint { font-size: 10.5px; color: var(--muted); background: var(--paper-deep); border-radius: 6px; padding: 6px 8px; line-height: 1.4; text-align: center; }
-
 /* ---------- Footer ---------- */
 .footer { margin-top: 20px; padding: 14px 8px 6px; text-align: center; border-top: 1px dashed rgba(47,93,80,0.15); }
 .footer-brand { font-family: "KaiTi", serif; font-size: 13px; font-weight: 700; color: var(--primary-deep); letter-spacing: 2px; margin-bottom: 4px; }
