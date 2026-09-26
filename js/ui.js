@@ -419,10 +419,10 @@
     }
 
     var KIND_HINT = {
-      public: '公网地址：任何网络都能打开，手机不必和电脑连同一个 Wi-Fi',
-      lan: '局域网地址：手机要和电脑连同一个 Wi-Fi，出了这个网就打不开',
-      loop: '本机地址：只有这台电脑能打开，别人扫了也进不来',
-      file: '本地文件预览：请运行 qidong.bat 后用局域网地址'
+      public: '这是一个公网地址：任何网络都能打开，手机不必和电脑连同一个 Wi-Fi',
+      lan: '这是一个局域网地址：手机要和电脑连同一个 Wi-Fi，出了这个网就打不开',
+      loop: '这是本机地址：只有这台电脑能打开，别人扫了也进不来',
+      file: '这是本地文件预览：请运行 qidong.bat 后用局域网地址'
     };
 
     function normalizeUrl(raw) {
@@ -485,7 +485,7 @@
         addrRow.innerHTML = '<div class="addr-empty">当前是本地文件预览，无法生成可分享的地址</div>';
       }
       renderQr(isHttpUrl(t) ? t : '');
-      modeHint.textContent = '当前：' + (KIND_HINT[addrKind(t)] || KIND_HINT.file);
+      modeHint.textContent = KIND_HINT[addrKind(t)] || KIND_HINT.file;
       // 预览地址和印在展板上的那个不是一回事，扫错码的人会进到一个随时会换的地址
       var canon = normalizeUrl((window.APP_CONFIG && window.APP_CONFIG.app || {}).canonicalUrl || '');
       if (canon && normalizeUrl(canon) !== normalizeUrl(t)) {
