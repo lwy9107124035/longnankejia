@@ -70,6 +70,17 @@
     return tokens;
   }
 
+  // 中文没有空格，英文拒答话照样会整句出现，所以两边都按大小写不敏感找
+  var REFUSAL_WORDS = ['回答不了', '我还不知道', '还在学习中', '不敢乱答', '暂时无法',
+    '无法回答', '帮不上忙', '抱歉', 'as an ai', '作为人工智能'];
+  function isRefusal(text) {
+    var t = String(text || '').toLowerCase();
+    for (var i = 0; i < REFUSAL_WORDS.length; i++) {
+      if (t.indexOf(REFUSAL_WORDS[i].toLowerCase()) !== -1) return true;
+    }
+    return false;
+  }
+
   /* ---------- 规则引擎 ---------- */
   function RulesEngine() {
     this.name = 'rules';
@@ -78,7 +89,7 @@
     this.entries = (window.Store ? window.Store.getEntries() : (window.KNOWLEDGE_BASE || [])).slice();
   }
 
-  RulesEngine.prototype.scoreEntry = function (entry, tokens) {
+  RulesEngine.prototype.scoreEntry = function (entry, tokens, hay) {
     var score = 0;
     var matched = [];
     var ngram = 0;
@@ -90,9 +101,9 @@
       }));
 
       variants.forEach(function (v) {
-        // 完整关键词出现在原文 → 高权重
-        var text = tokens.join('');
-        if (v.length >= 2 && text.indexOf(v) !== -1) {
+        // 完整关键词出现在问题里 → 高权重。比的是清洗后的原句：tokens 是 2-gram
+        // 和 3-gram 的集合，join 起来是「你们们在在做什什么…」，长关键词永远匹配不上。
+        if (v.length >= 2 && hay.indexOf(v) !== -1) {
           score += v.length >= 4 ? 2.5 : 2.0;
           if (matched.indexOf(kw) === -1) matched.push(kw);
         }
@@ -115,10 +126,11 @@
   RulesEngine.prototype.rank = function (question) {
     var self = this;
     var tokens = tokenize(question);
+    var hay = cleanQuestion(question);
     if (!tokens.length) return { tokens: tokens, scored: [], hit: null, minScore: 1.0 };
     var minScore = (window.APP_CONFIG && window.APP_CONFIG.ai.minScore) || 1.0;
     var scored = this.entries.map(function (entry) {
-      var r = self.scoreEntry(entry, tokens);
+      var r = self.scoreEntry(entry, tokens, hay);
       return { entry: entry, score: r.score, matched: r.matched };
     }).filter(function (s) { return s.score > 0; })
       .sort(function (a, b) { return b.score - a.score; });
@@ -248,6 +260,9 @@
         text = String(msg.reasoning_content).trim();
       }
       if (!text) throw new Error('API 返回内容为空');
+      // 大模型偶尔会客套地拒答。这句话到了观众眼里就是本站答不上来，所以按
+      // "没有可用答复"处理，让调用方回到馆内最接近的资料，而不是原样转述。
+      if (isRefusal(text)) throw new Error('大模型回的是拒答话，改用馆内资料');
       // 清理 markdown 强调符号（**bold** → bold）
       text = text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
       // 限制长度，防止打字机过长
@@ -310,6 +325,7 @@
     getEngine: getEngine,
     RulesEngine: RulesEngine,
     ApiEngine: ApiEngine,
+    isRefusal: isRefusal,
     reset: function () { current = null; }
   };
 })();

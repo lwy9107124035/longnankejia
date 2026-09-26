@@ -33,6 +33,7 @@ S3D = "js/showcase3d.js"
 CF = ".github/workflows/cf-pages.yml"
 CFG = "js/config.js"
 KB = "js/knowledge-base.js"
+AE = "js/answer-engine.js"
 
 # (编号, 说明, 文件, 原文片段, 替换片段, 期望失败的断言名列表, 只跑哪些节)
 MUTATIONS = [
@@ -243,6 +244,17 @@ MUTATIONS = [
      + "      <div class=\"addr-url-row\"><input type=\"url\" id=\"addrPublicInput\"></div>" + chr(10)
      + "      <ul class=\"addr-links\"><li class=\"addr-item\">采茶戏</li></ul>",
      ["面板只留入口本身：码、地址、复制按钮"], "8"),
+    # ---------------- 本地库关键词命中 ----------------
+    # 这条断言在主流程 4a 节里，没有独立小节可跑，sections 留空即跑整套。
+    ("R1", "关键词命中改回比 2-gram 拼串", AE,
+     "        if (v.length >= 2 && hay.indexOf(v) !== -1) {",
+     "        var text = tokens.join('');" + chr(10)
+     + "        if (v.length >= 2 && text.indexOf(v) !== -1) {",
+     ["写在关键词表里的问题必须命中本地库"], ""),
+    ("R2", "拒答话再也识不出来", AE,
+     "  function isRefusal(text) {" + chr(10) + "    var t = String(text || '').toLowerCase();",
+     "  function isRefusal(text) {" + chr(10) + "    var t = '';",
+     ["拒答话识得出，正常答复不误杀"], ""),
 ]
 
 

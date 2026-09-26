@@ -329,6 +329,21 @@ async function run() {
   check('chat bubble shows the new 阿蓝 face', botAv);
   await shot(page, '02-chat');
 
+  // 关键词命中比的是清洗后的原句。之前比的是 2-gram 拼出来的字符串
+  // （「你们们在在做什什么…」），明明写在关键词表里的问题也永远匹配不上。
+  const kwBefore = await page.evaluate(`document.querySelectorAll('.msg-bot').length`);
+  await until(page, `!document.getElementById('sendBtn').disabled`, 15000);
+  await page.evaluate(`(() => { const i = document.getElementById('chatInput');
+    i.value = '你们在做什么'; i.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('sendBtn').click(); })()`);
+  await until(page, `document.querySelectorAll('.msg-bot').length > ${kwBefore}`, 12000);
+  // 答复是打字机逐字出来的，读早了只能看到半句
+  const kwHit = await until(page, `[...document.querySelectorAll('.msg-bot .msg-bubble')]
+    .pop().textContent.indexOf('南昌大学') > -1`, 20000);
+  const kwAns = await page.evaluate(
+    `[...document.querySelectorAll('.msg-bot .msg-bubble')].pop().textContent`);
+  check('写在关键词表里的问题必须命中本地库', kwHit, kwAns.slice(0, 56));
+
   console.log('\n4b. 问答 panel — 线上大模型（外部依赖，只验证不挂死）');
   await page.evaluate(`localStorage.removeItem('nfyj_api_config')`);
   await page.send('Page.navigate', { url: BASE + '/index.html' });
@@ -364,8 +379,8 @@ async function run() {
 
   console.log('\n4d. 本地优先 → 未命中转大模型 → 绝不拒答');
   const routing = await page.evaluate(`(async () => {
-    const words = ['回答不了','我还不知道','还在学习中','不敢乱答','暂时无法','无法回答','帮不上忙'];
-    const refusal = (t) => words.some((s) => String(t).indexOf(s) > -1);
+    // 判据只有一份：模块里那个函数。测试再抄一份词表，两处就会判得不一样。
+    const refusal = (t) => window.AnswerEngine.isRefusal(t);
     const orig = window.fetch;
     let calls = 0;
     const e = new window.AnswerEngine.ApiEngine();
@@ -397,7 +412,10 @@ async function run() {
               nearest: (weak.nearest || []).length, topics: !!weak.topics,
               refusal: refusal(weak.text), head: String(weak.text).slice(0, 24) },
       live: live ? { source: live.source, len: String(live.text || '').length,
-                     refusal: refusal(live.text || ''), err: live.err || '' } : null
+                     refusal: refusal(live.text || ''), head: String(live.text || '').slice(0, 40),
+                     err: live.err || '' } : null,
+      probe: { sorry: refusal('抱歉，这个问题我暂时无法回答。'),
+               plain: refusal('蓝染的布要用板蓝根制靛，竹编的染架撑着它。') }
     };
   })()`, true);
   check('知识库命中时一次接口都不调', routing.hit.calls === 0, routing.hit.calls + ' 次请求');
@@ -414,7 +432,13 @@ async function run() {
     routing.weak.head + ' / nearest=' + routing.weak.nearest + ' topics=' + routing.weak.topics);
   check('三条路径都不出现拒答措辞',
     !routing.hit.refusal && !routing.weak.refusal && !(routing.live && routing.live.refusal),
-    JSON.stringify({ h: routing.hit.refusal, w: routing.weak.refusal, l: routing.live && routing.live.refusal }));
+    JSON.stringify({ h: routing.hit.refusal, w: routing.weak.refusal,
+                     l: routing.live && routing.live.refusal,
+                     大模型原话: routing.live && routing.live.head }));
+  // 判据本身也要能失败：把 isRefusal 弄成永远 false，这条就红
+  check('拒答话识得出，正常答复不误杀',
+    routing.probe.sorry === true && routing.probe.plain === false,
+    JSON.stringify(routing.probe));
   // 接口通不通取决于现场网络，两种结果都算通过：要么真由大模型答，要么回到馆内资料
   check('未命中时要么大模型作答、要么馆内兜底（不许空手而归）',
     !!routing.live && ((routing.live.source === 'api' && routing.live.len > 4)
@@ -564,30 +588,23 @@ async function run() {
   // 真链路（不 stub fetch）：假麦克风录的是嘟嘟音，识别结果可能为空——
   // 但无论哪条分支都必须留下可读的状态，绝不允许静默。实测这个接口要等 24～58 秒，
   // 所以中途还要看一眼"已等 N 秒"的计数在走，否则用户面对的就是一个卡死的页面。
-  const live = await page.evaluate(`(async () => {
-    window.fetch = window.__origFetch;
-    const before = document.getElementById('chatInput').value;
-    const hintEl = document.getElementById('micHint');
-    document.getElementById('micBtn').click();
-    await new Promise((r) => setTimeout(r, 700));
-    document.getElementById('micBtn').click();
-    let midway = '';
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => setTimeout(r, 250));
-      if (window.VoiceInput.state() !== 'transcribing') break;
-      midway = hintEl.textContent;
-    }
-    for (let i = 0; i < 320; i++) {
-      await new Promise((r) => setTimeout(r, 300));
-      if (window.VoiceInput.state() === 'idle') break;
-    }
-    return { midway: midway, state: window.VoiceInput.state(), hint: hintEl.textContent,
-             changed: document.getElementById('chatInput').value !== before };
-  })()`, true);
+  // 轮询放在 Node 侧：整段塞进一次 awaitPromise 的 evaluate 会撞上 30 秒的调用超时。
+  await page.evaluate(`(() => { window.fetch = window.__origFetch;
+    document.getElementById('chatInput').value = '';
+    document.getElementById('micBtn').click(); return 1; })()`);
+  await sleep(700);
+  await page.evaluate(`document.getElementById('micBtn').click(); 1`);
+  await sleep(1200);
+  const midway = await page.evaluate(`document.getElementById('micHint').textContent`);
+  const settled = await until(page, `window.VoiceInput.state() === 'idle'`, 100000);
+  const live = await page.evaluate(`(() => ({ state: window.VoiceInput.state(),
+    hint: document.getElementById('micHint').textContent,
+    value: document.getElementById('chatInput').value }))()`);
   check('等待期间如实报出已等秒数',
-    live.midway === '' || /已等/.test(live.midway), live.midway);
+    !/转写/.test(midway) || /已等/.test(midway), midway);
   check('真实上传要么出字、要么说明原因（不许静默）',
-    live.state === 'idle' && (live.changed || live.hint.length > 0), JSON.stringify(live));
+    settled && live.state === 'idle' && (live.value.length > 0 || live.hint.length > 0),
+    JSON.stringify(live));
     // 没配密钥时不能让人对着一个坏掉的按钮空按：要说清楚为什么。
   // 密钥有两个来源（secrets.js 的运行时值 + config.js 里加载时的快照），要一起清掉才算。
   const noKey = await page.evaluate(`(() => {
