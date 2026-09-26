@@ -48,7 +48,10 @@ window.APP_CONFIG = {
       url: 'https://api.siliconflow.cn/v1/audio/transcriptions',
       model: 'FunAudioLLM/SenseVoiceSmall',
       language: 'zh',
-      maxMs: 20000
+      maxMs: 20000,
+      // 实测：1.5 秒的音频，这个接口往返要 24.5 / 49.6 / 58.0 秒（三次采样）。
+      // 原来写死 15 秒，等于每次都在服务还没回话时自己把请求掐了。
+      timeoutMs: 90000
     },
 
     // 规则引擎：最低置信度阈值，低于此值走兜底回答

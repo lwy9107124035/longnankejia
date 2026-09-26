@@ -16,6 +16,7 @@
 
   var btn, hint, input;
   var rec = null, stream = null, chunks = [], state = 'idle', timer = null, seq = 0;
+  var tick = null;
 
   function aiCfg() {
     if (window.Store && window.Store.getEffectiveAi) return window.Store.getEffectiveAi();
@@ -27,7 +28,8 @@
       url: a.url || 'https://api.siliconflow.cn/v1/audio/transcriptions',
       model: a.model || 'FunAudioLLM/SenseVoiceSmall',
       language: a.language || 'zh',
-      maxMs: a.maxMs || 20000
+      maxMs: a.maxMs || 20000,
+      timeoutMs: a.timeoutMs || 90000
     };
   }
   function apiKey() { return (aiCfg().api || {}).apiKey || ''; }
@@ -109,14 +111,30 @@
     form.append('language', cfg().language);
     form.append('file', blob, 'voice.webm');
     var ctl = new AbortController();
-    var to = setTimeout(function () { ctl.abort(); }, 15000);
+    var secs = 0, timedOut = false;
+    var to = setTimeout(function () { timedOut = true; ctl.abort(); }, cfg().timeoutMs);
+    // 这个接口慢到几十秒，不报秒数的话观众只会以为页面卡住了。
+    // myTask !== seq 时闭嘴：另起一段录音之后，旧请求不许再改提示语。
+    tick = setInterval(function () {
+      if (myTask !== seq || state !== 'transcribing' || !hint) {
+        if (myTask !== seq) done();
+        return;
+      }
+      secs += 1;
+      hint.textContent = '在把话转成文字…已等 ' + secs + ' 秒（最长等 '
+        + Math.round(cfg().timeoutMs / 1000) + ' 秒）';
+    }, 1000);
+    function done() {
+      clearTimeout(to);
+      if (tick) { clearInterval(tick); tick = null; }
+    }
     fetch(cfg().url, {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + apiKey() },
       body: form,
       signal: ctl.signal
     }).then(function (r) {
-      clearTimeout(to);
+      done();
       if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 60)); });
       return r.json();
     }).then(function (d) {
@@ -130,10 +148,15 @@
       }
       finish('');
     }).catch(function (err) {
-      clearTimeout(to);
+      done();
       if (myTask !== seq) return;
-      finish('语音识别服务没回应（' + String((err && err.message) || err).slice(0, 40)
-        + '），文字输入照常可用');
+      // 等太久、连不上、服务报错，观众下一步该做的不一样，不能都糊成一句"没回应"
+      finish(timedOut ? '语音识别等了 ' + Math.round(cfg().timeoutMs / 1000)
+          + ' 秒没回话，说短一点再试；文字输入照常可用'
+        : (err && err.name) === 'TypeError'
+          ? '连不上语音识别服务（网络不通或被拦），文字输入照常可用'
+          : '语音识别服务报错（' + String((err && err.message) || err).slice(0, 40)
+            + '），文字输入照常可用');
     });
   }
 

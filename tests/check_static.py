@@ -516,6 +516,28 @@ def check_hometown_map():
         fail("build_hometown_map.py 丢了「点位必须在县界内」的自检")
 
 
+def check_asr_config():
+    """语音转写的等待上限不能拍脑袋：接口实测 24～58 秒才回话。
+
+    原来前端写死 15 秒 abort，等于每次都在服务还没开口时自己掐断，用户看到的
+    是"signal is aborted without reason"。这一条把阈值和实测绑在一起。
+    """
+    cfg = read(rel("js", "config.js"))
+    m = re.search(r"timeoutMs:\s*(\d+)", cfg)
+    if not m:
+        fail("js/config.js 的 asr 段没有 timeoutMs，转写请求没有超时上限")
+    elif int(m.group(1)) < 30000:
+        fail("asr.timeoutMs 只有 %s 毫秒，低于实测的 24～58 秒，转写必然被自己掐断"
+             % m.group(1))
+    src = read(rel("js", "voice-input.js"))
+    if not re.search(r"ctl\.abort\(\); \}, cfg\(\)\.timeoutMs\)", src):
+        fail("js/voice-input.js 里 abort 的超时是写死的数字，没走 cfg().timeoutMs")
+    if "signal is aborted" in src:
+        fail("js/voice-input.js 把浏览器内部的 abort 文案直接抛给用户了")
+    notes.append("语音转写超时 %s 毫秒（实测接口 24～58 秒）"
+                 % (m.group(1) if m else "未配置"))
+
+
 def check_copy_tells():
     """界面文案不许再长出套话。量法复用 tests/check_copy_tells.py，避免两处判得不一样。"""
     try:
@@ -542,6 +564,7 @@ def main():
     check_diancang_text_clean()
     check_diancang_pages()
     check_hometown_map()
+    check_asr_config()
     check_copy_tells()
     check_deploy_workflow()
     check_js_syntax()
