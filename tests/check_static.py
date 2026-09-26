@@ -538,6 +538,34 @@ def check_asr_config():
                  % (m.group(1) if m else "未配置"))
 
 
+def check_launchers():
+    """双击启动的脚本：不许指向不存在的文件，不许在非 ASCII 下把控制台写成乱码。
+
+    这里曾经写着"For PUBLIC internet access, run: gongwang.bat"，而仓库里没有这个
+    文件；观众和作者都点不开一个不存在的脚本。
+    """
+    for name in ("qidong.bat", "zhanting.bat"):
+        p = rel(name)
+        if not os.path.exists(p):
+            fail("%s 缺失——双击启动的入口" % name)
+            continue
+        body = read(p)
+        try:
+            body.encode("ascii")
+        except UnicodeEncodeError:
+            fail("%s 里有非 ASCII 字符：控制台按 GBK 解析，中文会成乱码" % name)
+    qd = read(rel("qidong.bat"))
+    for m in set(re.findall(r"[A-Za-z][A-Za-z0-9_-]*\.bat", qd) +
+                 re.findall(r"[A-Za-z][A-Za-z0-9_-]*\.bat", read(rel("README.md")))):
+        if not os.path.exists(rel(m)):
+            fail("%s 被文档或启动脚本提到，但仓库里没有这个文件" % m)
+    for need in ("longnankejia.pages.dev", "qcode.longnankejia-dev.pages.dev",
+                 "longnankejia-dev.pages.dev", "git rev-parse --abbrev-ref HEAD"):
+        if need not in qd:
+            fail("qidong.bat 丢了「%s」——本地预览必须说清楚是哪个分支、线上是哪三个地址" % need)
+    notes.append("启动脚本：只引用存在的 .bat，且打印当前分支与三条线上地址")
+
+
 def check_copy_tells():
     """界面文案不许再长出套话。量法复用 tests/check_copy_tells.py，避免两处判得不一样。"""
     try:
@@ -565,6 +593,7 @@ def main():
     check_diancang_pages()
     check_hometown_map()
     check_asr_config()
+    check_launchers()
     check_copy_tells()
     check_deploy_workflow()
     check_js_syntax()

@@ -6,11 +6,28 @@
 ## 本地运行
 
 ```
-双击 qidong.bat          # 起本地服务并打印扫码地址
+双击 qidong.bat          # 起本地服务，并告诉你是哪个分支、线上三个地址各是什么
 双击 zhanting.bat        # 停止服务
 ```
 
 或手动：`python -m http.server 8787`，浏览器打开 `http://127.0.0.1:8787`。
+
+**本地预览看的是这个文件夹当前检出（checkout）的那一份**，跟线上不一定是同一件事：
+分支要 push 并且部署过，线上才会变。qidong.bat 会打印 `branch <名字> @ <commit>`
+和工作区是否干净，就是为了回答"我现在看的到底是哪一份"。
+
+## 各分支的线上地址（手机也能直接开，不必启动任何东西）
+
+| 分支 | 地址 | 谁在用 |
+| --- | --- | --- |
+| `main` | https://longnankejia.pages.dev/ | 正式入口，展板上印的就是它 |
+| `qcode` | https://qcode.longnankejia-dev.pages.dev/ | 本次改动验收分支 |
+| `dev` | https://longnankejia-dev.pages.dev/ | 豆包的工作分支 |
+
+三条都是 Cloudflare Pages 的固定地址，不会每次部署换域名；带 `*.pages.dev` 的那两条
+属于同一个项目 `longnankejia-dev`，分支名就是子域名。想比较两个版本，开两个浏览器
+窗口分别访问即可。`main` 与 `qcode` 部署时注入 API Key（大模型问答、语音输入可用），
+`dev` 没有，那两项会如实提示未配置。
 
 ## 目录结构
 
@@ -247,6 +264,7 @@ node   scripts/qr_matrix.mjs <文本>     # 用页面上同一个编码器把文
 ## 部署
 
 生产站：**https://longnankejia.pages.dev/**（`main`，Cloudflare Pages）
+验收分支：**https://qcode.longnankejia-dev.pages.dev/**（`qcode`）
 开发预览：**https://longnankejia-dev.pages.dev/**（`dev`，豆包的工作分支）
 镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/dev/（GitHub Pages）
 备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）

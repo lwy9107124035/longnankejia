@@ -34,6 +34,7 @@ CF = ".github/workflows/cf-pages.yml"
 CFG = "js/config.js"
 KB = "js/knowledge-base.js"
 AE = "js/answer-engine.js"
+BAT = "qidong.bat"
 
 # (编号, 说明, 文件, 原文片段, 替换片段, 期望失败的断言名列表, 只跑哪些节)
 MUTATIONS = [
@@ -250,20 +251,31 @@ MUTATIONS = [
      "        if (v.length >= 2 && hay.indexOf(v) !== -1) {",
      "        var text = tokens.join('');" + chr(10)
      + "        if (v.length >= 2 && text.indexOf(v) !== -1) {",
-     ["写在关键词表里的问题必须命中本地库"], ""),
+     ["写在关键词表里的问题必须命中本地库"], "static"),
     ("R2", "拒答话再也识不出来", AE,
      "  function isRefusal(text) {" + chr(10) + "    var t = String(text || '').toLowerCase();",
      "  function isRefusal(text) {" + chr(10) + "    var t = '';",
      ["拒答话识得出，正常答复不误杀"], ""),
+    # ---------------- 启动脚本 ----------------
+    ("L1", "启动脚本指向不存在的脚本", BAT,
+     "echo   To stop the local server, run: zhanting.bat",
+     "echo   To stop everything, run: tingyun.bat",
+     ["被文档或启动脚本提到，但仓库里没有这个文件"], "static"),
+    ("L2", "把分支名写死成 main", BAT,
+     'for /f "delims=" %%b in (' + "'" + 'git rev-parse --abbrev-ref HEAD 2^>nul' + "'" + ') do set "BR=%%b"',
+     'set "BR=main"',
+     ["丢了「git rev-parse --abbrev-ref HEAD」"], "static"),
 ]
 
 
 def read(p):
-    return io.open(os.path.join(ROOT, p), encoding="utf-8").read()
+    # newline='' 保留原始换行：qidong.bat 是 CRLF，被写成 LF 的话 cmd 的
+    # 标签跳转可能出问题，而且"变异有没有还原干净"会比出一堆假差异。
+    return io.open(os.path.join(ROOT, p), encoding="utf-8", newline="").read()
 
 
 def write(p, s):
-    io.open(os.path.join(ROOT, p), "w", encoding="utf-8", newline="\n").write(s)
+    io.open(os.path.join(ROOT, p), "w", encoding="utf-8", newline="").write(s)
 
 
 def run_static(expect):
@@ -307,11 +319,14 @@ def main():
     for mid, desc, path, old, new, expect, sections in todo:
         src = read(path)
         untouched.setdefault(path, src)
-        if src.count(old) != 1:
-            print("%s SKIP 锚点命中 %d 次：%s" % (mid, src.count(old), desc))
+        eol = "\r\n" if "\r\n" in src else "\n"
+        old_x = old.replace("\n", eol)
+        new_x = new.replace("\n", eol)
+        if src.count(old_x) != 1:
+            print("%s SKIP 锚点命中 %d 次：%s" % (mid, src.count(old_x), desc))
             bad += 1
             continue
-        write(path, src.replace(old, new, 1))
+        write(path, src.replace(old_x, new_x, 1))
         try:
             if sections == "static":
                 proc, crashed = None, False

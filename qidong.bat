@@ -59,12 +59,39 @@ if defined LANIP (
     echo   LAN   :  check ipconfig for your IPv4
 )
 echo.
-echo   Phone on SAME Wi-Fi can open the LAN address.
-echo   For PUBLIC internet access, run: gongwang.bat
+echo   Phone on the SAME Wi-Fi can open the LAN address above.
+echo ============================================
+echo.
+
+rem ---- what is this folder actually checked out at? ----
+set "BR="
+for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set "BR=%%b"
+set "SHA="
+for /f "delims=" %%s in ('git rev-parse --short HEAD 2^>nul') do set "SHA=%%s"
+set "WORK=clean"
+for /f "delims=" %%d in ('git status --porcelain 2^>nul') do set "WORK=has uncommitted changes"
+if defined BR (
+    echo   Local preview = files in this folder = branch !BR! @ !SHA! ^(!WORK!^)
+    echo   It is NOT necessarily what is online: a branch goes online
+    echo   only after it is pushed and deployed.
+) else (
+    echo   This folder is not a git checkout, so local preview = files on disk.
+)
+echo.
+echo   Online addresses - open them in a browser any time, no launcher needed:
+echo     main   https://longnankejia.pages.dev/
+echo     qcode  https://qcode.longnankejia-dev.pages.dev/
+echo     dev    https://longnankejia-dev.pages.dev/
 echo ============================================
 echo.
 start "" "http://localhost:%PORT%/"
-echo   Browser opened. This window can be closed.
-echo   To stop everything, run: zhanting.bat
-timeout /t 5 /nobreak >nul
+echo   Local preview opened in the browser. This window can be closed.
+echo.
+set /p "OPEN=Open an online address too? m=main q=qcode d=dev  [Enter=skip] "
+if /i "%OPEN%"=="m" start "" "https://longnankejia.pages.dev/"
+if /i "%OPEN%"=="q" start "" "https://qcode.longnankejia-dev.pages.dev/"
+if /i "%OPEN%"=="d" start "" "https://longnankejia-dev.pages.dev/"
+echo.
+echo   To stop the local server, run: zhanting.bat
+timeout /t 20 /nobreak >nul
 exit /b 0
