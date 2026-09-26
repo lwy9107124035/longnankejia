@@ -26,7 +26,7 @@ js/
   knowledge-base.js     内置非遗知识库
   store.js              localStorage 覆盖层（管理员改动存这里）
   admin.js              管理面板
-  diancang.js           典藏模块：正文检索「指哪打哪」在这里（Diancang.search）
+  diancang.js           典藏模块：正文检索在这里（Diancang.search）
   diancang-data.js      典藏数据 + 书内国际音标 + QR 视频链接 + 讲解触发词
   dialect.js            客家方言语音库（16 段原声的播放列表）
   voice-input.js        问答框的语音输入：MediaRecorder 录音 + 国内 ASR 转写
@@ -108,7 +108,7 @@ QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应
   没录音就不给播放键）、语音输入（录音到转写的状态机、四条失败路径的提示、不自动发送）、
   访问地址面板（入口二维码已渲染、黑白比例合理、内容与面板链接逐像素一致）、
   方言语音库、hash 深链与未知路由回落、答案携带原声讲解、管理面板登录与知识库增改及
-  刷新后持久化、360px 与 1280px 布局、页脚 AI 生成声明，
+  刷新后持久化、360px 与 1280px 布局，
   最后断言无未捕获异常、无子资源加载失败（第三方的 404 不计）。
 
 ## 3D 模型
@@ -253,8 +253,10 @@ node   scripts/qr_matrix.mjs <文本>     # 用页面上同一个编码器把文
 
 三点约定，都有守卫且跑过反向用例：
 
-- **dev 预览不注入 API Key**（`js/secrets.js` 写空 key，页面按设计回落到本地知识库引擎）。
-  预览站是另一个公开域名，不该再带一份线上密钥——这个 key 之前已经泄露过一次。
+- **只有 main 与 qcode 注入 API Key**，其余分支（含 dev 预览）写空 key，页面按设计提示
+  「这个地址没有配置语音识别服务」并回落到本地知识库引擎。qcode 是验收分支，要在预览地址上
+  当场试大模型问答和语音输入，所以带 key；代价是那个 `*.pages.dev` 域名公开可访问，拿到链接
+  的人能借用该账号额度——这与 main 的暴露面相同（密钥本来就是明文下发到浏览器里的）。
 - **CI 用的 Cloudflare 令牌只有一项权限**：`Account → Cloudflare Pages → Edit`。
   官方 "Edit Cloudflare Workers" 模板会连带 13 项（Workers KV/R2/Scripts、Memberships、
   Account Settings…），对只推静态站的 CI 太宽，所以走 Custom Token。

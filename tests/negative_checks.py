@@ -29,6 +29,8 @@ HM = "js/data-hometown.js"
 RT = "js/router.js"
 IDX = "index.html"
 CSS = "css/style.css"
+S3D = "js/showcase3d.js"
+CF = ".github/workflows/cf-pages.yml"
 
 # (编号, 说明, 文件, 原文片段, 替换片段, 期望失败的断言名列表, 只跑哪些节)
 MUTATIONS = [
@@ -203,6 +205,22 @@ MUTATIONS = [
      "          <button class=\"mic-btn\" id=\"micBtn\" type=\"button\" aria-label=\"按住说话：语音输入\" aria-pressed=\"false\">",
      "          <button class=\"mic-btn\" id=\"micBtn\" type=\"button\" aria-hidden=\"true\">",
      ["输入条里有麦克风按钮（图标 + 无障碍标签）"], "4e"),
+    # ---------------- 3D 模型与部署密钥 ----------------
+    ("D1", "把第二块蓝染布挂回来", S3D,
+     "    g.add(cloth);",
+     "    g.add(cloth);" + chr(10)
+     + "    var cloth2 = new THREE.Mesh(new THREE.PlaneGeometry(clothW * 0.8, clothH * 0.85, 8, 8), clothMat.clone());" + chr(10)
+     + "    cloth2.position.set(0.15, rodY - clothH * 0.85 / 2 - 0.1, -0.2);" + chr(10)
+     + "    g.add(cloth2);",
+     ["蓝染布只挂一块布"], "3d"),
+    ("D2", "预览分支不再带密钥", CF,
+     'if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "qcode" ]; then',
+     'if [ "$BRANCH" = "main" ]; then',
+     ["预览上的大模型问答和语音输入会静默变成「未配置」"], "static"),
+    ("D3", "所有分支一律带上密钥", CF,
+     '          else' + chr(10) + '            KEY=""',
+     '          else' + chr(10) + '            KEY="$CF_KEY"',
+     ["不再给其余分支留空密钥"], "static"),
 ]
 
 

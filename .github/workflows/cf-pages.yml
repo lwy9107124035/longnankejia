@@ -26,7 +26,8 @@ jobs:
 
       # 白名单：只搬页面真正加载的东西。docs/ 是比赛通知与简历，tests/ 与 scripts/ 是
       # 开发工具，assets/source/ 是从不上线的原图——旧的 Netlify publish="." 把这些
-      # 一起推到过公网。dev 那一份刻意用空 key：预览站是另一个公开域名。
+      # 一起推到过公网。密钥只给 main 和验收中的 qcode：这两个分支要能当场跑大模型问答
+      # 和语音输入；其余分支（dev）留空，页面上这两项会如实提示未配置而不是静默失灵。
       - name: 组装站点
         id: prep
         env:
@@ -34,11 +35,12 @@ jobs:
           CF_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
         run: |
           set -e
-          if [ "$BRANCH" = "main" ]; then
-            PROJECT=longnankejia; KEY="$CF_KEY"
+          if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "qcode" ]; then
+            KEY="$CF_KEY"
           else
-            PROJECT=longnankejia-dev; KEY=""
+            KEY=""
           fi
+          if [ "$BRANCH" = "main" ]; then PROJECT=longnankejia; else PROJECT=longnankejia-dev; fi
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           rm -rf _site && mkdir -p _site/assets
           cp index.html _site/
