@@ -19,10 +19,17 @@ TELLS = [
     "匠心", "赋能", "无缝", "深入探讨", "至关重要", "闭环", "彰显", "值得一提",
     "总而言之", "在当今", "一站式", "助力", "致力于打造", "旨在", "力求",
     "完美融合", "独一无二", "带你探访", "焕发出新的生机", "深厚的文化底蕴",
+    # 2026-09-26 这一轮删掉的：都是删了不丢信息的拔高句，复发就直接报错
+    "之魂", "藏着中原乡愁", "传播矩阵", "双循环", "问答即懂", "活态载体",
+    "极尽繁复", "漫天星火", "琅琅书声", "纷至沓来", "最朴素的乡音",
+    "连接全球客家人的桥梁", "建筑魅力", "最动人的部分", "把祝福织进带子里",
 ]
 
 FILES = ["index.html", "js/ui.js", "js/answer-engine.js", "js/hometown.js",
-         "js/diancang.js", "js/dialect.js", "js/voice-input.js", "js/config.js"]
+         "js/diancang.js", "js/dialect.js", "js/voice-input.js", "js/config.js",
+         # 知识库的答复是观众在聊天里读到的正文，和界面文案同样要过这一关；
+         # 《文化典藏》的引文在 js/diancang-data.js，仍然不计。
+         "js/knowledge-base.js"]
 
 
 def strip_comments(text, path):

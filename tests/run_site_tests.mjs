@@ -845,7 +845,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   check('回到典藏列表', await until(page, `document.getElementById('dcDetailMask').hidden`));
 
   async function sectionDcFind() {
-  console.log('\n7c. 典藏检索：打一个字词就定位到讲它的展品');
+  console.log('\n7c. 典藏检索：输入关键词就定位到讲它的展品');
   // 检索挂在典藏而不是方言库：观众打的词很可能压根没有录音，但正文一定在这本书里。
   const s1 = await page.evaluate(`(() => {
     const r = window.Diancang.search('黄元米果');

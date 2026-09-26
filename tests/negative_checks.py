@@ -32,6 +32,7 @@ CSS = "css/style.css"
 S3D = "js/showcase3d.js"
 CF = ".github/workflows/cf-pages.yml"
 CFG = "js/config.js"
+KB = "js/knowledge-base.js"
 
 # (编号, 说明, 文件, 原文片段, 替换片段, 期望失败的断言名列表, 只跑哪些节)
 MUTATIONS = [
@@ -200,6 +201,10 @@ MUTATIONS = [
      "  margin-bottom: 12px; padding: 6px; background: var(--paper);",
      "  margin-bottom: 12px; padding: 6px;",
      ["地图容器有自己的底色"], "7d"),
+    ("S7", "把「客家菜之魂」写回答复里", KB,
+     "酿豆腐是客家菜里常见的一道，豆腐挖坑填肉馅煎炖而成",
+     "酿豆腐是客家菜之魂，豆腐挖坑填肉馅煎炖而成",
+     ["界面文案又长出套话"], "static"),
     ("S1", "套话被改回界面文案", UI,
      "tag: '草木染 · 板蓝根制靛',", "tag: '草木染 · 靛蓝匠心',",
      ["界面文案又长出套话"], "static"),

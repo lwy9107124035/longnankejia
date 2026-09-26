@@ -105,7 +105,7 @@
         '<div class="dc-detail-video">' +
         '  <div class="dc-detail-video-icon">🎬</div>' +
         '  <div class="dc-detail-video-title">' + esc(item.name) + ' — 客家话语音讲解</div>' +
-        '  <div class="dc-detail-video-desc">展柜旁二维码背后的原声讲解，已直接挂在下面</div>' +
+        '  <div class="dc-detail-video-desc">这件展品的客家话原声讲解，直接播放</div>' +
         '  <button class="dc-video-play-btn" id="dcPlayBtn" type="button">▶ 播放讲解视频</button>' +
         '</div>';
     }
