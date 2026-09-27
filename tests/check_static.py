@@ -570,7 +570,26 @@ def check_launchers():
                  "longnankejia-dev.pages.dev", "git rev-parse --abbrev-ref HEAD"):
         if need not in qd:
             fail("qidong.bat 丢了「%s」——本地预览必须说清楚是哪个分支、线上是哪三个地址" % need)
-    notes.append("启动脚本：只引用存在的 .bat，且打印当前分支与三条线上地址")
+    addr = rel("地址.html")
+    if not os.path.exists(addr):
+        fail("地址.html 缺失——三个分支的入口页，双击就用")
+    else:
+        a = read(addr)
+        for need in ("三个分支", "正式入口", "验收分支", "豆包的工作分支"):
+            if need not in a:
+                fail("地址.html 丢了「%s」——这页是给人双击看的，标题和分支说明要在" % need)
+        for need in ("https://longnankejia.pages.dev/",
+                     "https://qcode.longnankejia-dev.pages.dev/",
+                     "https://longnankejia-dev.pages.dev/"):
+            # 每条地址既要是点得动的链接，也要是看得见的文字：只满足一半的卡片等于没有
+            if 'href="%s"' % need not in a:
+                fail("地址.html 里 %s 不是一条可点的链接" % need)
+            if '<div class="url">%s</div>' % need not in a:
+                fail("地址.html 里 %s 没有作为可见文字写出来" % need)
+        for ref in re.findall(r'(?:src|href)="((?!https?:|#|javascript:)[^"]+)"', a):
+            if not os.path.exists(rel(ref)):
+                fail("地址.html 引用了本地文件 %s，但它不存在" % ref)
+    notes.append("启动脚本与地址页：只引用存在的文件，三条分支地址与部署映射一致")
 
 
 def check_video_attribution():

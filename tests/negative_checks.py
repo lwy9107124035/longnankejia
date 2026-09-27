@@ -35,6 +35,7 @@ CFG = "js/config.js"
 KB = "js/knowledge-base.js"
 AE = "js/answer-engine.js"
 BAT = "qidong.bat"
+AD = "地址.html"
 DD = "js/diancang-data.js"
 QRC = "data/qr-content.json"
 
@@ -275,6 +276,19 @@ MUTATIONS = [
      'set "BR=main"',
      ["丢了「git rev-parse --abbrev-ref HEAD」"], "static"),
     # ---------------- 客家话讲解的对应关系 ----------------
+    ("L3", "地址页少了一条分支地址", AD,
+     'https://qcode.longnankejia-dev.pages.dev/"', 'https://example.invalid/"',
+     ["不是一条可点的链接"], "static"),
+    ("L6", "地址只写成文字，链接丢了", AD,
+     '<a class="card" href="https://longnankejia-dev.pages.dev/">',
+     '<a class="card" href="https://example.invalid/">',
+     ["https://longnankejia-dev.pages.dev/ 不是一条可点的链接"], "static"),
+    ("L4", "地址页引用不存在的本地文件", AD,
+     '<div class="wrap">', '<img src="does-not-exist.png"><div class="wrap">',
+     ["引用了本地文件"], "static"),
+    ("L5", "地址页的分支说明被换成英文", AD,
+     '<div class="name">豆包的工作分支</div>', '<div class="name">doubao branch</div>',
+     ["地址.html 丢了「豆包的工作分支」"], "static"),
     ("W1", "把一件展品的视频改回按 page 挂", DD,
      "name: '龙舟', sheet: 60", "name: '龙舟', sheet: 999",
      ["这些展品的讲解视频不是印在它那一页上的码"], "static"),
@@ -288,6 +302,11 @@ MUTATIONS = [
      "        var namedInA = rest && rest.indexOf(it.name) !== -1;",
      "        var namedInA = rest && alias.some(function (w) { return rest.indexOf(w) !== -1; });",
      ["自我介绍里不挂视频"], ""),
+    ("W6", "挂卡永远挂同一件展品", DC,
+     "        if (inQ || namedInA) hits.push(it);",
+     "        if (it.name === '龙舟') hits.push(it);",
+     ["答案下方挂出原声讲解入口"], ""),
+
 ]
 
 
