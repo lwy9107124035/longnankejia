@@ -1283,19 +1283,39 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
 
   console.log('\n9b3. 回答里带出客家话原声讲解');
   await page.evaluate(`localStorage.setItem('nfyj_api_config', JSON.stringify({ mode: 'rules' }))`);
-  await page.send('Page.navigate', { url: BASE + '/index.html#/chat' });
+  // 强制一次真正的重新加载：导航到同一个 URL 只是换 hash，页面状态（包括上一条
+  // 还没答完的问题）会一路带过来，那样读到的"最新气泡"可能根本不是本次问的。
+  await page.send('Page.navigate', { url: BASE + '/index.html?fresh=' + Date.now() + '#/chat' });
   await until(page, 'document.readyState==="complete"', 8000);
   await until(page, `!!document.getElementById('chatInput')`, 6000);
-  const chips2 = await page.evaluate(`[...document.querySelectorAll('.chip')].map(c => c.dataset.q)`);
-  // 问的就是「采茶戏」，它有客家话讲解，理应在答复下面给出入口
+  await until(page, `document.querySelectorAll('.msg-bot').length === 0`, 6000);
+  // 问的就是「采茶戏」，它有客家话讲解，理应在答复下面给出入口。
+  // 数卡片必须只数最新那条气泡：气泡会累积，数整个页面等于把上一条答对的也算数。
+  const lastChips = `(${`[...document.querySelectorAll('.msg-bot')].pop()
+    ? [...[...document.querySelectorAll('.msg-bot')].pop().querySelectorAll('.msg-video-chip')].map(b => b.textContent)
+    : []`})`;
+  await until(page, `!document.getElementById('sendBtn').disabled`, 20000);
+  const userBefore = await page.evaluate(`document.querySelectorAll('.msg-user').length`);
   await page.evaluate(`(() => { const i = document.getElementById('chatInput');
     i.value = '采茶戏是什么？'; i.dispatchEvent(new Event('input', { bubbles: true }));
     document.getElementById('sendBtn').click(); })()`);
-  const chipAppeared = await until(page, `document.querySelectorAll('.msg-video-chip').length > 0`, 20000);
-  check('答案下方挂出原声讲解入口', chipAppeared,
-    chips2.length + ' chips, ' + await page.evaluate(`document.querySelectorAll('.msg-video-chip').length`) + ' chips');
-  await page.evaluate(`document.querySelector('.msg-video-chip')?.click()`);
-  check('点讲解入口打开视频弹层', await until(page, `!document.getElementById('videoMask').hidden`));
+  // 先确认这条问题真的发出去了（busy 时点击会被吞掉），再等答复与卡片
+  const sent = await until(page, `document.querySelectorAll('.msg-user').length > ${userBefore}`, 8000);
+  await until(page, `[...document.querySelectorAll('.msg-bot')].pop()
+    && [...document.querySelectorAll('.msg-bot')].pop().innerText.trim().length > 6`, 25000);
+  const chipAppeared = await until(page, `${lastChips}.length > 0`, 30000);
+  const seenChips = await page.evaluate(lastChips);
+  const seenLast = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.msg-bot')].pop();
+    return b ? b.innerText.replace(/\\s+/g, ' ').slice(0, 30) : '(没有气泡)'; })()`);
+  const seenStatus = await page.evaluate(`document.getElementById('engineStatus').innerText`);
+  check('答案下方挂出原声讲解入口',
+    sent && chipAppeared && /采茶戏/.test(seenChips.join('')),
+    JSON.stringify({ sent: sent, chips: seenChips, last: seenLast, status: seenStatus }));
+  const clicked = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.msg-bot')].pop();
+    const c = b && b.querySelector('.msg-video-chip'); if (c) { c.click(); return true; } return false; })()`);
+  check('点讲解入口打开视频弹层',
+    clicked && await until(page, `!document.getElementById('videoMask').hidden`),
+    clicked ? '' : '最新气泡里没有可点的卡片');
   await page.evaluate(`document.getElementById('videoClose').click()`);
 
   // 挂卡只认"问题或答案里真的点了那件展品"。以前表里有 '戏' '唱' '调' '汤' 这类
