@@ -46,12 +46,13 @@ window.APP_CONFIG = {
     // 那个要把音频发到谷歌服务器，馆内网络连不通，点了只会转到超时。
     asr: {
       url: 'https://api.siliconflow.cn/v1/audio/transcriptions',
-      model: 'FunAudioLLM/SenseVoiceSmall',
+      // 实测同一句普通话（3.5 秒，离线合成）：SenseVoiceSmall 要 40.7～97.4 秒，
+      // 还把"蓝染/制靛"听成"兰染/质垫"；Qwen3-ASR-1.7B 0.7～12 秒且逐字正确。
+      model: 'Qwen/Qwen3-ASR-1.7B',
       language: 'zh',
       maxMs: 20000,
-      // 实测：1.5 秒的音频，这个接口往返要 24.5 / 49.6 / 58.0 秒（三次采样）。
-      // 原来写死 15 秒，等于每次都在服务还没回话时自己把请求掐了。
-      timeoutMs: 90000
+      // 换模型后仍留 30 秒余量：这个服务的延迟会抖（同一次请求 0.7 秒到 12 秒都出现过）
+      timeoutMs: 30000
     },
 
     // 规则引擎：最低置信度阈值，低于此值走兜底回答

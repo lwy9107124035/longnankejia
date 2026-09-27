@@ -13,9 +13,12 @@
     if (input) input.disabled = on;
   }
 
-  /** 答案里提到有原声讲解的典藏展品，就把客家话视频挂在气泡下面 */
-  function attachVideos(bubble, question, answer) {
+  /** 答案里点到哪件展品有客家话原声，就把那件的视频挂在气泡下面。
+   *  兜底答复（没查到、只给话题清单）一律不挂：那种答案里出现的词是"蓝染的布要用
+   *  竹编的染架"这类套话，按它挂视频等于硬塞。 */
+  function attachVideos(bubble, question, answer, result) {
     if (!window.Diancang || !window.Diancang.findRelatedVideos) return;
+    if (result && (result.fallback || result.topics)) return;
     var items = window.Diancang.findRelatedVideos(question, answer).slice(0, 2);
     if (!items.length) return;
     var wrap = document.createElement('div');
@@ -80,7 +83,7 @@
           }
         }
 
-        attachVideos(bubble, question, result.text);
+        attachVideos(bubble, question, result.text, result);
       });
     }).catch(function (err) {
       console.error(err);

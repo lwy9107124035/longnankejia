@@ -35,6 +35,8 @@ CFG = "js/config.js"
 KB = "js/knowledge-base.js"
 AE = "js/answer-engine.js"
 BAT = "qidong.bat"
+DD = "js/diancang-data.js"
+QRC = "data/qr-content.json"
 
 # (编号, 说明, 文件, 原文片段, 替换片段, 期望失败的断言名列表, 只跑哪些节)
 MUTATIONS = [
@@ -232,8 +234,15 @@ MUTATIONS = [
      ["不再给其余分支留空密钥"], "static"),
     # ---------------- 语音超时阈值（实测接口要等 24～58 秒） ----------------
     ("V12", "超时阈值改回 15 秒", CFG,
-     "timeoutMs: 90000", "timeoutMs: 15000",
+     "timeoutMs: 30000", "timeoutMs: 15000",
      ["asr.timeoutMs 只有 15000 毫秒"], "static"),
+    ("V15", "模型换回又慢又听错字的", CFG,
+     "model: 'Qwen/Qwen3-ASR-1.7B',", "model: 'FunAudioLLM/SenseVoiceSmall',",
+     ["不是实测又快又准的 Qwen3-ASR-1.7B"], "static"),
+    ("V16", "转写接口换成境外那套", CFG,
+     "url: 'https://api.siliconflow.cn/v1/audio/transcriptions'",
+     "url: 'https://www.google.com/speech-api/v1/recognize'",
+     ["asr.url 不是国内可直连的转写接口"], "static"),
     ("V13", "超时不读配置写死数字", VI,
      "}, cfg().timeoutMs);", "}, 15000);",
      ["abort 的超时是写死的数字"], "static"),
@@ -265,6 +274,20 @@ MUTATIONS = [
      'for /f "delims=" %%b in (' + "'" + 'git rev-parse --abbrev-ref HEAD 2^>nul' + "'" + ') do set "BR=%%b"',
      'set "BR=main"',
      ["丢了「git rev-parse --abbrev-ref HEAD」"], "static"),
+    # ---------------- 客家话讲解的对应关系 ----------------
+    ("W1", "把一件展品的视频改回按 page 挂", DD,
+     "name: '龙舟', sheet: 60", "name: '龙舟', sheet: 999",
+     ["这些展品的讲解视频不是印在它那一页上的码"], "static"),
+    ("W2", "往触发词表里塞回单字", DD,
+     "  '龙舟': ['龙舟', '龙船会']", "  '龙舟': ['舟', '龙船会']",
+     ["有单字触发词"], "static"),
+    ("W3", "qr-content 的展品名改回按 page 填", QRC,
+     '"exhibit": "冬头帕"', '"exhibit": "火笼"',
+     ["但那一页上的展品是"], "static"),
+    ("W4", "别名在答复里出现也挂卡", DC,
+     "        var namedInA = rest && rest.indexOf(it.name) !== -1;",
+     "        var namedInA = rest && alias.some(function (w) { return rest.indexOf(w) !== -1; });",
+     ["自我介绍里不挂视频"], ""),
 ]
 
 

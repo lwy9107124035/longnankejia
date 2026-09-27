@@ -517,24 +517,31 @@ def check_hometown_map():
 
 
 def check_asr_config():
-    """语音转写的等待上限不能拍脑袋：接口实测 24～58 秒才回话。
+    """语音转写的等待上限不能拍脑袋：接口延迟实测从 0.7 秒到 97 秒都出现过。
 
-    原来前端写死 15 秒 abort，等于每次都在服务还没开口时自己掐断，用户看到的
-    是"signal is aborted without reason"。这一条把阈值和实测绑在一起。
+    原来前端写死 15 秒 abort，而当时用的 SenseVoiceSmall 实测要 24～58 秒，
+    等于每次都在服务还没回话时自己掐断，用户看到的是
+    "signal is aborted without reason"。换模型 + 阈值进配置后，这一条把
+    阈值钉在 30 秒以上，并盯住默认模型别退回那个又慢又听错字的。
     """
     cfg = read(rel("js", "config.js"))
     m = re.search(r"timeoutMs:\s*(\d+)", cfg)
     if not m:
         fail("js/config.js 的 asr 段没有 timeoutMs，转写请求没有超时上限")
     elif int(m.group(1)) < 30000:
-        fail("asr.timeoutMs 只有 %s 毫秒，低于实测的 24～58 秒，转写必然被自己掐断"
+        fail("asr.timeoutMs 只有 %s 毫秒，接口延迟实测能到十几秒，会自己掐断"
              % m.group(1))
+    if "Qwen/Qwen3-ASR-1.7B" not in cfg:
+        fail("asr.model 不是实测又快又准的 Qwen3-ASR-1.7B"
+             "（SenseVoiceSmall 要 40～97 秒且把「蓝染」听成「兰染」）")
+    if "https://api.siliconflow.cn/v1/audio/transcriptions" not in cfg:
+        fail("asr.url 不是国内可直连的转写接口——换回谷歌那套要把音频发到境外")
     src = read(rel("js", "voice-input.js"))
     if not re.search(r"ctl\.abort\(\); \}, cfg\(\)\.timeoutMs\)", src):
         fail("js/voice-input.js 里 abort 的超时是写死的数字，没走 cfg().timeoutMs")
     if "signal is aborted" in src:
         fail("js/voice-input.js 把浏览器内部的 abort 文案直接抛给用户了")
-    notes.append("语音转写超时 %s 毫秒（实测接口 24～58 秒）"
+    notes.append("语音转写模型 Qwen3-ASR，超时 %s 毫秒（实测 0.7～12 秒）"
                  % (m.group(1) if m else "未配置"))
 
 
@@ -566,6 +573,75 @@ def check_launchers():
     notes.append("启动脚本：只引用存在的 .bat，且打印当前分支与三条线上地址")
 
 
+def check_video_attribution():
+    """每件展品的客家话讲解，必须是印在它那一页上的那个码。
+
+    风琴页的页序（sheet）和读者看到的页码（page）不是一回事，差得还不止一位：
+    当初按 page 去对 QR 表，16 件里有 13 件挂成了隔壁的讲解。视频服务自己的
+    文件名（线粉.mp4 / 冬头帕.mp4 / 衫.mp4）证实了应当按 sheet 对。
+    这里不联网，只核对我们自己留下的三份材料互相是否还说得通。
+    """
+    src = read(rel("js", "diancang-data.js"))
+    qr = json.loads(read(rel("data", "qr-content.json")))
+    id_of_page, sheet_of_id = {}, {}
+    for page, v in qr.items():
+        m = re.search(r"id=([\w-]+)", v.get("url") or "")
+        if m:
+            id_of_page[int(page)] = m.group(1)
+            sheet_of_id[m.group(1)] = int(page)
+
+    items = []
+    for m in re.finditer(r"\{\s*name:\s*'([^']*)'(.*?)\}", src, re.S):
+        body = m.group(2)
+        u = re.search(r"videoUrl:\s*'(https:[^']+)'", body)
+        sh = re.search(r"sheet:\s*(\d+)", body)
+        items.append({"name": m.group(1),
+                      "vid": (re.search(r"id=([\w-]+)", u.group(1)) or [None, ""])[1] if u else None,
+                      "sheet": int(sh.group(1)) if sh else None})
+    with_url = [x for x in items if x["vid"]]
+    wrong = [x for x in with_url if sheet_of_id.get(x["vid"]) != x["sheet"]]
+    if wrong:
+        fail("这些展品的讲解视频不是印在它那一页上的码：%s"
+             % "、".join("%s(sheet %s)←码在 sheet %s"
+                         % (x["name"], x["sheet"], sheet_of_id.get(x["vid"])) for x in wrong))
+    orphan = [p for p, i in id_of_page.items()
+              if not any(x["sheet"] == p and x["vid"] for x in items)]
+    if orphan:
+        fail("qr-content 里这些页的码没有展品在挂：%s（sheet 对不上或漏挂）"
+             % "、".join(str(p) for p in sorted(orphan)))
+    for page, v in qr.items():
+        owner = next((x["name"] for x in items if x["sheet"] == int(page)), None)
+        if owner and v.get("exhibit") != owner:
+            fail("data/qr-content.json 第 %s 页写着 [%s]，但那一页上的展品是 [%s]"
+                 % (page, v.get("exhibit"), owner))
+
+    trig = re.search(r"window\.VIDEO_TRIGGERS = \{([\s\S]*?)\n\};", src)
+    if not trig:
+        fail("js/diancang-data.js 没有 window.VIDEO_TRIGGERS")
+        return
+    names = {x["name"] for x in with_url}
+    keys = re.findall(r"'([^']+)':\s*\[", trig.group(1))
+    for k in keys:
+        if k not in names:
+            fail("VIDEO_TRIGGERS 里的 [%s] 现在没有讲解视频，挂卡会指向空链接" % k)
+    words = re.findall(r"'([^']{1,})'", trig.group(1).replace("\n", " "))
+    short = [w for w in words if len(w) == 1 and w not in names]
+    if short:
+        fail("VIDEO_TRIGGERS 有单字触发词 %s：答案里沾一个字就挂视频，必然挂错"
+             % "、".join(sorted(set(short))))
+    kb = read(rel("js", "knowledge-base.js"))
+    for m in re.finditer(r"title: '([^']+)'[\s\S]{0,900}?\n  \{", kb + "\n  {"):
+        seg = m.group(0)
+        link = re.search(r"hlcode\.pro/\?id=([\w-]+)", seg)
+        if not link:
+            continue
+        owner = next((x["name"] for x in with_url if x["vid"] == link.group(1)), None)
+        if owner and owner not in m.group(1) and m.group(1) not in (owner or ""):
+            fail("知识库条目 [%s] 挂的 📺 链接其实是 [%s] 的讲解" % (m.group(1), owner))
+    notes.append("客家话讲解：%d 件展品的视频与它所在风琴页上的码一致，触发词 %d 个全部 ≥2 字"
+                 % (len(with_url), len(words)))
+
+
 def check_copy_tells():
     """界面文案不许再长出套话。量法复用 tests/check_copy_tells.py，避免两处判得不一样。"""
     try:
@@ -593,6 +669,7 @@ def main():
     check_diancang_pages()
     check_hometown_map()
     check_asr_config()
+    check_video_attribution()
     check_launchers()
     check_copy_tells()
     check_deploy_workflow()

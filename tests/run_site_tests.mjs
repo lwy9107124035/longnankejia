@@ -460,7 +460,7 @@ async function run() {
   check('可用性判断与置灰一致',
     (vb.unavailable ? vb.disabled : !vb.disabled), JSON.stringify({ u: vb.unavailable, d: vb.disabled }));
   check('语音走国内可直连的 ASR，不用谷歌那套',
-    /siliconflow/.test(vb.cfg.url) && vb.cfg.model.indexOf('SenseVoice') > -1,
+    /siliconflow/.test(vb.cfg.url) && /ASR|SenseVoice/i.test(vb.cfg.model),
     vb.cfg.url + ' · ' + vb.cfg.model);
   // 直接把模块源码读回来查：Chrome 自带的识别要把音频发到谷歌服务器，
   // 馆内网络连不通，一旦有人"顺手加回去"这条会红。
@@ -596,7 +596,9 @@ async function run() {
   await page.evaluate(`document.getElementById('micBtn').click(); 1`);
   await sleep(1200);
   const midway = await page.evaluate(`document.getElementById('micHint').textContent`);
+  const tLive = Date.now();
   const settled = await until(page, `window.VoiceInput.state() === 'idle'`, 100000);
+  const tookSec = Math.round((Date.now() - tLive) / 100) / 10;
   const live = await page.evaluate(`(() => ({ state: window.VoiceInput.state(),
     hint: document.getElementById('micHint').textContent,
     value: document.getElementById('chatInput').value }))()`);
@@ -605,6 +607,9 @@ async function run() {
   check('真实上传要么出字、要么说明原因（不许静默）',
     settled && live.state === 'idle' && (live.value.length > 0 || live.hint.length > 0),
     JSON.stringify(live));
+  // 换模型的理由是延迟：同一句音频，SenseVoiceSmall 40.7～97.4 秒，Qwen3-ASR 0.7～12 秒。
+  // 25 秒是留了余量的门槛，谁把模型换回去这条就会红。
+  check('真链路一轮在 25 秒内结束', settled && tookSec <= 25, tookSec + ' 秒');
     // 没配密钥时不能让人对着一个坏掉的按钮空按：要说清楚为什么。
   // 密钥有两个来源（secrets.js 的运行时值 + config.js 里加载时的快照），要一起清掉才算。
   const noKey = await page.evaluate(`(() => {
@@ -1282,14 +1287,40 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   await until(page, 'document.readyState==="complete"', 8000);
   await until(page, `!!document.getElementById('chatInput')`, 6000);
   const chips2 = await page.evaluate(`[...document.querySelectorAll('.chip')].map(c => c.dataset.q)`);
-  // 童谣的知识库答案会提到采茶戏/莲花调，正是有原声讲解的展品
-  await page.evaluate(`[...document.querySelectorAll('.chip')].find(c => c.dataset.q === '客家童谣是什么？').click()`);
+  // 问的就是「采茶戏」，它有客家话讲解，理应在答复下面给出入口
+  await page.evaluate(`(() => { const i = document.getElementById('chatInput');
+    i.value = '采茶戏是什么？'; i.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('sendBtn').click(); })()`);
   const chipAppeared = await until(page, `document.querySelectorAll('.msg-video-chip').length > 0`, 20000);
   check('答案下方挂出原声讲解入口', chipAppeared,
     chips2.length + ' chips, ' + await page.evaluate(`document.querySelectorAll('.msg-video-chip').length`) + ' chips');
   await page.evaluate(`document.querySelector('.msg-video-chip')?.click()`);
   check('点讲解入口打开视频弹层', await until(page, `!document.getElementById('videoMask').hidden`));
   await page.evaluate(`document.getElementById('videoClose').click()`);
+
+  // 挂卡只认"问题或答案里真的点了那件展品"。以前表里有 '戏' '唱' '调' '汤' 这类
+  // 单字触发词，自我介绍和兜底答复里沾一个字就挂一段别人的讲解。
+  const strict = await page.evaluate(`(() => {
+    const d = window.Diancang;
+    const intro = '我是「阿蓝」，龙南客家非遗数字助手的虚拟讲解员。我们是南昌大学的实践团队，'
+      + '围绕蓝染、竹编、客家织带等客家非遗做数字化保护与传播。';
+    const names = (a) => a.map((x) => x.name);
+    return {
+      intro: names(d.findRelatedVideos('你们在做什么', intro)),
+      song: names(d.findRelatedVideos('客家童谣是什么？', '客家童谣里常唱到采茶戏的调子')),
+      soup: names(d.findRelatedVideos('龙南有什么好吃的', '这道菜叫三及第汤，寓意连中三元')),
+      none: names(d.findRelatedVideos('围屋长什么样', '围屋是中轴对称的城堡式建筑'))
+    };
+  })()`);
+  check('自我介绍里不挂视频', strict.intro.length === 0, JSON.stringify(strict.intro));
+  check('挂出来的都是答复真点过名的展品',
+    strict.song.indexOf('采茶戏') > -1 && strict.soup.indexOf('三及第') > -1
+    && strict.none.length === 0, JSON.stringify(strict));
+
+  // 兜底答复走的是 attachVideos 里 result.fallback 那一行守卫。这里不配断言：
+  // 兜底文案里本来就不含任何有讲解视频的展品名，去掉守卫也不会有卡冒出来，
+  // 断言写了也不会红——那种"永远通过"的检查比没有更糟。守卫留着，防的是
+  // 以后有人把兜底文案改成点名展品的样子。
 
   console.log('\n10. console / network hygiene');
   // 第三方方言视频页、线上大模型、萌典都只是被内嵌/调用，其可达性不算本站缺陷。

@@ -329,20 +329,27 @@
   }
 
   /**
-   * 找出文本里提到的、且有客家话讲解视频的典藏展品。
-   * 知识库条目大量引用这些展品名，所以问答命中后可以直接把原声挂上去。
+   * 找出该挂哪件展品的客家话讲解。分两档，宁可不挂也不硬凑：
+   *  问题里点了名（展品名或别名）→ 挂；
+   *  问题没点、但答复里出现了展品全名 → 挂；
+   *  只在答复里出现"织带""米果"这类门类别名 → 不挂（自我介绍里顺带提到
+   *  客家织带，就挂一段花带的讲解，那是硬塞）。
    */
   function findRelatedVideos() {
-    var hay = Array.prototype.slice.call(arguments).join(' ');
+    var args = Array.prototype.slice.call(arguments);
+    var q = String(args[0] || '');
+    var rest = args.slice(1).join(' ');
     var hits = [];
-    if (!data || !hay) return hits;
+    if (!data || (!q && !rest)) return hits;
     var triggers = window.VIDEO_TRIGGERS || {};
     data.chapters.forEach(function (ch) {
       (ch.items || []).forEach(function (it) {
         if (!it.videoUrl) return;
-        var named = hay.indexOf(it.name) !== -1;
-        var keyed = (triggers[it.name] || []).some(function (w) { return hay.indexOf(w) !== -1; });
-        if (named || keyed) hits.push(it);
+        var alias = (triggers[it.name] || []).concat([it.name]);
+        var inQ = q && (q.indexOf(it.name) !== -1
+          || alias.some(function (w) { return q.indexOf(w) !== -1; }));
+        var namedInA = rest && rest.indexOf(it.name) !== -1;
+        if (inQ || namedInA) hits.push(it);
       });
     });
     return hits;
