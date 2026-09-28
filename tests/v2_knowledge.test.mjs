@@ -72,11 +72,25 @@ assert.equal(apiSuccess.source, 'api');
 assert.match(apiSuccess.text, /API 路由成功/);
 assert.equal(fetchCalls, 1);
 
+const proxyEngine = new ApiEngine();
+proxyEngine.cfg.apiKey = '';
+proxyEngine.cfg.proxyUrl = '/api/ai/chat/completions';
+fetchImpl = async (url, init) => {
+  assert.equal(url, '/api/ai/chat/completions');
+  assert.equal(Object.hasOwn(init.headers, 'Authorization'), false,
+    'browser-to-proxy requests must not contain an API key');
+  return { ok: true, json: async () => ({ choices: [{ message: { content: '服务端代理路由成功。' } }] }) };
+};
+const proxySuccess = await proxyEngine.ask('潮汕工夫茶冲泡方法是什么？');
+assert.equal(proxySuccess.source, 'api');
+assert.match(proxySuccess.text, /服务端代理路由成功/);
+assert.equal(fetchCalls, 2);
+
 fetchImpl = async () => { throw new Error('offline'); };
 const apiFallback = await apiEngine.ask('潮汕工夫茶冲泡方法是什么？');
 assert.equal(apiFallback.source, 'rules');
 assert.equal(apiFallback.fallback, true);
-assert.equal(fetchCalls, 2);
+assert.equal(fetchCalls, 3);
 
 const allKbText = JSON.stringify(window.KNOWLEDGE_BASE);
 assert.doesNotMatch(allKbText, /茶果/, 'the disallowed Hakka tea-fruit section must not be ingested');

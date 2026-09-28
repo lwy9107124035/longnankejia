@@ -2,9 +2,19 @@
 
 当前 codex 工作版本为 **v2**，从完整 main 基线 `eab8f30` 开始修改（标签 `v2-base`）。本轮根据甲方意见细化关西新围与冬头帕织带模型，加入地图缩放、平移、触控点选、地点筛选，并补充资料和区分蓝染比较问题的意图。回答的资料出处可展开查看，带网页来源的可直接打开。
 
-3D 两个重点模型按公开形制资料重做了一遍：围屋的围墙改成 2:1 收分棱台、墙顶加垛口与走马廊、四角炮楼改为方形两层歇山顶、天井地面铺上资料记载的拼花卵石（铜钱纹与万字纹）；织带按"白 11 居中、红 5 蓝 2 绿 2 黑 2"的架线顺序重排配色，分出织花段、拧成的亚带与流苏，并补上黑色双层护额。瓦与夯土改用程序化贴图，因为原来直接乘 PNG 会把屋顶糊成炭黑。形制出处与已知偏差（门位、天井数、织带放大一档的比例、门前禾坪与半月池为何暂未放入）逐条记在 [模型说明](docs/v2-model-notes.md)。
+七件 3D 模型都已按现有图文证据调整外观和表达，但证据强度不同。程序化细节让模型在屏幕上更清楚，**不等于照片级或测绘级复原**：没有使用摄影测量、扫描网格或文物施工图；资料未能确认的细节一律按概念/示意处理。
 
-实施清单见 [v2-plan.md](docs/v2-plan.md)，各模块来源与限制见 [模型说明](docs/v2-model-notes.md)、[地图说明](docs/v2-map-notes.md)、[知识库说明](docs/v2-knowledge-notes.md)。模型用于文化展示，未按测绘图纸复原。
+| 模型 | 本版可见内容 | 证据与限制 |
+| --- | --- | --- |
+| 虎头帽 | 黑布帽体、护耳、抽象彩线绣片 | 展柜照片展示多种红、粉、黑色款式，但没有单件近照；不代表某一顶帽子的精确结构或刺绣 |
+| 关西新围 | 方形“回”字围合、中央厅堂、四角炮楼、天井空间 | 依据[赣州市政府介绍](https://www.ganzhou.gov.cn/zfxxgk/c144214/202211/8dcc8823a68742bf8fb3c4f5afff641a.shtml)的总体布局概括；不是测绘复原，构件尺寸和细部仍是示意 |
+| 蓝染布 | 靛蓝底色、圆形放射与几何留白、布褶和染缸情境 | 参考博物馆蓝染样布外观；纹样由程序绘制，不复制某件实物，也不推断染料配方 |
+| 客家凉帽 | 竹编质感冠部、宽檐、垂布 | 本批没有可确认的凉帽近照，帽形、纹理和比例均为概念表达 |
+| 竹编浅圆器（页面称簸箕） | 横竖交织底面、浅边、包边圈口 | 照片支持浅圆竹器及编织外观，但器物名称、具体用途和尺寸未确认 |
+| 冬头帕织带 | 蓝紫红色带、白色抽象几何纹、垂带和穗边 | 按照片可见色带与几何装饰概括；没有可靠可读文字，配色与佩戴结构不作实物断言 |
+| 客家米酒坛 | 开口陶坛轮廓与棕色釉感 | 本批没有可确认的米酒坛近照，属于通用陶坛概念，不代表龙南具体藏品 |
+
+模型证据、来源图片编号和逐项限制见[七件模型说明](docs/v2-model-notes.md)。实施清单见 [v2-plan.md](docs/v2-plan.md)，各模块来源与限制见 [地图说明](docs/v2-map-notes.md)、[知识库说明](docs/v2-knowledge-notes.md)。
 
 v2 专项验收：`node tests/v2_knowledge.test.mjs`；启动本地 8787 服务后运行 `node tests/v2_visual_review.mjs`，输出实际 Chrome 截图、模型绘制统计与触屏手势验收记录到 `.cache/v2-review/`。`--map-only` 只验地图。原有 `tests/run_all.py` 仍用于完整回归。
 
@@ -33,14 +43,14 @@ v2 专项验收：`node tests/v2_knowledge.test.mjs`；启动本地 8787 服务�
 | --- | --- | --- |
 | `main` | https://longnankejia.pages.dev/ | 正式入口，展板上印的就是它 |
 | `qcode` | https://qcode.longnankejia-dev.pages.dev/ | 本次改动验收分支 |
-| `dev` | https://longnankejia-dev.pages.dev/ | 豆包的工作分支 |
+| `doubao` | https://longnankejia-dev.pages.dev/ | 豆包的工作分支 |
 | `codex` | https://codex.longnankejia-dev.pages.dev/ | v2 工作与预览分支 |
 
 四条都是 Cloudflare Pages 的固定地址，不会每次部署换域名；带 `*.pages.dev` 的预览
 属于同一个项目 `longnankejia-dev`，分支名就是子域名。想比较两个版本，开两个浏览器
-窗口分别访问即可。`main` 与 `qcode` 部署时注入 API Key（大模型问答、语音输入可用），
-`dev` 与 `codex` 没有，那两项会如实提示未配置。codex 分支从 main 的 v2 基线开始并自动部署；
-更新 v2 时只推送 codex，不要推送到其他分支。
+窗口分别访问即可。四个分支的 API 参数一致；密钥只绑定在 Cloudflare Pages Functions
+服务端，浏览器静态资源不包含密钥。codex 分支从 main 的 v2 基线开始并自动部署；
+3D 模型和 v2 页面改动只进 codex。
 
 ## 目录结构
 
@@ -213,7 +223,7 @@ node   scripts/qr_matrix.mjs <文本>     # 用页面上同一个编码器把文
 `js/config.js` 里 `ai.mode` 决定走哪条路：
 
 - `'rules'`：本地知识库，离线可用，演示时最稳。
-- `'api'`：调用硅基流动 OpenAI 兼容接口，密钥从 `js/secrets.js` 读取；请求失败会自动回落本地库。
+- `'api'`：调用硅基流动 OpenAI 兼容接口；线上请求经 Pages Functions 服务端代理，密钥保存在 Cloudflare secret binding，不下发到浏览器。请求失败会自动回落本地库。
 
 页面底部的「⚙ 管理入口」可在运行时切换（存 localStorage，不改源码）。
 
@@ -272,8 +282,7 @@ python scripts/audit_video_pages.py    # 三份材料互相核对
 （剥掉注释后，模块代码里不许再出现 `SpeechRecognition`）。
 
 每条失败路径都要说清楚原因，不许静默：麦克风被拒、设备没有麦克风、等太久、连不上、
-服务报错、没配密钥。前五种各有一条断言，没配密钥时按钮置灰并说明（密钥只随部署注入
-`js/secrets.js`，管理面板里没有填密钥的地方，提示语也不许指错路）。
+服务报错、代理未配置。每条失败路径都要说明原因；浏览器不保存或接收服务端密钥，管理面板里也没有填写密钥的地方。
 
 等待上限不是拍脑袋定的。同一句 3.5 秒的普通话（离线合成，原文是
 「客家蓝染的原料是板蓝根，染布要先浸泡制靛，再氧化显色。」）实测：
@@ -307,9 +316,9 @@ python scripts/audit_video_pages.py    # 三份材料互相核对
 
 生产站：**https://longnankejia.pages.dev/**（`main`，Cloudflare Pages）
 验收分支：**https://qcode.longnankejia-dev.pages.dev/**（`qcode`）
-开发预览：**https://longnankejia-dev.pages.dev/**（`dev`，豆包的工作分支）
-v2 预览：**https://codex.longnankejia-dev.pages.dev/**（`codex`，不注入 API Key）
-镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/dev/（GitHub Pages）
+开发预览：**https://longnankejia-dev.pages.dev/**（`doubao`，豆包的工作分支）
+v2 预览：**https://codex.longnankejia-dev.pages.dev/**（`codex`）
+镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/doubao/（GitHub Pages）
 备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）
 
 两条自动通道（`cf-pages.yml` 与 `pages.yml`）都只做一件事：**按白名单**把页面真正加载的
@@ -319,22 +328,19 @@ v2 预览：**https://codex.longnankejia-dev.pages.dev/**（`codex`，不注入 
 原图都能直接下载，而 `docs/` 里是比赛通知与简历。注意 Cloudflare 对不存在的路径回的是
 **200 + 一段 HTML 提示页**，所以核对上线集要比对 `Content-Type`，不能只看状态码。
 
-三点约定，都有守卫且跑过反向用例：
-
-本工作区当前维护的是 codex 上的 v2。更新与发布前先确认 `git branch --show-current` 输出
-为 `codex`；提交完成后只执行 `git push origin codex`，不要把这份改动推到 `main`、`qcode` 或 `dev`。
-
-- **只有 main 与 qcode 注入 API Key**，其余分支（含 dev 与 codex 预览）写空 key，页面按设计提示
-  「这个地址没有配置语音识别服务」并回落到本地知识库引擎。qcode 是验收分支，要在预览地址上
-  当场试大模型问答和语音输入，所以带 key；代价是那个 `*.pages.dev` 域名公开可访问，拿到链接
-  的人能借用该账号额度——这与 main 的暴露面相同（密钥本来就是明文下发到浏览器里的）。
+- **API key 只在服务端。** `cf-pages.yml` 将 GitHub secret 通过 stdin 写入 Cloudflare Pages
+  的 production/preview secret binding；四分支共享 API 参数，但 key 不写入浏览器静态资源。
+  `pages.yml` 的 main 与 doubao 镜像以及手动 Netlify 备用站都生成空 `js/secrets.js`。本地
+  开发可用被 `.gitignore` 忽略的 `js/secrets.js`。
+- **分支范围固定为 main、qcode、codex、doubao。** Cloudflare 项目映射为 main→`longnankejia`
+  production，doubao→`longnankejia-dev` production，qcode/codex→`longnankejia-dev` preview。
+  v2 的模型和页面内容仅在 codex 修改；API 配置或部署代理需要同步时，逐一核实四个分支后
+  对精确分支操作，禁止使用 `git push --all` 或通配 refspec。
 - **CI 用的 Cloudflare 令牌只有一项权限**：`Account → Cloudflare Pages → Edit`。
   官方 "Edit Cloudflare Workers" 模板会连带 13 项（Workers KV/R2/Scripts、Memberships、
   Account Settings…），对只推静态站的 CI 太宽，所以走 Custom Token。
-- **GitHub Pages 镜像工作流 `pages.yml` 只存在于 `main`**，靠显式 `ref: dev` 取开发分支内容。
-  GitHub 读的是「被 push 那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的 `AI_OWNER.md`），
-  不该由我提交——所以 **dev 的 CF/GitHub Pages 更新要等 dev 同步过 main 才会自动跑**，
-  在那之前靠 `main` 的推送与每小时 `:17` 定时（仅 `pages.yml`）。
+- **GitHub Pages 镜像工作流 `pages.yml` 只存在于 `main`**，显式 checkout `main` 与 `doubao`，每小时
+  `:17` 定时或 main 推送时更新两个镜像。豆包原工作分支 `dev` 已改名为 `doubao`。
 
 GitHub Pages 那条通道需要仓库 Settings → Pages 的 Source 选 **GitHub Actions**（已设好）。
 

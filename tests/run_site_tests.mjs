@@ -233,7 +233,7 @@ async function run() {
     if (ONLY.includes('7c')) await sectionDcFind();
     if (ONLY.includes('7d')) await sectionHometown();
     if (ONLY.includes('4e')) { await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`); await sectionVoice(); }
-    if (ONLY.includes('3d')) await sectionCloth();
+    if (ONLY.includes('3d')) { await section3dModels(); await sectionCloth(); }
     if (ONLY.includes('8')) await sectionAccess();
     return { passed, failed, results };
   }
@@ -610,16 +610,19 @@ async function run() {
   // 换模型的理由是延迟：同一句音频，SenseVoiceSmall 40.7～97.4 秒，Qwen3-ASR 0.7～12 秒。
   // 25 秒是留了余量的门槛，谁把模型换回去这条就会红。
   check('真链路一轮在 25 秒内结束', settled && tookSec <= 25, tookSec + ' 秒');
-    // 没配密钥时不能让人对着一个坏掉的按钮空按：要说清楚为什么。
-  // 密钥有两个来源（secrets.js 的运行时值 + config.js 里加载时的快照），要一起清掉才算。
+  // 没配语音服务时不能让人对着一个坏掉的按钮空按：要说清楚为什么。
+  // 同时清掉本地密钥与服务端代理地址，才是真正的未配置状态。
   const noKey = await page.evaluate(`(() => {
     const keepS = window.APP_SECRETS.apiKey, keepC = window.APP_CONFIG.ai.api.apiKey;
+    const keepP = window.APP_CONFIG.ai.asr.proxyUrl;
     window.APP_SECRETS.apiKey = ''; window.APP_CONFIG.ai.api.apiKey = '';
+    window.APP_CONFIG.ai.asr.proxyUrl = '';
     const why = window.VoiceInput.unavailable();
     document.getElementById('micBtn').click();
     const out = { hint: document.getElementById('micHint').textContent,
                   state: window.VoiceInput.state(), why: why };
     window.APP_SECRETS.apiKey = keepS; window.APP_CONFIG.ai.api.apiKey = keepC;
+    window.APP_CONFIG.ai.asr.proxyUrl = keepP;
     return out;
   })()`);
   check('没配语音服务时不开始录音并说明原因',
@@ -789,6 +792,32 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     return max;
   })()`, true);
   check('切换模型不会一帧暴转', maxStep < 0.25, 'max Δ/帧 = ' + maxStep.toFixed(4));
+
+  async function section3dModels() {
+    await page.evaluate(`document.querySelector('[data-panel="panel3d"]').click()`);
+    check('WebGL 场景完成初始化', await until(page, `window.Showcase3D.booted()`, 25000));
+    const modelIds = await page.evaluate(`window.Showcase3D.items().map(function (item) { return item.id; })`);
+    check('七件器物模型均有展示入口', modelIds.length === 7, modelIds.join(', '));
+    for (let i = 0; i < modelIds.length; i++) {
+      const id = modelIds[i];
+      await page.evaluate(`document.querySelectorAll('#c3dList .c3d-item')[${i}].click()`);
+      await sleep(900);
+      const state = await page.evaluate(`(() => {
+        const model = window.Showcase3D.debugModel();
+        let meshes = 0, triangles = 0;
+        if (model) model.traverse(function (o) {
+          if (o.isMesh && o.geometry) {
+            meshes++;
+            triangles += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+          }
+        });
+        return { title: document.getElementById('c3dName').textContent, meshes: meshes, triangles: Math.round(triangles) };
+      })()`);
+      check('模型 ' + id + ' 有可渲染几何体', state.title.trim().length > 0 && state.meshes >= 3 && state.triangles > 200,
+        JSON.stringify(state));
+      await shot(page, '03-model-review-' + id);
+    }
+  }
 
   console.log('\n7. 典藏 panel');
   await page.evaluate(`document.querySelector('[data-panel="panelDiancang"]').click()`);
