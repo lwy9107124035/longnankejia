@@ -60,28 +60,28 @@
     <span class="tag">main</span>
     <div class="name">正式入口</div>
     <div class="url">https://longnankejia.pages.dev/</div>
-    <div class="note">展板上印的就是这一条。带 API Key，大模型问答与语音输入可用。</div>
+    <div class="note">展板上印的就是这一条。大模型问答与语音输入通过服务端代理使用 API，密钥不会下发到浏览器。</div>
   </a>
 
   <a class="card" href="https://qcode.longnankejia-dev.pages.dev/">
     <span class="tag q">qcode</span>
     <div class="name">独立验收分支</div>
     <div class="url">https://qcode.longnankejia-dev.pages.dev/</div>
-    <div class="note">独立于 codex v2 的验收分支。带 API Key，可直接试问答和语音输入。</div>
+    <div class="note">独立于 codex v2 的验收分支。问答与语音输入通过服务端代理使用 API。</div>
   </a>
 
   <a class="card" href="https://longnankejia-dev.pages.dev/">
-    <span class="tag d">dev</span>
+    <span class="tag d">doubao</span>
     <div class="name">豆包的工作分支</div>
     <div class="url">https://longnankejia-dev.pages.dev/</div>
-    <div class="note">不注入 API Key，所以大模型问答与语音输入会如实提示"这个地址没有配置"，其余功能照常。</div>
+    <div class="note">原 dev 豆包工作分支，现已更名为 doubao。大模型问答通过服务端代理使用 API。</div>
   </a>
 
   <a class="card" href="https://codex.longnankejia-dev.pages.dev/">
     <span class="tag c">codex</span>
     <div class="name">v2 预览（当前版本）</div>
     <div class="url">https://codex.longnankejia-dev.pages.dev/</div>
-    <div class="note">对应 codex 分支的 v2。未注入 API Key，问答与语音输入会提示未配置；3D 模型、地图与典藏可直接体验。</div>
+    <div class="note">对应 codex 分支的 v2。问答与语音输入通过服务端代理使用 API；3D 模型、地图与典藏可直接体验。</div>
   </a>
 
   <div class="row">
@@ -94,7 +94,7 @@
   <div class="box">
     <p><b>v2 这一轮改动在 codex 分支。</b>它从 main 基线 <code>eab8f30</code> 开始，基线标签为 <code>v2-base</code>。
     codex 分支的固定预览地址是 <code>https://codex.longnankejia-dev.pages.dev/</code>；<code>v2</code> 是版本号。</p>
-    <p><b>四个可点地址</b>分别是正式版 main、独立工作的 qcode、dev，以及 codex 上的 v2 预览。codex 地址部署后会随 codex 分支更新。</p>
+    <p><b>四个可点地址</b>分别是正式版 main、独立工作的 qcode、doubao，以及 codex 上的 v2 预览。doubao 是原 dev 分支更名后的地址；codex 预览随 codex 分支更新。</p>
     <p><b>本地那份和线上这份不是一回事。</b>双击 <code>qidong.bat</code> 打开的是这个文件夹当前检出的分支，
     它要 push 并且部署过，线上才会变。启动脚本会打印 <code>branch 名字 @ commit</code>，
     想知道自己在看哪一份就看那一行。</p>

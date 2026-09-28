@@ -214,6 +214,7 @@
     var mode = ai.mode || 'rules';
     var api = ai.api || {};
     var hasKey = !!(window.APP_SECRETS && window.APP_SECRETS.apiKey);
+    var hasProxy = !!api.proxyUrl;
 
     body.innerHTML =
       '<div class="admin-api-section">' +
@@ -224,8 +225,10 @@
       '  </div>' +
       '  <div class="admin-hint">' +
       (hasKey
-        ? '✅ API Key 已配置（来自 secrets.js）'
-        : '⚠️ API Key 未配置，切换到 API 模式会自动回退到本地知识库') +
+        ? '✅ 本地直连 API Key 已配置（来自 secrets.js）'
+        : hasProxy
+          ? '✅ 已配置服务端 API 代理（密钥保存在服务器，不会下发到浏览器）'
+          : '⚠️ API 代理未配置，切换到 API 模式会自动回退到本地知识库') +
       '</div>' +
       '</div>' +
 
@@ -318,7 +321,7 @@
       '  <div class="admin-hint">' +
       '    龙南客家非遗数字助手 v' + ((window.APP_CONFIG && window.APP_CONFIG.app && window.APP_CONFIG.app.version) || '1.0') + '<br>' +
       '    所有修改保存在浏览器本地（localStorage），清除浏览器数据会丢失自定义内容。<br>' +
-      '    API Key 存放在 js/secrets.js，不经过管理员界面。' +
+      '    线上 API 密钥保存在服务端，不会下发到浏览器；本地直连密钥可存放在被忽略的 js/secrets.js 中。' +
       '  </div>' +
       '</div>';
 
