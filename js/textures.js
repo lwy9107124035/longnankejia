@@ -273,6 +273,133 @@
     return t.canvas;
   }
 
+  /* ---------- 青砖：细砂灰砖与浅灰勾缝 ---------- */
+  function qingBrick() {
+    var t=createCanvas(512,512),ctx=t.ctx;
+    ctx.fillStyle='#8b9291';ctx.fillRect(0,0,512,512);
+    var bw=64,bh=30;
+    for(var row=0;row<Math.ceil(512/bh);row++){
+      var off=row%2?bw/2:0;
+      for(var col=-1;col<9;col++){
+        var x=col*bw+off,y=row*bh;
+        var shade=12+Math.floor(Math.random()*22);
+        ctx.fillStyle='rgb('+(122+shade)+','+(129+shade)+','+(130+shade)+')';
+        ctx.fillRect(x+2,y+2,bw-4,bh-4);
+        ctx.fillStyle='rgba(220,220,207,.15)';ctx.fillRect(x+5,y+4,bw-10,1);
+        ctx.fillStyle='rgba(28,34,36,.17)';ctx.fillRect(x+4,y+bh-5,bw-8,2);
+        for(var p=0;p<8;p++){
+          ctx.fillStyle=Math.random()>.5?'rgba(219,216,199,.12)':'rgba(20,27,29,.10)';
+          ctx.fillRect(x+Math.random()*(bw-8)+4,y+Math.random()*(bh-8)+4,1+Math.random()*4,1);
+        }
+      }
+    }
+    return t.canvas;
+  }
+
+  /* ---------- 小青瓦：中灰瓦垄、瓦头与苔痕 ---------- */
+  function qingwaRoof() {
+    var t=createCanvas(512,512),ctx=t.ctx;
+    ctx.fillStyle='#8d9498';ctx.fillRect(0,0,512,512);
+    var pan=32,course=26;
+    for(var c=0;c<16;c++){
+      var x=c*pan,grd=ctx.createLinearGradient(x,0,x+pan,0);
+      grd.addColorStop(0,'#6d7478');grd.addColorStop(.5,'#9ba2a6');grd.addColorStop(1,'#6d7478');
+      ctx.fillStyle=grd;ctx.fillRect(x,0,pan,512);
+      ctx.fillStyle='rgba(38,44,46,.5)';ctx.fillRect(x,0,1.5,512);
+    }
+    for(var r=0;r<Math.ceil(512/course);r++){
+      var y=r*course;
+      ctx.fillStyle='rgba(36,42,44,.45)';ctx.fillRect(0,y+course-3,512,3);
+      for(var c2=0;c2<16;c2++){
+        ctx.fillStyle='#7b8286';ctx.beginPath();ctx.arc(c2*pan+pan/2,y+course-4,5.4,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='rgba(44,50,52,.55)';ctx.lineWidth=1;ctx.stroke();
+      }
+    }
+    for(var i=0;i<280;i++){
+      ctx.fillStyle='rgba(72,86,66,'+(0.04+Math.random()*0.07)+')';
+      ctx.fillRect(Math.random()*512,Math.random()*512,2+Math.random()*10,1+Math.random()*3);
+    }
+    return t.canvas;
+  }
+
+  /* ---------- 三合土夯墙：暖黄土色、水平夯层、砂砾与流水痕 ---------- */
+  function rammedLoam() {
+    var t=createCanvas(512,512),ctx=t.ctx;
+    ctx.fillStyle='#c3a67e';ctx.fillRect(0,0,512,512);
+    for(var y=0;y<512;y+=42){
+      ctx.fillStyle='rgba(118,90,58,.30)';ctx.fillRect(0,y,512,2.5);
+      ctx.fillStyle='rgba(233,215,183,.20)';ctx.fillRect(0,y+3,512,2);
+      for(var k=0;k<9;k++){
+        ctx.fillStyle='rgba(124,96,64,.15)';ctx.beginPath();
+        ctx.arc(Math.random()*512,y+10+Math.random()*24,3+Math.random()*3,0,Math.PI*2);ctx.fill();
+      }
+    }
+    for(var i=0;i<900;i++){
+      ctx.fillStyle=Math.random()>.5?'rgba(236,224,200,.35)':'rgba(102,78,53,.30)';
+      ctx.fillRect(Math.random()*512,Math.random()*512,1+Math.random()*2,1+Math.random()*2);
+    }
+    for(var s=0;s<26;s++){ctx.fillStyle='rgba(226,214,190,.10)';ctx.fillRect(Math.random()*512,0,2+Math.random()*5,512);}
+    return t.canvas;
+  }
+
+  /* ---------- 半月池水面：青灰底、横向水纹与浮萍 ---------- */
+  function pondWater() {
+    var t=createCanvas(512,512),ctx=t.ctx;
+    ctx.fillStyle='#3b5a57';ctx.fillRect(0,0,512,512);
+    for(var i=0;i<70;i++){
+      ctx.strokeStyle='rgba(198,216,207,'+(0.05+Math.random()*0.10)+')';
+      ctx.lineWidth=1+Math.random()*2.5;
+      var y=Math.random()*512,amp=4+Math.random()*10;
+      ctx.beginPath();ctx.moveTo(0,y);
+      for(var x=0;x<=512;x+=16) ctx.lineTo(x,y+Math.sin(x/40+i)*amp*.3);
+      ctx.stroke();
+    }
+    for(var k=0;k<24;k++){
+      ctx.fillStyle='rgba(84,116,80,.32)';
+      ctx.beginPath();ctx.arc(Math.random()*512,Math.random()*512,3+Math.random()*7,0,Math.PI*2);ctx.fill();
+    }
+    return t.canvas;
+  }
+
+  /* ---------- 禾坪卵石：不规则卵石铺地，中间拼铜钱纹与万字纹 ---------- */
+  function cobbleCourt() {
+    var t=createCanvas(512,512),ctx=t.ctx;
+    ctx.fillStyle='#948d80';ctx.fillRect(0,0,512,512);
+    for(var r=0;r<26;r++) for(var c=0;c<26;c++){
+      var x=c*20+(r%2)*10+(Math.random()*4-2), y=r*20+(Math.random()*4-2);
+      ctx.fillStyle='rgb('+(126+Math.floor(Math.random()*40))+','+(124+Math.floor(Math.random()*38))+','+(116+Math.floor(Math.random()*34))+')';
+      ctx.beginPath();ctx.ellipse(x,y,7+Math.random()*3,5.5+Math.random()*3,Math.random()*Math.PI,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(78,68,54,.22)';ctx.beginPath();ctx.ellipse(x+1.5,y+1.8,7,5.2,Math.random()*Math.PI,0,Math.PI*2);ctx.fill();
+    }
+    // 资料：天井与门坪常用鹅卵石/砖块拼出铜钱纹、万字纹。拼花用深浅两色卵石走线。
+    function pebbleLine(x0,y0,x1,y1,w){
+      var n=Math.max(2,Math.round(Math.hypot(x1-x0,y1-y0)/8));
+      for(var i=0;i<=n;i++){
+        var px=x0+(x1-x0)*i/n, py=y0+(y1-y0)*i/n;
+        ctx.fillStyle=i%2?'rgba(228,220,203,.85)':'rgba(72,66,56,.75)';
+        ctx.beginPath();ctx.ellipse(px,py,w,w*.78,Math.atan2(y1-y0,x1-x0),0,Math.PI*2);ctx.fill();
+      }
+    }
+    for(var cy=64;cy<512;cy+=128) for(var cx=64;cx<512;cx+=128){
+      ctx.strokeStyle='rgba(228,220,203,.55)';ctx.lineWidth=7;
+      ctx.beginPath();ctx.arc(cx,cy,34,0,Math.PI*2);ctx.stroke();
+      pebbleLine(cx-11,cy-11,cx+11,cy-11,5);pebbleLine(cx+11,cy-11,cx+11,cy+11,5);
+      pebbleLine(cx+11,cy+11,cx-11,cy+11,5);pebbleLine(cx-11,cy+11,cx-11,cy-11,5);
+    }
+    // 铜钱纹之间夹一组万字纹，两种拼花错列
+    for(var wy=128;wy<512;wy+=128) for(var wx=128;wx<512;wx+=128){
+      var h=22;ctx.strokeStyle='rgba(60,55,47,.8)';ctx.lineWidth=6;ctx.beginPath();
+      ctx.moveTo(wx,wy-h);ctx.lineTo(wx,wy+h);
+      ctx.moveTo(wx-h,wy);ctx.lineTo(wx+h,wy);
+      ctx.moveTo(wx,wy-h);ctx.lineTo(wx-h*.7,wy-h);
+      ctx.moveTo(wx,wy+h);ctx.lineTo(wx+h*.7,wy+h);
+      ctx.moveTo(wx-h,wy);ctx.lineTo(wx-h,wy+h*.7);
+      ctx.moveTo(wx+h,wy);ctx.lineTo(wx+h,wy-h*.7);
+      ctx.stroke();
+    }
+    return t.canvas;
+  }
+
   /* ---------- 瓦片屋顶纹理 ---------- */
   function roofTexture() {
     var t = createCanvas(512, 512);
@@ -372,47 +499,56 @@
   /* ---------- 客家织带：靛底上的菱形与锯齿纹 ---------- */
   function wovenBelt() {
     var s = createCanvas(512, 512), ctx = s.ctx;
-    ctx.fillStyle = '#243B55';
-    ctx.fillRect(0, 0, 512, 512);
-    var palette = ['#C0392B', '#E0A93C', '#F2E8D5', '#7BA89B'];
-    // 横向分区，每区一种纹样，模拟织带的分段构图
-    var bands = [[0, 70], [70, 150], [150, 200], [200, 320], [320, 370], [370, 450], [450, 512]];
-    bands.forEach(function (b, bi) {
-      var y0 = b[0], y1 = b[1], h = y1 - y0;
-      if (bi % 2 === 0) {
-        // 菱形串
-        var step = 46;
-        for (var x = step / 2; x < 512; x += step) {
-          ctx.fillStyle = palette[(bi + Math.floor(x / step)) % palette.length];
-          ctx.beginPath();
-          ctx.moveTo(x, y0 + h * 0.12); ctx.lineTo(x + step * 0.34, y0 + h / 2);
-          ctx.lineTo(x, y1 - h * 0.12); ctx.lineTo(x - step * 0.34, y0 + h / 2);
-          ctx.closePath(); ctx.fill();
-          ctx.strokeStyle = '#F2E8D5'; ctx.lineWidth = 1.5; ctx.stroke();
-        }
-      } else {
-        // 锯齿纹
-        ctx.strokeStyle = palette[bi % palette.length];
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        for (var sx = 0, up = true; sx <= 512; sx += 24) {
-          var sy = up ? y0 + h * 0.25 : y1 - h * 0.25;
-          if (sx === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
-          up = !up;
-        }
-        ctx.stroke();
-      }
-      ctx.strokeStyle = 'rgba(242,232,213,0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(0, y1 - 1); ctx.lineTo(512, y1 - 1); ctx.stroke();
-    });
-    // 纬线质感
-    ctx.globalAlpha = 0.10;
-    for (var yy = 0; yy < 512; yy += 3) {
-      ctx.strokeStyle = '#000'; ctx.beginPath();
-      ctx.moveTo(0, yy); ctx.lineTo(512, yy); ctx.stroke();
+    // 资料记载的架线顺序：中间至少 11 根白线，两边依次红 5、蓝 2、绿 2、黑 2。
+    // 一根经线一份宽度，色带比例按根数摊，不再凭感觉调色块宽窄。
+    var seq = [['#151619',2],['#2c6d4a',2],['#2a5f96',2],['#b5272c',5],['#f0e8d7',11],
+               ['#b5272c',5],['#2a5f96',2],['#2c6d4a',2],['#151619',2]];
+    var unit = 512/33, x = 0;
+    seq.forEach(function (g) { ctx.fillStyle = g[0]; ctx.fillRect(x, 0, unit*g[1]+1, 512); x += unit*g[1]; });
+    // 逐根经线一道高光一道阴影：织面要看得出"线"，不是印上去的色块
+    for (var w = 0; w < 33; w++) {
+      var wx = w*unit;
+      ctx.fillStyle='rgba(255,255,255,.13)'; ctx.fillRect(wx+unit*.22,0,Math.max(1,unit*.16),512);
+      ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(wx+unit*.74,0,Math.max(1,unit*.18),512);
     }
-    ctx.globalAlpha = 1;
+    // 纬线压经，每隔三像素一道横纹
+    for (var yy = 0; yy < 512; yy += 3) {
+      ctx.fillStyle = (yy/3)%2 ? 'rgba(255,252,242,.13)' : 'rgba(24,20,18,.13)';
+      ctx.fillRect(0,yy,512,1.4);
+    }
+    // 万字纹：十字加四个回钩，深蓝打底、朱红压线，在白芯上错列排下去
+    function wan(cx,cy,h,col,lw){
+      ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='butt';ctx.beginPath();
+      ctx.moveTo(cx,cy-h);ctx.lineTo(cx,cy+h);
+      ctx.moveTo(cx-h,cy);ctx.lineTo(cx+h,cy);
+      ctx.moveTo(cx,cy-h);ctx.lineTo(cx-h*.72,cy-h);
+      ctx.moveTo(cx,cy+h);ctx.lineTo(cx+h*.72,cy+h);
+      ctx.moveTo(cx-h,cy);ctx.lineTo(cx-h,cy+h*.72);
+      ctx.moveTo(cx+h,cy);ctx.lineTo(cx+h,cy-h*.72);
+      ctx.stroke();
+    }
+    var ccx = unit*11 + unit*11/2;
+    for (var k = 0; k < 8; k++) {
+      var cy = k*64+32;
+      wan(ccx,cy,unit*3.3,'#2f4a63',unit*.9);
+      wan(ccx,cy,unit*2.1,'#a5322c',unit*.55);
+    }
+    // 两侧红带上的锯齿菱格挑花
+    [unit*5.5, unit*27.5].forEach(function(bx){
+      for (var k2 = 0; k2 < 16; k2++) {
+        var y2 = k2*32+16, r = unit*1.9;
+        ctx.strokeStyle='rgba(244,236,220,.82)'; ctx.lineWidth=unit*.42;
+        ctx.beginPath();
+        ctx.moveTo(bx,y2-r);ctx.lineTo(bx+r*1.4,y2);ctx.lineTo(bx,y2+r);ctx.lineTo(bx-r*1.4,y2);ctx.closePath();ctx.stroke();
+      }
+    });
+    // 布边收口：最外一列黑线再压一道深色
+    ctx.fillStyle='rgba(8,9,11,.55)';ctx.fillRect(0,0,unit*.5,512);ctx.fillRect(512-unit*.5,0,unit*.5,512);
+    for (var f = 0; f < 900; f++) {
+      var fx=Math.random()*512,fy=Math.random()*512;
+      ctx.strokeStyle=Math.random()>.5?'rgba(255,250,235,.16)':'rgba(28,24,20,.12)';
+      ctx.lineWidth=.6;ctx.beginPath();ctx.moveTo(fx,fy);ctx.lineTo(fx+(Math.random()-.5)*4,fy+1+Math.random()*3);ctx.stroke();
+    }
     return s.canvas;
   }
 
@@ -478,6 +614,11 @@
     tigerFace: tigerFaceTexture,
     landye: landyeTexture,
     wall: wallTexture,
+    qingBrick: qingBrick,
+    qingwaRoof: qingwaRoof,
+    rammedLoam: rammedLoam,
+    pondWater: pondWater,
+    cobbleCourt: cobbleCourt,
     roof: roofTexture,
     envMap: envMap,
     bambooWeave: bambooWeave,
