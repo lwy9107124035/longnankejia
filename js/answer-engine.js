@@ -146,6 +146,174 @@
     return first.length > (max || 46) ? first.slice(0, max || 46) + '…' : first;
   }
 
+  /* ---------- v2：问句意图路由与定向检索 ---------- */
+  function norm(q) {
+    return String(q || '').toLowerCase().replace(/[\s？?！!。，,；;：:、"“”‘’（）()《》]/g, '');
+  }
+
+  function pickEntry(entries, id) {
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].id === id) return entries[i];
+    }
+    return null;
+  }
+
+  function collectSources(entries) {
+    var refs = [];
+    (entries || []).forEach(function (entry) {
+      (entry.sources || []).forEach(function (source) {
+        if (!source.title && !source.url) return;
+        if (refs.some(function (ref) { return ref.title === source.title && ref.url === source.url; })) return;
+        refs.push({ title: source.title || source.url, url: source.url || '' });
+      });
+    });
+    return refs;
+  }
+
+  function intentResult(text, title, refs, options) {
+    return {
+      text: text,
+      source: 'rules',
+      matched: title,
+      intent: true,
+      references: (refs || []).map(function (entry) { return entry.title; }),
+      sources: collectSources(refs),
+      needsApi: !!(options && options.needsApi)
+    };
+  }
+
+  function questionIntent(question, entries) {
+    var q = norm(question);
+    var compare = /比較|对比|区别|差异|不同|相似|相同|共同|类似|异同/.test(q);
+    var same = /相似|相同|共同|类似/.test(q);
+    var both = /异同|既.*又|相似.*区别|区别.*相似|相同.*不同|不同.*相同/.test(q);
+    var process = /工艺|步骤|怎么做|如何制作|制作方法|流程|原料|材料/.test(q);
+    var inheritor = /传承人|谁在传|谁传承|谁来传|代表性传承|传承者|老师是谁|师傅是谁/.test(q);
+    var hasBlue = /蓝染|蓝印花|靛蓝|扎染/.test(q);
+    var hasWeave = /织带|花带|冬头帕/.test(q);
+    var hasBamboo = /竹编|竹篾|篾匠/.test(q);
+    var nantong = /南通|蓝印花布/.test(q);
+    var dali = /白族|大理|周城/.test(q);
+    var references = [];
+    var text = '';
+
+    // A multi-topic craft question must be answered as a comparison before any
+    // single keyword can win the ordinary ranker.
+    if (compare && hasWeave && hasBamboo) {
+      var strap = pickEntry(entries, 'zhidai');
+      var bamboo = pickEntry(entries, 'v2-zhubian');
+      if (strap && bamboo) {
+        references = [strap, bamboo];
+        if (same && !both) {
+          text = '相似处：两者都靠手工安排经纬、挑压编织，也都把日常生活和祝愿带进器物与纹样。区别在材料和用途：织带以丝线织成窄幅带子，常与冬头帕、婚俗相连；竹编先把竹材劈成篾条，再编成篮、筛等生活器具。这里说的是龙南资料中的做法。';
+        } else if (both) {
+          text = '相似处：两者都靠手工安排经纬、挑压编织，也都把生活需求和纹样寓意带进作品。区别在材料和用途：织带以丝线织成窄幅带子，常与冬头帕、婚俗相连；竹编先把竹材劈成篾条，再编成篮、筛等器具。这里比较的是龙南资料中的做法。';
+        } else {
+          text = '两种技艺的材料和步骤不同。客家织带把丝线架在绠瓠子上，用带尺挑线、穿梭编出带状纹样；竹编先选竹、破篾和打磨，再用篾条挑压编成篮、筛等器物。织带常用于冬头帕并承载婚俗祝愿，竹编则多做日用器具。以上是龙南资料中的做法。';
+        }
+        return intentResult(text, '织带与竹编工艺比较', references);
+      }
+    }
+
+    if (compare && hasBlue) {
+      var hakka = pickEntry(entries, 'landye');
+      var nt = nantong ? pickEntry(entries, 'v2-nantong-blue-print') : null;
+      var dl = dali ? pickEntry(entries, 'v2-dali-bai-tie-dye') : null;
+      var generalOther = /其他地方|别的地方|其他地区|外地|各地|不同地区|相近的地方|相似的地方|地方染艺|地方做法|别处|他处/.test(q);
+      var explicitlyUnknown = /日本|日本蓝染|江户|琉球|福建|土楼|围屋/.test(q);
+      if (!nantong && !dali && generalOther && !explicitlyUnknown) {
+        nt = pickEntry(entries, 'v2-nantong-blue-print');
+        dl = pickEntry(entries, 'v2-dali-bai-tie-dye');
+      }
+      references = [hakka, nt, dl].filter(Boolean);
+      if (hakka && references.length > 1 && !explicitlyUnknown) {
+        var places = [];
+        if (nt) places.push('南通蓝印花布');
+        if (dl) places.push('大理白族扎染');
+        var scope = places.join('、');
+        var common = '客家蓝染与' + scope + '都以植物蓝靛染色，并通过局部防染呈现蓝白或深浅纹样。';
+        var differenceParts = [];
+        if (nt) differenceParts.push('南通蓝印花布以刻花版和防染浆印花');
+        if (dl) differenceParts.push('大理白族扎染先扎缝布面再浸染、拆线');
+        var differences = '工艺各有路径：龙南客家蓝染资料记载制靛泥、蜡染模板及与织带融合；' + differenceParts.join('；') + '。';
+        if (same && !both) {
+          text = '相似处：' + common + '这里仅按' + scope + '的有来源资料比较，不代表其他地区都一样。';
+        } else if (both) {
+          text = '相似处：' + common + '\n区别：' + differences + '这里只比较' + scope + '，不把这些样本推广为所有地方的做法。';
+        } else {
+          text = '以' + scope + '为参照，龙南客家蓝染资料记载以蓝草制靛，李洁春用“三浸三晒三发酵”制靛泥，并有蜡染模板及与织带融合的做法；' + differences + '客家资料没有完整说明各类布料的全部防染细节；“其他地方”也不是单一工艺，以上只比较有来源的具体样本。';
+        }
+        return intentResult(text, same ? '客家蓝染与其他地方蓝染的相似之处' : '客家蓝染与其他地方蓝染的工艺比较', references);
+      }
+      if (hakka && explicitlyUnknown) {
+        text = '现有龙南资料能说明客家蓝染以蓝草制靛，李洁春采用“三浸三晒三发酵”制靛泥，并有蜡染模板和靛蓝织带实践；但馆内资料没有覆盖你提到的地区，暂时不能据此判断双方异同。若你愿意，我可以按该地非遗或官方资料再核对。';
+        return intentResult(text, '蓝染跨地区比较（本地资料有限）', [hakka], { needsApi: true });
+      }
+    }
+
+    if (compare && (/围屋|土楼/.test(q) || hasWeave || hasBamboo)) {
+      var knownSide = /竹编|竹篾|篾匠/.test(q) ? pickEntry(entries, 'v2-zhubian')
+        : (/织带|花带|冬头帕/.test(q) ? pickEntry(entries, 'zhidai')
+          : (hasBlue ? pickEntry(entries, 'landye') : pickEntry(entries, 'weiwu')));
+      if (knownSide && /日本|福建|土楼|围屋|外地|其他地区|其他地方|相较|相比|比较|对比|区别|不同/.test(q)) {
+        text = '龙南资料记载：' + headLine(knownSide.answer, 145) + '。馆内资料没有覆盖你提到的另一方，因此我先不推断差异；可以按该地官方或非遗资料再核对。';
+        return intentResult(text, knownSide.title + '比较（本地资料有限）', [knownSide], { needsApi: true });
+      }
+    }
+
+    if (inheritor) {
+      var personEntry = hasBlue ? pickEntry(entries, 'landye') : (hasWeave ? pickEntry(entries, 'v2-zhidai') : (hasBamboo ? pickEntry(entries, 'v2-zhubian') : null));
+      if (personEntry) {
+        text = hasBlue
+          ? '龙南蓝染资料记载，李洁春传习蓝染技艺，实践包括古法制靛、蜡染模板和靛蓝织带合作。若想了解其官方代表性传承人级别，需以公布的名录为准。'
+          : (hasWeave
+            ? '龙南织带资料记载，廖秋华、黄竹英长期传习客家织带。具体官方代表性传承人级别，请以公布的名录为准。'
+            : '杨村竹编资料记载，徐昌添长期展示并传习竹编技艺。具体官方代表性传承人级别，请以公布的名录为准。');
+        return intentResult(text, personEntry.title + '传承信息', [personEntry]);
+      }
+    }
+
+    if (process) {
+      var processEntry = hasBlue ? (nantong ? pickEntry(entries, 'v2-nantong-blue-print') : (dali ? pickEntry(entries, 'v2-dali-bai-tie-dye') : pickEntry(entries, 'landye')))
+        : (hasWeave ? pickEntry(entries, 'zhidai') : (hasBamboo ? pickEntry(entries, 'v2-zhubian') : null));
+      if (processEntry) {
+        if (hasBlue && !nantong && !dali) {
+          text = '客家蓝染的资料步骤是：用蓝草制取靛蓝；李洁春以“三浸三晒三发酵”制靛泥；再以蜡染模板等方式制作纹样并进行染制。与织带结合的靛蓝织带资料称有24道染制工序。';
+        } else if (hasBlue && nantong) {
+          text = '南通二甲蓝印花布的地方资料记载：在白布上用刻花版刮防染浆，再用靛蓝染色，洗去防染浆后显出蓝白纹样。';
+        } else if (hasBlue && dali) {
+          text = '大理白族扎染先按纹样扎、撮、缝布，再反复浸染；拆开扎线后，未染部分留白成花。传统染料包括植物蓝靛或土靛。';
+        } else if (hasWeave) {
+          text = '客家冬头帕织带分三步：①架线，把多色丝线固定在绠瓠子上；②编织，用带尺挑线、穿梭织出纹样；③下架，取下织带并处理余线。';
+        } else {
+          text = '杨村竹编从选竹、截竹和刮节开始；竹筒破片后分层劈篾，再用“度篾齿”磨边、定宽。随后起底、挑压编织，最后收边、缠边并安装提手。';
+        }
+        return intentResult(text, processEntry.title + '工艺', [processEntry]);
+      }
+    }
+    return null;
+  }
+
+  function contextEntries(ranked, question) {
+    var q = norm(question);
+    var requested = [];
+    if (/南通|蓝印花布/.test(q)) requested.push('v2-nantong-blue-print');
+    if (/白族|大理|周城/.test(q)) requested.push('v2-dali-bai-tie-dye');
+    if (/蓝染|蓝印花|靛蓝|扎染/.test(q)) requested.push('landye');
+    if (/织带|花带|冬头帕/.test(q)) requested.push('zhidai');
+    if (/竹编|竹篾|篾匠/.test(q)) requested.push('v2-zhubian');
+    var selected = [];
+    requested.forEach(function (id) {
+      (ranked.scored || []).forEach(function (score) {
+        if (score.entry.id === id && selected.indexOf(score.entry) === -1) selected.push(score.entry);
+      });
+    });
+    (ranked.scored || []).forEach(function (score) {
+      if (selected.length < 4 && selected.indexOf(score.entry) === -1) selected.push(score.entry);
+    });
+    return selected.slice(0, 4);
+  }
+
   /** 未命中时的答案：给馆内最接近的资料，绝不回"答不了/还在学习中"。 */
   RulesEngine.prototype.nearest = function (ranked, question) {
     // 只列关键词真的在问题里出现过的条目。没有一条对得上却硬凑前三，
@@ -177,6 +345,8 @@
   RulesEngine.prototype.ask = function (question) {
     var self = this;
     return mockDelay().then(function () {
+      var intent = questionIntent(question, self.entries);
+      if (intent) return intent;
       var ranked = self.rank(question);
       if (!ranked.scored.length) {
         return {
@@ -213,19 +383,22 @@
   }
 
   /** 把馆内最接近的资料节选塞进系统提示，让大模型贴着馆藏说，而不是自由发挥。 */
-  function kbContext(ranked) {
-    var top = (ranked.scored || []).slice(0, 3);
+  function kbContext(ranked, question) {
+    var top = contextEntries(ranked, question);
     if (!top.length) return '';
-    return '\n\n【馆内资料节选，优先据此回答；资料没覆盖的可依据客家非遗通识作答，'
-      + '但不要编造具体年代与人名】\n' + top.map(function (s) {
-        return '· ' + s.entry.title + '：' + headLine(s.entry.answer, 90);
+    return '\n\n【检索到的馆内资料，优先逐项据此回答；涉及比较时只比较资料明确提到的地方样本，不泛化到所有地区；不得补造名录级别、年代、年龄或人名】\n' + top.map(function (entry) {
+        var refs = (entry.sources || []).map(function (source) {
+          return (source.title || source.label || '') + (source.url ? ' ' + source.url : '');
+        }).filter(Boolean).join('；');
+        return '· ' + entry.title + '：' + String(entry.answer || '').slice(0, 650)
+          + (refs ? '\n  来源：' + refs : '');
       }).join('\n');
   }
 
   ApiEngine.prototype.callApi = function (question, ranked) {
     var api = this.cfg;
     var messages = [
-      { role: 'system', content: (api.systemPrompt || '你是非遗数字助手。') + kbContext(ranked) },
+      { role: 'system', content: (api.systemPrompt || '你是非遗数字助手。') + kbContext(ranked, question) },
       { role: 'user', content: String(question || '') }
     ];
 
@@ -282,6 +455,13 @@
   ApiEngine.prototype.ask = function (question) {
     var self = this;
     var ranked = this._fallback.rank(question);
+    var intent = questionIntent(question, this._fallback.entries);
+
+    // 复杂或多主题意图先从有出处的条目组成针对性回答；无论 API 配置如何，
+    // 相似/区别/工艺/传承人问法都可离线给出同一条可追溯答案。
+    if (intent) {
+      return mockDelay().then(function () { return intent; });
+    }
 
     if (ranked.hit) {
       var top = ranked.hit;

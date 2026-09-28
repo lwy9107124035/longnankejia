@@ -112,6 +112,43 @@
       });
     }
 
+    function addSources(bubble, sources) {
+      if (!Array.isArray(sources) || !sources.length) return;
+      var details = el('details', 'msg-sources');
+      var summary = el('summary');
+      summary.textContent = '资料出处';
+      details.appendChild(summary);
+      var list = el('ul');
+      var seen = [];
+      sources.forEach(function (source) {
+        if (!source || !source.title) return;
+        var key = source.url || source.title;
+        if (seen.indexOf(key) !== -1) return;
+        seen.push(key);
+        var item = el('li');
+        var url;
+        try {
+          url = source.url ? new URL(source.url) : null;
+          if (url && url.protocol !== 'https:' && url.protocol !== 'http:') url = null;
+        } catch (_) { url = null; }
+        if (url) {
+          var link = el('a');
+          link.href = url.href;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = source.title;
+          item.appendChild(link);
+        } else {
+          item.textContent = source.title;
+        }
+        list.appendChild(item);
+      });
+      if (!list.children.length) return;
+      details.appendChild(list);
+      bubble.appendChild(details);
+      scrollToBottom();
+    }
+
     function init() {
       windowEl = document.getElementById('chatWindow');
       inputEl = document.getElementById('chatInput');
@@ -123,6 +160,7 @@
       init: init,
       addUser: addUser,
       addBotShell: addBotShell,
+      addSources: addSources,
       typewrite: typewrite,
       scrollToBottom: scrollToBottom
     };

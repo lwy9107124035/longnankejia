@@ -391,7 +391,7 @@ input { font-family: inherit; }
 .c3d-item-name { font-size: 11px; font-weight: 600; color: var(--ink); }
 .c3d-item-sub { font-size: 9px; color: var(--muted); }
 
-.c3d-viewport { width: 100%; height: 260px; background: linear-gradient(180deg, #EDE8DC 0%, #E0D8C8 100%); border-radius: var(--radius-lg); border: 1px solid var(--line); overflow: hidden; position: relative; margin-bottom: 8px; touch-action: none; overscroll-behavior: contain; user-select: none; }
+.c3d-viewport { width: 100%; height: 320px; background: linear-gradient(180deg, #EDE8DC 0%, #E0D8C8 100%); border-radius: var(--radius-lg); border: 1px solid var(--line); overflow: hidden; position: relative; margin-bottom: 8px; touch-action: none; overscroll-behavior: contain; user-select: none; }
 .c3d-viewport canvas { display: block; width: 100% !important; height: 100% !important; cursor: grab; touch-action: none; }
 .c3d-viewport canvas:active { cursor: grabbing; }
 .c3d-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
@@ -401,6 +401,12 @@ input { font-family: inherit; }
 .c3d-info-name { font-size: 13px; font-weight: 700; color: var(--primary-deep); margin-bottom: 3px; }
 .c3d-info-desc { font-size: 12px; color: var(--ink-soft); line-height: 1.6; }
 .c3d-hint { text-align: center; font-size: 10px; color: var(--muted); margin-top: 5px; }
+
+.msg-sources { margin-top: 10px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.6; }
+.msg-sources summary { padding: 7px 0; color: var(--primary-deep); cursor: pointer; }
+.msg-sources ul { margin: 0; padding-left: 18px; }
+.msg-sources li { margin: 5px 0; overflow-wrap: anywhere; }
+.msg-sources a { color: var(--primary-deep); text-underline-offset: 3px; }
 
 /* ---------- 文化典藏 ---------- */
 .dc-toolbar { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -763,7 +769,7 @@ input { font-family: inherit; }
   .app { border-radius: var(--radius-lg); overflow: hidden; max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); border: 1px solid var(--line); }
   .main { overflow-y: auto; }
   .chat-window { max-height: 260px; }
-  .c3d-viewport { height: 240px; }
+  .c3d-viewport { height: 300px; }
   .admin-panel { max-height: 80vh; }
 }
 
