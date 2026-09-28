@@ -81,14 +81,14 @@ echo.
 echo   Online addresses - open them in a browser any time, no launcher needed:
 echo     main   https://longnankejia.pages.dev/
 echo     qcode  https://qcode.longnankejia-dev.pages.dev/
-echo     dev    https://longnankejia-dev.pages.dev/
+echo     doubao https://longnankejia-dev.pages.dev/
 echo     codex  https://codex.longnankejia-dev.pages.dev/
 echo ============================================
 echo.
 start "" "http://localhost:%PORT%/"
 echo   Local preview opened in the browser. This window can be closed.
 echo.
-set /p "OPEN=Open an online address too? m=main q=qcode d=dev c=codex  [Enter=skip] "
+set /p "OPEN=Open an online address too? m=main q=qcode d=doubao c=codex  [Enter=skip] "
 if /i "%OPEN%"=="m" start "" "https://longnankejia.pages.dev/"
 if /i "%OPEN%"=="q" start "" "https://qcode.longnankejia-dev.pages.dev/"
 if /i "%OPEN%"=="d" start "" "https://longnankejia-dev.pages.dev/"
