@@ -162,14 +162,14 @@
     // 时 _fallback 是 undefined，catch 里拿不到它，只能回一句罐头话，
     // 明明库里有的答案就这么丢了。
     this._fallback = new RulesEngine();
-    if (!this.cfg.apiKey) {
-      console.warn('[answer-engine] 已选择 API 模式，但未配置 apiKey，将回退到本地知识库。');
+    if (!(this.cfg.apiKey || this.cfg.proxyUrl)) {
+      console.warn('[answer-engine] 未配置 API 代理或本地 apiKey，将回退到本地知识库。');
     }
   }
 
   ApiEngine.prototype.ask = function (question) {
     var self = this;
-    if (!this.cfg.apiKey) {
+    if (!(this.cfg.apiKey || this.cfg.proxyUrl)) {
       return this._fallback.ask(question);
     }
 
@@ -183,12 +183,13 @@
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, 15000);
 
-    return fetch(api.baseUrl, {
+    var endpoint = api.apiKey ? api.baseUrl : api.proxyUrl;
+    var headers = { 'Content-Type': 'application/json' };
+    if (api.apiKey) headers.Authorization = 'Bearer ' + api.apiKey;
+
+    return fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + api.apiKey
-      },
+      headers: headers,
       body: JSON.stringify({
         model: api.model,
         messages: messages,

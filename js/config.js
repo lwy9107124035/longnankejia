@@ -1,8 +1,8 @@
 /**
  * 全局配置 —— 后续扩展入口都收拢在这里
  * ------------------------------------------------------------
- * AI 接入：把 mode 改为 'api'，并在 js/secrets.js 里填入 apiKey。
- * secrets.js 在 .gitignore 中，不会推送到 Git。
+ * AI 接入：线上请求通过同源 Pages Function 转发，密钥保存在 Cloudflare 服务端绑定中；
+ * 本地开发可在被 .gitignore 忽略的 js/secrets.js 中填写 apiKey，直接调用上游接口。
  */
 window.APP_CONFIG = {
   app: {
@@ -20,14 +20,18 @@ window.APP_CONFIG = {
   },
 
   ai: {
-    // 'rules' = 本地知识库规则问答（默认）
-    // 'api'   = 调用真实大模型 API（OpenAI 兼容接口）
-    // 切换为 'api' 前，请先在 js/secrets.js 中填入 apiKey
+    // 'rules' = 只用本地知识库（离线演示，不联网）
+    // 'api'   = 混合链路：本地知识库优先，未命中才转大模型；大模型不可用时回到
+    //           馆内最接近的资料。三条路径都必须给出内容，不允许回"回答不了"。
+    // 线上由 Pages Function 使用服务端密钥；本地可用 js/secrets.js 覆盖为直连模式。
     mode: 'api',
 
     api: {
       baseUrl: 'https://api.siliconflow.cn/v1/chat/completions',
-      // 密钥从 secrets.js 读取，此处无需填写
+      proxyUrl: (window.location && window.location.hostname === 'lwy9107124035.github.io')
+        ? 'https://longnankejia.pages.dev/api/ai/chat/completions'
+        : '/api/ai/chat/completions',
+      // 本地直连密钥（若有）；线上通过 proxyUrl 转发，密钥不会下发到浏览器。
       apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || '',
       model: 'Qwen/Qwen2.5-7B-Instruct',
       temperature: 0.7,
@@ -35,9 +39,21 @@ window.APP_CONFIG = {
       systemPrompt:
         '你是"阿蓝"，龙南客家非遗数字助手，为游客介绍江西龙南的客家非物质文化遗产。' +
         '你熟悉蓝染、竹编、客家织带、客家围屋、客家山歌与童谣、客家方言等知识。' +
-        '回答要求：使用简体中文，口吻亲切自然，像一位热情的讲解员；' +
+        '回答要求：使用简体中文，像馆里的讲解员那样说话，不用书面腔；' +
         '内容准确，不确定时坦诚说明，不编造史实；' +
-        '每次回答控制在 120 字以内，可适当使用一个 emoji。'
+        '每次回答控制在 120 字以内，不用 emoji，结尾不写总结套话。'
+    },
+
+    // 语音输入使用与问答相同的服务端密钥。
+    asr: {
+      url: 'https://api.siliconflow.cn/v1/audio/transcriptions',
+      proxyUrl: (window.location && window.location.hostname === 'lwy9107124035.github.io')
+        ? 'https://longnankejia.pages.dev/api/ai/audio/transcriptions'
+        : '/api/ai/audio/transcriptions',
+      model: 'Qwen/Qwen3-ASR-1.7B',
+      language: 'zh',
+      maxMs: 20000,
+      timeoutMs: 30000
     },
 
     // 规则引擎：最低置信度阈值，低于此值走兜底回答
