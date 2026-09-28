@@ -1,14 +1,11 @@
 name: Deploy to Cloudflare Pages
 
-# 公开入口。GitHub Pages 那份仍然保留作镜像，主推这里：Cloudflare Pages 免费、
-# 不计 credits，而且 *.pages.dev 在本机的代理下也通（github.io 会被加速器卡住）。
-#   main → https://longnankejia.pages.dev/
-#   dev  → https://longnankejia-dev.pages.dev/
-# 分成两个项目是因为 Pages 的非生产分支预览 URL 每次部署都换哈希前缀，不适合当固定地址。
+# 固定入口：main → longnankejia；其余工作分支 → longnankejia-dev。
+# API 密钥仅作为 Pages Functions 的服务端 secret binding 使用，不写入静态 JS。
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, qcode, codex, doubao]
   workflow_dispatch:
 
 permissions:
@@ -24,30 +21,83 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 白名单：只搬页面真正加载的东西。docs/ 是比赛通知与简历，tests/ 与 scripts/ 是
-      # 开发工具，assets/source/ 是从不上线的原图——旧的 Netlify publish="." 把这些
-      # 一起推到过公网。密钥只给 main 和验收中的 qcode：这两个分支要能当场跑大模型问答
-      # 和语音输入；其余分支（dev）留空，页面上这两项会如实提示未配置而不是静默失灵。
-      - name: 组装站点
+      # 原豆包分支 dev 改名后，把 longnankejia-dev 项目的生产指针一并切到 doubao，
+      # 确保稳定根地址仍对应豆包分支；只提交 production_branch 这一项。
+      - name: Set Doubao as the preview project's production branch
+        if: github.ref_name == 'doubao'
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          node --input-type=module <<'NODE'
+          const response = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${process.env.CF_ACCOUNT_ID}/pages/projects/longnankejia-dev`,
+            {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${process.env.CF_API_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ production_branch: 'doubao' }),
+            },
+          );
+          let result;
+          try { result = await response.json(); } catch { result = null; }
+          if (!response.ok || !result?.success || result?.result?.production_branch !== 'doubao') {
+            console.error(`Cloudflare production branch update failed (HTTP ${response.status}).`);
+            process.exit(1);
+          }
+          console.log('longnankejia-dev production branch verified: doubao');
+          NODE
+
+      # 白名单搬运页面资源。Functions 保留在仓库根目录，由 wrangler pages deploy _site
+      # 一并发现并部署；API key 通过 stdin 写进 Cloudflare secret binding。
+      - name: 组装站点并同步服务端密钥
         id: prep
         env:
           BRANCH: ${{ github.ref_name }}
           CF_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+        shell: bash
         run: |
-          set -e
-          if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "qcode" ]; then
-            KEY="$CF_KEY"
-          else
-            KEY=""
+          set -euo pipefail
+          set +x
+          case "$BRANCH" in
+            main)
+              PROJECT=longnankejia
+              CF_ENV=production
+              ;;
+            doubao)
+              PROJECT=longnankejia-dev
+              CF_ENV=production
+              ;;
+            qcode|codex)
+              PROJECT=longnankejia-dev
+              CF_ENV=preview
+              ;;
+            *)
+              echo "拒绝部署未列入白名单的分支：$BRANCH" >&2
+              exit 1
+              ;;
+          esac
+          if [ -z "$CF_KEY" ]; then
+            echo "GitHub Actions secret SILICONFLOW_API_KEY 未配置" >&2
+            exit 1
           fi
-          if [ "$BRANCH" = "main" ]; then PROJECT=longnankejia; else PROJECT=longnankejia-dev; fi
+
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "environment=$CF_ENV" >> "$GITHUB_OUTPUT"
+          printf '%s' "$CF_KEY" | npx --yes wrangler@4.137.0 pages secret put SILICONFLOW_API_KEY --project-name="$PROJECT" --env="$CF_ENV"
+          unset CF_KEY
+
           rm -rf _site && mkdir -p _site/assets
           cp index.html _site/
           cp -r css js _site/
           cp -r assets/avatar assets/pdf-imgs assets/textures _site/assets/
-          printf 'window.APP_SECRETS={apiKey:"%s"};' "$KEY" > _site/js/secrets.js
-          echo "上线 $(du -sh _site | cut -f1)，$(find _site -type f | wc -l) 个文件，key 长度 ${#KEY}"
+          printf 'window.APP_SECRETS={apiKey:""};' > _site/js/secrets.js
+          echo "上线 $(du -sh _site | cut -f1)，$(find _site -type f | wc -l) 个文件；浏览器密钥为空，API 由 Pages Functions 代理。"
 
       - name: 部署
         uses: cloudflare/wrangler-action@v3

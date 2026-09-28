@@ -22,9 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate secrets.js
+      # Netlify 是静态备用宿主；绝不把 GitHub secret 写入可下载的 JS。
+      - name: Generate empty secrets.js
         run: |
-          echo "window.APP_SECRETS={apiKey:\"${{ secrets.SILICONFLOW_API_KEY }}\"};" > js/secrets.js
+          printf 'window.APP_SECRETS={apiKey:""};' > js/secrets.js
 
       - name: Deploy to Netlify
         run: |
