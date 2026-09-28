@@ -32,6 +32,7 @@
   .tag.q { background: var(--accent); }
   .tag.d { background: var(--muted); }
   .name { font-size: 17px; font-weight: 700; color: var(--primary-deep); }
+  .ver { margin-top: 5px; font-size: 12.5px; font-weight: 600; color: var(--primary); }
   .url { margin-top: 3px; font-size: 13px; color: var(--accent); word-break: break-all; }
   .note { margin-top: 6px; font-size: 12.5px; color: var(--ink-soft); }
   .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0 26px; }
@@ -59,14 +60,19 @@
     <span class="tag">main</span>
     <div class="name">正式入口</div>
     <div class="url">https://longnankejia.pages.dev/</div>
-    <div class="note">展板上印的就是这一条。带 API Key，大模型问答与语音输入可用。</div>
+    <div class="note">展板上印的就是这一条。带 API Key，大模型问答与语音输入可用。
+      线上这份是 v2 的基线，打了标签 <code>v2-base</code>，提交号 <code>eab8f30</code>。</div>
   </a>
 
   <a class="card" href="https://qcode.longnankejia-dev.pages.dev/">
     <span class="tag q">qcode</span>
     <div class="name">验收分支（当前改动都在这里）</div>
+    <div class="ver">版本 v2 → v3：这条分支自己的迭代号，多一个号不多一条分支</div>
     <div class="url">https://qcode.longnankejia-dev.pages.dev/</div>
-    <div class="note">带 API Key，可以直接在这里试问答和语音输入。改动合并进 main 之前，线上只有这一份是新的。</div>
+    <div class="note">带 API Key，可以直接在这里试问答和语音输入。线上这一份停在 <code>0c810b3</code>，
+      和 main 只差一个只动文档与测试的提交，页面上的功能两边一样。
+      本轮按甲方意见改的部分——地图缩放平移、围屋与织带的细节、蓝染的比较问法——还在这个文件夹里没提交，
+      要提交、部署过，线上才会跟上。</div>
   </a>
 
   <a class="card" href="https://longnankejia-dev.pages.dev/">
@@ -83,6 +89,10 @@
   </div>
 
   <div class="box">
+    <p><b>v2、v3 是版本号，不是分支名。</b>分支只有 <code>main</code>、<code>qcode</code>、<code>dev</code>、
+    <code>codex</code> 这四条，其中 codex 只在本地、从没部署过，所以这一页只列点得开的三条。
+    版本号一律记在 <code>qcode</code> 上往前推：v2 是按甲方意见改的这一轮，改完验收后接着往 v3 走。
+    号与分支对不上时，以 <code>git branch</code> 的输出为准。</p>
     <p><b>本地那份和线上这份不是一回事。</b>双击 <code>qidong.bat</code> 打开的是这个文件夹当前检出的分支，
     它要 push 并且部署过，线上才会变。启动脚本会打印 <code>branch 名字 @ commit</code>，
     想知道自己在看哪一份就看那一行。</p>
