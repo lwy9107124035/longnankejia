@@ -33,7 +33,7 @@ js/
   textures.js           程序化贴图生成器（canvas 现画，无外部图片）
   config.js             全局配置（AI 模式、模型参数、公网地址）
   qr.js                 入口二维码（把站点地址画成可扫的码）
-  secrets.js            API 密钥，已在 .gitignore 中，不入库
+  secrets.js            本地直连 API 密钥（可选），已在 .gitignore 中，不入库
   vendor/three.min.js   Three.js r128
   vendor/qrcode.js      qrcode-generator 2.0.4（MIT，Kazuhiko Arase）—— 二维码编码器
 
@@ -74,7 +74,7 @@ python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密
 
 ```
 node scripts/check_live_qr.mjs            # 抓生产站入口码 → .cache/live-entry-qr.png
-node scripts/check_live_qr.mjs https://longnankejia-dev.pages.dev/   # 抓 dev 预览那份
+node scripts/check_live_qr.mjs https://longnankejia-dev.pages.dev/   # 抓 doubao 预览那份
 QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应等于被核验的那个网址
 ```
 
@@ -155,15 +155,17 @@ node   scripts/qr_matrix.mjs <文本>     # 用页面上同一个编码器把文
 `js/config.js` 里 `ai.mode` 决定走哪条路：
 
 - `'rules'`：本地知识库，离线可用，演示时最稳。
-- `'api'`：调用硅基流动 OpenAI 兼容接口，密钥从 `js/secrets.js` 读取；请求失败会自动回落本地库。
+- `'api'`：调用硅基流动 OpenAI 兼容接口；线上经 Pages Functions 服务端代理，密钥保存在 Cloudflare secret binding；请求失败会自动回落本地库。
 
 页面底部的「⚙ 管理入口」可在运行时切换（存 localStorage，不改源码）。
 
 ## 部署
 
 生产站：**https://longnankejia.pages.dev/**（`main`，Cloudflare Pages）
-开发预览：**https://longnankejia-dev.pages.dev/**（`dev`，豆包的工作分支）
-镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/dev/（GitHub Pages）
+验收分支：**https://qcode.longnankejia-dev.pages.dev/**（`qcode`）
+豆包预览：**https://longnankejia-dev.pages.dev/**（`doubao`，原 `dev`）
+v2 预览：**https://codex.longnankejia-dev.pages.dev/**（`codex`）
+镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/doubao/（GitHub Pages）
 备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）
 
 两条自动通道（`cf-pages.yml` 与 `pages.yml`）都只做一件事：**按白名单**把页面真正加载的
@@ -175,15 +177,14 @@ node   scripts/qr_matrix.mjs <文本>     # 用页面上同一个编码器把文
 
 三点约定，都有守卫且跑过反向用例：
 
-- **dev 预览不注入 API Key**（`js/secrets.js` 写空 key，页面按设计回落到本地知识库引擎）。
-  预览站是另一个公开域名，不该再带一份线上密钥——这个 key 之前已经泄露过一次。
+- **四个分支共用同一套 API 参数。** `cf-pages.yml` 将 GitHub Actions secret 同步到对应
+  Cloudflare production/preview secret binding；浏览器静态资源和 GitHub Pages 镜像始终为空 key。
 - **CI 用的 Cloudflare 令牌只有一项权限**：`Account → Cloudflare Pages → Edit`。
   官方 "Edit Cloudflare Workers" 模板会连带 13 项（Workers KV/R2/Scripts、Memberships、
   Account Settings…），对只推静态站的 CI 太宽，所以走 Custom Token。
-- **工作流文件只存在于 `main`**，靠显式 `ref: dev` 取开发分支内容（`pages.yml`）。GitHub 读的是
-  「被 push 那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的 `AI_OWNER.md`），
-  不该由我提交——所以 **dev 的 CF/GitHub Pages 更新要等 dev 同步过 main 才会自动跑**，
-  在那之前靠 `main` 的推送与每小时 `:17` 定时（仅 `pages.yml`）。
+- **工作流文件只存在于 `main`**，靠显式 `ref: main` 与 `ref: doubao` 生成两个静态镜像；
+  每小时 `:17` 定时或 main 推送时更新。豆包原工作分支 `dev` 已改名为 `doubao`。
+- **Codex 的 v2 页面和模型只在 `codex` 修改。** API 配置、代理或部署规则变更时，再逐一核对四个分支。
 
 GitHub Pages 那条通道需要仓库 Settings → Pages 的 Source 选 **GitHub Actions**（已设好）。
 
@@ -195,7 +196,7 @@ Netlify 2025 年起按 credits 计费。这个账号的免费额度用完且未�
 并停在上一次成功的部署上。额度周期从每月 14 日起算。
 
 `deploy.yml` 因此改成**只手动触发**，留作额度恢复后的备用通道；它现在还挡住了非 main 分支，
-避免重演 `dev--…` 那种永不更新的别名站（那个站已按 `branch == "dev"` 精确删掉 19 条 deploy）。
+避免重演旧 `dev--…` 那种永不更新的别名站（那个站已按精确分支 `dev` 清理部署）。
 
 ### 入口二维码与地址
 

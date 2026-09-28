@@ -313,14 +313,13 @@ def check_diancang_pages():
 
 # ------------------------------------------------------------- deploy workflow
 def check_deploy_workflow():
-    """Pages is the daily host; Netlify is manual-only; the preview must not carry the key.
+    """Static hosts never carry the key; Pages Functions use server-side secret bindings.
 
     Netlify moved to a credit model and this account is out of credits with no card on
     file, so every production deploy there now fails ("new deploys are blocked until
     credits are added") while the site keeps serving its last good deploy. Daily delivery
-    therefore went to GitHub Pages, which has no such gate. Two invariants matter:
-    the dev copy served at /dev/ is a second public host and must not embed the live
-    SiliconFlow key (this repo leaked it once already), and the published set is an
+    therefore went to GitHub Pages, which has no such gate. Public static assets must
+    never embed the live SiliconFlow key (this repo leaked it once already), and the published set is an
     allowlist — docs/ holds the competition notices and a résumé, and on Netlify
     publish="." had exposed tests/badge-template.npy and scripts/ to anyone who guessed
     the URL.
@@ -339,14 +338,15 @@ def check_deploy_workflow():
         fail("pages.yml 缺失——GitHub Pages 镜像通道")
         return
     ptxt = read(pages)
-    for need in ("ref: main", "ref: dev", "site/dev"):
+    for need in ("ref: main", "ref: doubao", "site/doubao"):
         if need not in ptxt:
-            fail("pages.yml 缺少 %r：生产与 dev 预览必须同时出自一次部署" % need)
-    # 预览那份必须是空 key；生产那份才允许引用密钥
-    if 'apiKey:""};\' > src-dev/js/secrets.js' not in ptxt:
-        fail("pages.yml 里 dev 预览的 secrets.js 不是空密钥，预览站会带上真实 key")
-    if "SILICONFLOW_API_KEY" not in ptxt:
-        fail("pages.yml 不再注入生产密钥，线上大模型引擎会静默失效")
+            fail("pages.yml 缺少 %r：main 与 doubao 镜像必须同时出自一次部署" % need)
+    if 'printf \'window.APP_SECRETS={apiKey:""};\' > src-prod/js/secrets.js' not in ptxt:
+        fail("pages.yml 的 main 镜像 secrets.js 必须为空，不能把 API key 发布到浏览器")
+    if 'printf \'window.APP_SECRETS={apiKey:""};\' > src-doubao/js/secrets.js' not in ptxt:
+        fail("pages.yml 的 doubao 镜像 secrets.js 必须为空，不能把 API key 发布到浏览器")
+    if "SILICONFLOW_API_KEY" in ptxt:
+        fail("pages.yml 不得读取或写入 API secret；GitHub Pages 仅通过 main 服务端代理调用")
     # 发布集必须是白名单：pack() 里从源码目录搬的每一项都得是页面真正加载的东西
     allow = {"index.html", "css", "js", "assets/avatar", "assets/pdf-imgs", "assets/textures"}
     moved = set(re.findall(r'"\$src/([A-Za-z0-9_./-]+)"', ptxt))
@@ -355,14 +355,23 @@ def check_deploy_workflow():
     if not moved:
         fail("pages.yml 里找不到 pack() 的 $src/... 搬运语句，白名单守卫失效")
 
-    # Cloudflare Pages 是现在的公开入口，同样两条规矩：dev 不带 key、只上线白名单
+    # Cloudflare Pages 是现在的公开入口：只上线白名单，key 仅进入服务端 secret binding。
     cf = rel(".github", "workflows", "cf-pages.yml")
     if not os.path.exists(cf):
         fail("cf-pages.yml 缺失——Cloudflare Pages 才是公开入口")
         return
     ctxt = read(cf)
-    if 'PROJECT=longnankejia-dev; KEY=""' not in ctxt:
-        fail("cf-pages.yml 里 dev 分支不是空 key，预览站会带上真实密钥")
+    if "branches: [main, qcode, codex, doubao]" not in ctxt:
+        fail("cf-pages.yml 必须自动部署四个受支持分支")
+    for need in ("PROJECT=longnankejia", "PROJECT=longnankejia-dev", "CF_ENV=production", "CF_ENV=preview"):
+        if need not in ctxt:
+            fail("cf-pages.yml 缺少项目/secret 环境映射：%s" % need)
+    if 'printf \'%s\' "$CF_KEY" | npx --yes wrangler@4.137.0 pages secret put SILICONFLOW_API_KEY --project-name="$PROJECT" --env="$CF_ENV"' not in ctxt:
+        fail("cf-pages.yml 没有从 stdin 安全同步服务端密钥")
+    if re.search(r'(?:printf|echo).*\$CF_KEY.*secrets\.js', ctxt):
+        fail("cf-pages.yml 会把 API key 写进浏览器资源")
+    if 'printf \'window.APP_SECRETS={apiKey:""};\' > _site/js/secrets.js' not in ctxt:
+        fail("cf-pages.yml 必须生成空的浏览器 secrets.js")
     if "SILICONFLOW_API_KEY" not in ctxt:
         fail("cf-pages.yml 不再注入生产密钥，线上大模型引擎会静默失效")
     if "CLOUDFLARE_API_TOKEN" not in ctxt:
@@ -371,8 +380,8 @@ def check_deploy_workflow():
     cf_moved |= set(re.findall(r'cp -r ([A-Za-z0-9_./ -]+) _site(?:/assets)?/', ctxt))
     for m in sorted({x for grp in cf_moved for x in grp.split() if x} - allow):
         fail("cf-pages.yml 把 %s 也搬进了上线目录；白名单只有 %s" % (m, "、".join(sorted(allow))))
-    notes.append("公开入口 = Cloudflare Pages（main→longnankejia，dev→longnankejia-dev，dev 不带密钥）")
-    notes.append("上线走 pages.yml（main → 根，dev → /dev/，预览不带密钥）；Netlify 仅手动")
+    notes.append("公开入口 = Cloudflare Pages（main→longnankejia；qcode/codex/doubao→longnankejia-dev；密钥只存在服务端）")
+    notes.append("上线走 pages.yml（main → 根，doubao → /doubao/，静态密钥为空）；Netlify 仅手动")
 
 
 # --------------------------------------------------------------- git hygiene
