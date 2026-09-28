@@ -60,6 +60,8 @@ jobs:
         env:
           BRANCH: ${{ github.ref_name }}
           CF_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         shell: bash
         run: |
           set -euo pipefail
