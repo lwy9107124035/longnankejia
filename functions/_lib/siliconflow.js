@@ -11,10 +11,11 @@ const AUDIO_MODELS = new Set([
   'FunAudioLLM/SenseVoiceSmall',
 ]);
 const PRODUCTION_HOSTS = new Map([
-  ['main', 'longnankejia.pages.dev'],
-  ['qcode', 'qcode.longnankejia-dev.pages.dev'],
-  ['codex', 'codex.longnankejia-dev.pages.dev'],
-  ['doubao', 'longnankejia-dev.pages.dev'],
+  ['main', new Set(['longnankejia.pages.dev'])],
+  ['qcode', new Set(['qcode.longnankejia-dev.pages.dev'])],
+  ['codex', new Set(['codex.longnankejia-dev.pages.dev'])],
+  ['doubao', new Set(['longnankejia-dev.pages.dev', 'doubao.longnankejia-dev.pages.dev'])],
+  ['antigravity', new Set(['antigravity.longnankejia-dev.pages.dev'])],
 ]);
 const GITHUB_PAGES_ORIGIN = 'https://lwy9107124035.github.io';
 const MAIN_PAGES_HOST = 'longnankejia.pages.dev';
@@ -46,9 +47,9 @@ function originAllowed(request, env) {
   if (!origin) return false;
 
   // Each production branch is pinned to its exact Pages host and same-origin value.
-  const productionHost = PRODUCTION_HOSTS.get(env.CF_PAGES_BRANCH);
-  if (productionHost && url.protocol === 'https:' && url.host === productionHost &&
-      request.headers.get('Host') === productionHost && origin === `https://${productionHost}`) {
+  const productionHosts = PRODUCTION_HOSTS.get(env.CF_PAGES_BRANCH);
+  if (productionHosts && url.protocol === 'https:' && productionHosts.has(url.host) &&
+      request.headers.get('Host') === url.host && origin === `https://${url.host}`) {
     return true;
   }
 

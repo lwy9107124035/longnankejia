@@ -11,6 +11,8 @@ const PRODUCTION_MAPPINGS = [
   ['qcode', 'qcode.longnankejia-dev.pages.dev'],
   ['codex', 'codex.longnankejia-dev.pages.dev'],
   ['doubao', 'longnankejia-dev.pages.dev'],
+  ['doubao', 'doubao.longnankejia-dev.pages.dev'],
+  ['antigravity', 'antigravity.longnankejia-dev.pages.dev'],
 ];
 const chatPayload = {
   model: 'Qwen/Qwen2.5-7B-Instruct',
