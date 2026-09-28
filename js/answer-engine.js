@@ -81,6 +81,20 @@
     return false;
   }
 
+  /* ---------- 对比与分析类提问判定 ---------- */
+  var COMPARATIVE_WORDS = [
+    '对比', '比较', '区别', '不同', '差异', '相似', '相同', '异同',
+    '比起', '相较', '有何区别', '有何不同', '有什么不一样', '哪点不同',
+    '其他地方', '别的省', '各地', '全国'
+  ];
+  function isComparativeQuery(question) {
+    var q = cleanQuestion(question);
+    for (var i = 0; i < COMPARATIVE_WORDS.length; i++) {
+      if (q.indexOf(COMPARATIVE_WORDS[i]) !== -1) return true;
+    }
+    return false;
+  }
+
   /* ---------- 规则引擎 ---------- */
   function RulesEngine() {
     this.name = 'rules';
@@ -217,19 +231,23 @@
   }
 
   /** 把馆内最接近的资料节选塞进系统提示，让大模型贴着馆藏说，而不是自由发挥。 */
-  function kbContext(ranked) {
+  function kbContext(ranked, question) {
     var top = (ranked.scored || []).slice(0, 3);
     if (!top.length) return '';
-    return '\n\n【馆内资料节选，优先据此回答；资料没覆盖的可依据客家非遗通识作答，'
+    var prompt = '\n\n【馆内资料节选，优先据此回答；资料没覆盖的可依据客家非遗通识作答，'
       + '但不要编造具体年代与人名】\n' + top.map(function (s) {
         return '· ' + s.entry.title + '：' + headLine(s.entry.answer, 90);
       }).join('\n');
+    if (question && isComparativeQuery(question)) {
+      prompt += '\n【用户提问包含跨地域或品类对比，请结合客家非遗与其它地区的工艺、原料或文化背景，明确分析相似之处与不同特色，条理分明地作答，切勿只重复单一地方资料】';
+    }
+    return prompt;
   }
 
   ApiEngine.prototype.callApi = function (question, ranked) {
     var api = this.cfg;
     var messages = [
-      { role: 'system', content: (api.systemPrompt || '你是非遗数字助手。') + kbContext(ranked) },
+      { role: 'system', content: (api.systemPrompt || '你是非遗数字助手。') + kbContext(ranked, question) },
       { role: 'user', content: String(question || '') }
     ];
 
@@ -280,15 +298,19 @@
   };
 
   /**
-   * 本地优先：知识库命中就直接答（离线可用、确定性、省一次接口调用）；
-   * 未命中才转大模型；接口没有 key、报错或超时，就回到馆内最接近的资料。
+   * 本地优先：基础事实性知识库命中就直接答（离线可用、确定性、省一次接口调用）；
+   * 提问涉及跨地域对比、异同分析或未命中时转大模型深度解答；
+   * 接口没有 key、报错或超时，就回到馆内最接近的资料。
    * 三条路径都必须给出内容——任何情况下都不回"回答不了"。
    */
   ApiEngine.prototype.ask = function (question) {
     var self = this;
     var ranked = this._fallback.rank(question);
+    var isComp = isComparativeQuery(question);
 
-    if (ranked.hit) {
+    // 只有在非对比类、非开放引申提问，且命中明确知识条目时，才直接走本地快速通道；
+    // 一旦问题涉及跨地域对比或异同点分析，优先调度大模型生成针对性对比；大模型不可用时才回落到对应知识库。
+    if (ranked.hit && !isComp) {
       var top = ranked.hit;
       return mockDelay().then(function () {
         return {
@@ -301,11 +323,29 @@
     }
 
     if (!canCallApi(this.cfg)) {
+      if (ranked.hit) {
+        return mockDelay().then(function () {
+          return {
+            text: ranked.hit.entry.answer,
+            source: 'rules',
+            matched: ranked.hit.entry.title,
+            score: ranked.hit.score
+          };
+        });
+      }
       return mockDelay().then(function () { return self._fallback.nearest(ranked, question); });
     }
 
     return this.callApi(question, ranked).catch(function (err) {
       console.error('[answer-engine] 大模型不可用，回到馆内资料：', err);
+      if (ranked.hit) {
+        return {
+          text: ranked.hit.entry.answer,
+          source: 'rules',
+          matched: ranked.hit.entry.title,
+          score: ranked.hit.score
+        };
+      }
       return self._fallback.nearest(ranked, question);
     });
   };

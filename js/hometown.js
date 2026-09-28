@@ -98,16 +98,89 @@
     return [];
   }
 
+  var scale = 1.0, panX = 0, panY = 0;
+  var minScale = 1.0, maxScale = 3.2;
+
+  function updateTransform(anim) {
+    if (!mapEl) return;
+    var vp = mapEl.querySelector('.hm-viewport');
+    var tip = mapEl.querySelector('.hm-scale-tip');
+    if (!vp) return;
+    var maxPanX = (scale - 1) * (W / 2);
+    var maxPanY = (scale - 1) * (H / 2);
+    panX = Math.max(-maxPanX, Math.min(maxPanX, panX));
+    panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
+
+    var ox = W / 2, oy = H / 2;
+    var t = 'translate(' + (ox + panX).toFixed(1) + ' ' + (oy + panY).toFixed(1)
+      + ') scale(' + scale.toFixed(3) + ') translate(' + (-ox) + ' ' + (-oy) + ')';
+    vp.style.transition = anim ? 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)' : 'none';
+    vp.setAttribute('transform', t);
+    if (tip) tip.textContent = Math.round(scale * 100) + '%';
+  }
+
+  function zoomBy(delta, cx, cy) {
+    var oldScale = scale;
+    var newScale = Math.max(minScale, Math.min(maxScale, scale * delta));
+    if (newScale === oldScale) return;
+    if (cx != null && cy != null) {
+      var ratio = newScale / oldScale;
+      panX = cx - (cx - panX) * ratio;
+      panY = cy - (cy - panY) * ratio;
+    } else if (newScale === minScale) {
+      panX = 0; panY = 0;
+    }
+    scale = newScale;
+    updateTransform(true);
+  }
+
+  function resetZoom() {
+    scale = 1.0; panX = 0; panY = 0;
+    updateTransform(true);
+  }
+
   function render() {
     var proj = projector();
+    var spots = placeSpots(proj);
+
+    var html = '<div class="hm-ctrl" role="toolbar" aria-label="地图缩放控制">'
+      + '<button class="hm-btn hm-btn-in" type="button" title="放大地图" aria-label="放大地图">+</button>'
+      + '<button class="hm-btn hm-btn-out" type="button" title="缩小地图" aria-label="缩小地图">-</button>'
+      + '<button class="hm-btn hm-btn-reset" type="button" title="重置视角" aria-label="重置视角">⟲</button>'
+      + '<span class="hm-scale-tip">100%</span>'
+      + '</div>';
+
     var svg = ['<svg viewBox="0 0 ' + W + ' ' + H + '" class="hm-svg" role="group" '
       + 'aria-label="龙南市家乡地图，点一个地名看书里怎么讲它">'];
+
+    // 指南针
+    svg.push('<g class="hm-compass" transform="translate(670, 50)">'
+      + '<circle cx="0" cy="0" r="18" fill="var(--card)" stroke="var(--line)"></circle>'
+      + '<path d="M0 -13 L4 -1 L0 0 L-4 -1 Z" fill="var(--accent)"></path>'
+      + '<path d="M0 13 L4 1 L0 0 L-4 1 Z" fill="var(--muted)"></path>'
+      + '<text x="0" y="-16" text-anchor="middle" font-size="10" font-weight="700" fill="var(--primary-deep)">N</text>'
+      + '</g>');
+
+    svg.push('<g class="hm-viewport">');
+
+    // 背景微网格
+    svg.push('<g class="hm-grid">');
+    for (var gx = 80; gx < W; gx += 80) {
+      svg.push('<line x1="' + gx + '" y1="0" x2="' + gx + '" y2="' + H + '"></line>');
+    }
+    for (var gy = 80; gy < H; gy += 80) {
+      svg.push('<line x1="0" y1="' + gy + '" x2="' + W + '" y2="' + gy + '"></line>');
+    }
+    svg.push('</g>');
+
     svg.push('<path class="hm-land" d="' + outlinePath(proj) + '"></path>');
-    placeSpots(proj).forEach(function (d) {
+
+    spots.forEach(function (d) {
       var p = data.places[d.idx];
       var n = exhibitsFor(p.name).length;
       svg.push('<g class="hm-place" data-i="' + d.idx + '" tabindex="0" role="button"'
         + ' aria-label="' + esc(p.name) + '，书里有 ' + n + ' 处讲到它">'
+        + '<circle class="hm-hit" cx="' + d.x.toFixed(1) + '" cy="' + d.y.toFixed(1) + '" r="26"></circle>'
         + '<text class="hm-label" x="' + d.x.toFixed(1) + '" y="' + d.ly.toFixed(1) + '" text-anchor="middle">'
         + esc(p.name) + '<tspan class="hm-badge">' + n + '</tspan></text>'
         + '<line class="hm-leader" x1="' + d.x.toFixed(1) + '" y1="' + (d.ly + 3).toFixed(1)
@@ -116,11 +189,105 @@
         + '" r="' + (p.kind === 'seat' ? 7 : 5) + '"></circle>'
         + '</g>');
     });
-    svg.push('</svg>');
-    mapEl.innerHTML = svg.join('');
 
+    svg.push('</g></svg>');
+    mapEl.innerHTML = html + svg.join('');
+
+    // 控制器事件
+    var btnIn = mapEl.querySelector('.hm-btn-in');
+    var btnOut = mapEl.querySelector('.hm-btn-out');
+    var btnReset = mapEl.querySelector('.hm-btn-reset');
+    if (btnIn) btnIn.addEventListener('click', function (e) { e.stopPropagation(); zoomBy(1.35); });
+    if (btnOut) btnOut.addEventListener('click', function (e) { e.stopPropagation(); zoomBy(1 / 1.35); });
+    if (btnReset) btnReset.addEventListener('click', function (e) { e.stopPropagation(); resetZoom(); });
+
+    // 拖拽与触摸平移变量
+    var dragging = false, didMove = false, sx = 0, sy = 0, spX = 0, spY = 0;
+    var pinchDist = 0;
+
+    if (mapEl.addEventListener && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      mapEl.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        var rect = mapEl.getBoundingClientRect();
+        var cx = ((e.clientX - rect.left) / rect.width) * W - W / 2;
+        var cy = ((e.clientY - rect.top) / rect.height) * H - H / 2;
+        zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, cx, cy);
+      }, { passive: false });
+
+      mapEl.addEventListener('mousedown', function (e) {
+        if (e.target.closest && e.target.closest('.hm-ctrl')) return;
+        dragging = true; didMove = false;
+        sx = e.clientX; sy = e.clientY;
+        spX = panX; spY = panY;
+      });
+
+      window.addEventListener('mousemove', function (e) {
+        if (!dragging) return;
+        var dx = (e.clientX - sx) * (W / mapEl.clientWidth);
+        var dy = (e.clientY - sy) * (H / mapEl.clientHeight);
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) didMove = true;
+        if (scale > 1.0) {
+          panX = spX + dx;
+          panY = spY + dy;
+          updateTransform(false);
+        }
+      });
+
+      window.addEventListener('mouseup', function () {
+        if (dragging) {
+          dragging = false;
+          if (scale > 1.0) updateTransform(true);
+        }
+      });
+
+      // 移动端手势
+      mapEl.addEventListener('touchstart', function (e) {
+        if (e.target.closest && e.target.closest('.hm-ctrl')) return;
+        if (e.touches && e.touches.length === 1) {
+          dragging = true; didMove = false;
+          sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+          spX = panX; spY = panY;
+        } else if (e.touches && e.touches.length === 2) {
+          dragging = false;
+          var t1 = e.touches[0], t2 = e.touches[1];
+          pinchDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        }
+      }, { passive: true });
+
+      mapEl.addEventListener('touchmove', function (e) {
+        if (e.touches && e.touches.length === 1 && dragging && scale > 1.0) {
+          var dx = (e.touches[0].clientX - sx) * (W / mapEl.clientWidth);
+          var dy = (e.touches[0].clientY - sy) * (H / mapEl.clientHeight);
+          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) didMove = true;
+          panX = spX + dx;
+          panY = spY + dy;
+          updateTransform(false);
+        } else if (e.touches && e.touches.length === 2 && pinchDist > 0) {
+          var t1 = e.touches[0], t2 = e.touches[1];
+          var d = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+          var delta = d / pinchDist;
+          if (Math.abs(delta - 1) > 0.02) {
+            didMove = true;
+            zoomBy(delta > 1 ? 1.04 : 0.96);
+            pinchDist = d;
+          }
+        }
+      }, { passive: true });
+
+      mapEl.addEventListener('touchend', function () {
+        dragging = false; pinchDist = 0;
+        if (scale > 1.0) updateTransform(true);
+      });
+    }
+
+    // 点位点击绑定
     Array.prototype.forEach.call(mapEl.querySelectorAll('.hm-place'), function (g) {
-      var pick = function () { select(data.places[parseInt(g.getAttribute('data-i'), 10)]); };
+      var pick = function () {
+        if (didMove) return; // 拖拽平移时不触发误点
+        var idx = parseInt(g.getAttribute('data-i'), 10);
+        var p = data.places[idx];
+        select(p);
+      };
       g.addEventListener('click', pick);
       g.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); }

@@ -369,50 +369,201 @@
     return s.canvas;
   }
 
-  /* ---------- 客家织带：靛底上的菱形与锯齿纹 ---------- */
+  /* ---------- 客家织带：靛蓝底色 + 万字纹/菱格八卦锦/锯齿牙子挑花 ---------- */
   function wovenBelt() {
-    var s = createCanvas(512, 512), ctx = s.ctx;
-    ctx.fillStyle = '#243B55';
-    ctx.fillRect(0, 0, 512, 512);
-    var palette = ['#C0392B', '#E0A93C', '#F2E8D5', '#7BA89B'];
-    // 横向分区，每区一种纹样，模拟织带的分段构图
-    var bands = [[0, 70], [70, 150], [150, 200], [200, 320], [320, 370], [370, 450], [450, 512]];
-    bands.forEach(function (b, bi) {
-      var y0 = b[0], y1 = b[1], h = y1 - y0;
-      if (bi % 2 === 0) {
-        // 菱形串
-        var step = 46;
-        for (var x = step / 2; x < 512; x += step) {
-          ctx.fillStyle = palette[(bi + Math.floor(x / step)) % palette.length];
+    var W = 512, H = 1024;
+    var s = createCanvas(W, H), ctx = s.ctx;
+
+    // 靛青基底（深邃天然草木染底色）
+    ctx.fillStyle = '#142236';
+    ctx.fillRect(0, 0, W, H);
+
+    // 双侧边栏经线（客家织带传统红、黄、白包边经线）
+    var edgeWidth = 44;
+    function drawEdge(x0, x1, flip) {
+      // 外侧朱红粗经条
+      ctx.fillStyle = '#B22222';
+      ctx.fillRect(flip ? x1 - 16 : x0, 0, 16, H);
+      // 金黄细经条
+      ctx.fillStyle = '#E5B134';
+      ctx.fillRect(flip ? x1 - 24 : x0 + 16, 0, 8, H);
+      // 靛蓝窄隔离带
+      ctx.fillStyle = '#182C47';
+      ctx.fillRect(flip ? x1 - 36 : x0 + 24, 0, 12, H);
+      // 牙白细亮经线
+      ctx.fillStyle = '#F5EFE1';
+      ctx.fillRect(flip ? x1 - 42 : x0 + 36, 0, 6, H);
+    }
+    drawEdge(0, edgeWidth, false);
+    drawEdge(W - edgeWidth, W, true);
+
+    // 中间织花区域
+    var cx0 = edgeWidth, cx1 = W - edgeWidth, cw = cx1 - cx0, midX = W / 2;
+
+    // 分区循环绘制客家四大经典挑花图案（256px 一个大循环，共 4 段）
+    var sectionH = 256;
+    for (var sec = 0; sec < 4; sec++) {
+      var yBase = sec * sectionH;
+
+      if (sec === 0) {
+        // 第一段：客家连绵万字如意纹 (Swastika / Meander key)
+        ctx.fillStyle = '#101B2B';
+        ctx.fillRect(cx0, yBase, cw, sectionH);
+
+        // 万字几何挑花拐子
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'square';
+        var stepY = 64;
+        for (var py = yBase + 16; py < yBase + sectionH; py += stepY) {
+          [-1, 1].forEach(function (dir) {
+            var mx = midX + dir * 65;
+            ctx.strokeStyle = dir === 1 ? '#DDA82C' : '#C43328';
+            ctx.beginPath();
+            ctx.moveTo(mx, py);
+            ctx.lineTo(mx + dir * 55, py);
+            ctx.lineTo(mx + dir * 55, py + 26);
+            ctx.lineTo(mx + dir * 25, py + 26);
+            ctx.lineTo(mx + dir * 25, py + 12);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(mx, py + 52);
+            ctx.lineTo(mx - dir * 55, py + 52);
+            ctx.lineTo(mx - dir * 55, py + 26);
+            ctx.lineTo(mx - dir * 25, py + 26);
+            ctx.lineTo(mx - dir * 25, py + 40);
+            ctx.stroke();
+          });
+
+          // 核心骨结
+          ctx.fillStyle = '#F5EFE1';
           ctx.beginPath();
-          ctx.moveTo(x, y0 + h * 0.12); ctx.lineTo(x + step * 0.34, y0 + h / 2);
-          ctx.lineTo(x, y1 - h * 0.12); ctx.lineTo(x - step * 0.34, y0 + h / 2);
-          ctx.closePath(); ctx.fill();
-          ctx.strokeStyle = '#F2E8D5'; ctx.lineWidth = 1.5; ctx.stroke();
+          ctx.arc(midX, py + 26, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (sec === 1) {
+        // 第二段：双重嵌套菱形八卦锦 (Nested Lozenge Diamond with center star)
+        var dStep = 85;
+        for (var dy = yBase; dy < yBase + sectionH; dy += dStep) {
+          var cy = dy + dStep / 2;
+          // 外层朱红大菱形
+          ctx.fillStyle = '#BA2727';
+          ctx.beginPath();
+          ctx.moveTo(midX, cy - 38);
+          ctx.lineTo(midX + 75, cy);
+          ctx.lineTo(midX, cy + 38);
+          ctx.lineTo(midX - 75, cy);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#F5EFE1';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          // 中层金黄菱格
+          ctx.fillStyle = '#E5B134';
+          ctx.beginPath();
+          ctx.moveTo(midX, cy - 24);
+          ctx.lineTo(midX + 48, cy);
+          ctx.lineTo(midX, cy + 24);
+          ctx.lineTo(midX - 48, cy);
+          ctx.closePath();
+          ctx.fill();
+
+          // 内层靛青芯
+          ctx.fillStyle = '#142236';
+          ctx.beginPath();
+          ctx.moveTo(midX, cy - 13);
+          ctx.lineTo(midX + 26, cy);
+          ctx.lineTo(midX, cy + 13);
+          ctx.lineTo(midX - 26, cy);
+          ctx.closePath();
+          ctx.fill();
+
+          // 中心白丝四出花星
+          ctx.fillStyle = '#FFFFFF';
+          ctx.beginPath();
+          ctx.arc(midX, cy, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 菱格外侧连接三角牙
+          [-1, 1].forEach(function (side) {
+            ctx.fillStyle = '#2A8F76';
+            ctx.beginPath();
+            ctx.moveTo(midX + side * 85, cy);
+            ctx.lineTo(midX + side * 115, cy - 18);
+            ctx.lineTo(midX + side * 115, cy + 18);
+            ctx.closePath();
+            ctx.fill();
+          });
+        }
+      } else if (sec === 2) {
+        // 第三段：客家挑花几何福喜纹与回字格
+        var gStep = 64;
+        for (var gy = yBase + 12; gy < yBase + sectionH; gy += gStep) {
+          [-1, 1].forEach(function (side) {
+            var gx = midX + side * 90;
+            ctx.strokeStyle = '#DDA82C';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(gx - 26, gy, 52, 40);
+            ctx.fillStyle = '#B22222';
+            ctx.fillRect(gx - 13, gy + 10, 26, 20);
+          });
+          ctx.fillStyle = '#BA2727';
+          ctx.fillRect(midX - 22, gy + 6, 44, 28);
+          ctx.strokeStyle = '#F5EFE1';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(midX - 22, gy + 6, 44, 28);
+          ctx.strokeStyle = '#E5B134';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(midX - 22, gy + 6); ctx.lineTo(midX + 22, gy + 34);
+          ctx.moveTo(midX + 22, gy + 6); ctx.lineTo(midX - 22, gy + 34);
+          ctx.stroke();
         }
       } else {
-        // 锯齿纹
-        ctx.strokeStyle = palette[bi % palette.length];
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        for (var sx = 0, up = true; sx <= 512; sx += 24) {
-          var sy = up ? y0 + h * 0.25 : y1 - h * 0.25;
-          if (sx === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
-          up = !up;
+        // 第四段：连续锯齿牙子纹与连珠锦
+        var toothStep = 32;
+        ctx.strokeStyle = '#C43328';
+        ctx.lineWidth = 6;
+        for (var ty = yBase; ty < yBase + sectionH; ty += toothStep) {
+          ctx.beginPath();
+          ctx.moveTo(cx0 + 20, ty + 16);
+          ctx.lineTo(midX, ty);
+          ctx.lineTo(cx1 - 20, ty + 16);
+          ctx.stroke();
+
+          ctx.fillStyle = '#F5EFE1';
+          for (var dotX = cx0 + 35; dotX < cx1 - 20; dotX += 30) {
+            ctx.beginPath();
+            ctx.arc(dotX, ty + 24, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
-        ctx.stroke();
       }
-      ctx.strokeStyle = 'rgba(242,232,213,0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(0, y1 - 1); ctx.lineTo(512, y1 - 1); ctx.stroke();
-    });
-    // 纬线质感
-    ctx.globalAlpha = 0.10;
-    for (var yy = 0; yy < 512; yy += 3) {
-      ctx.strokeStyle = '#000'; ctx.beginPath();
-      ctx.moveTo(0, yy); ctx.lineTo(512, yy); ctx.stroke();
+
+      // 每段之间的分界金银红横拦带
+      var divY = yBase + sectionH - 4;
+      ctx.fillStyle = '#E5B134';
+      ctx.fillRect(cx0, divY - 4, cw, 3);
+      ctx.fillStyle = '#BA2727';
+      ctx.fillRect(cx0, divY - 1, cw, 3);
+      ctx.fillStyle = '#F5EFE1';
+      ctx.fillRect(cx0, divY + 2, cw, 2);
     }
-    ctx.globalAlpha = 1;
+
+    // 经密纬疏的手工织物横向肌理（浮线与阴影）
+    for (var yy = 0; yy < H; yy += 3) {
+      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+      ctx.fillRect(0, yy, W, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(0, yy + 1, W, 1);
+    }
+    // 纵向丝线纤维微光
+    for (var xx = 0; xx < W; xx += 4) {
+      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      ctx.fillRect(xx, 0, 1, H);
+    }
+
     return s.canvas;
   }
 
