@@ -32,6 +32,7 @@
   .tag.q { background: var(--accent); }
   .tag.d { background: var(--muted); }
   .tag.c { background: #4767a8; }
+  .tag.a { background: #5b67ca; }
   .name { font-size: 17px; font-weight: 700; color: var(--primary-deep); }
   .url { margin-top: 3px; font-size: 13px; color: var(--accent); word-break: break-all; }
   .note { margin-top: 6px; font-size: 12.5px; color: var(--ink-soft); }
@@ -53,14 +54,21 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>四个分支的网页地址</h1>
-  <p class="sub">龙南客家非遗数字助手 · 点卡片即开，手机也能直接收藏</p>
+  <h1>各分支的网页地址</h1>
+  <p class="sub">龙南客家非遗数字助手 · 原有四个分支与新增 antigravity 专属分支 · 点卡片即开，手机也能直接收藏</p>
 
   <a class="card" href="https://longnankejia.pages.dev/">
     <span class="tag">main</span>
     <div class="name">正式入口</div>
     <div class="url">https://longnankejia.pages.dev/</div>
     <div class="note">展板上印的就是这一条。大模型问答与语音输入通过服务端代理使用 API，密钥不会下发到浏览器。</div>
+  </a>
+
+  <a class="card" href="https://antigravity.longnankejia-dev.pages.dev/">
+    <span class="tag a">antigravity</span>
+    <div class="name">Antigravity 的专属分支</div>
+    <div class="url">https://antigravity.longnankejia-dev.pages.dev/</div>
+    <div class="note">Antigravity 专属工作分支。完全复制自 main 分支，独立改动，未获允许绝不合并至 main；API 密钥走服务端安全代理。</div>
   </a>
 
   <a class="card" href="https://qcode.longnankejia-dev.pages.dev/">
@@ -85,7 +93,8 @@
   </a>
 
   <div class="row">
-    <button type="button" onclick="['https://longnankejia.pages.dev/','https://qcode.longnankejia-dev.pages.dev/','https://longnankejia-dev.pages.dev/','https://codex.longnankejia-dev.pages.dev/'].forEach(function (u) { window.open(u, '_blank'); })">四个都打开</button>
+    <button type="button" onclick="['https://longnankejia.pages.dev/','https://antigravity.longnankejia-dev.pages.dev/','https://qcode.longnankejia-dev.pages.dev/','https://longnankejia-dev.pages.dev/','https://codex.longnankejia-dev.pages.dev/'].forEach(function (u) { window.open(u, '_blank'); })">全部都打开（含原四个分支）</button>
+    <button type="button" onclick="window.open('https://antigravity.longnankejia-dev.pages.dev/','_blank')">打开 antigravity 专属版</button>
     <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/hometown','_blank')">直接看 v2 家乡地图</button>
     <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/model3d','_blank')">直接看 v2 的 3D 模型</button>
     <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/dialect','_blank')">直接听方言原声</button>

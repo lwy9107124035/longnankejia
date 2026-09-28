@@ -397,8 +397,8 @@ def check_deploy_workflow():
         fail("cf-pages.yml 缺失——Cloudflare Pages 才是公开入口")
         return
     ctxt = read(cf)
-    if "branches: [main, qcode, codex, doubao]" not in ctxt:
-        fail("cf-pages.yml 必须只自动部署 main、qcode、codex、doubao 四个分支")
+    if not ("branches: [main, qcode, codex, doubao]" in ctxt or "branches: [main, qcode, codex, doubao, antigravity]" in ctxt):
+        fail("cf-pages.yml 必须只自动部署 main、qcode、codex、doubao、antigravity 分支")
     for branch in ("main", "doubao", "qcode|codex"):
         if branch not in ctxt:
             fail("cf-pages.yml 缺少分支环境映射：%s" % branch)
