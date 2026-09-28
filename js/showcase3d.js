@@ -14,13 +14,21 @@
   var panX = 0, panY = 0, targetPanX = 0, targetPanY = 0;
   var autoRotate = true, idleTimer = null, textures = {}, generatedTextures = [];
   var touchMode = null, pinchDist = 0, pinchMidX = 0, pinchMidY = 0;
+  // 每个模型的竖直范围只跟几何有关，量一次就够：切换时重复遍历会把一帧堵死
+  var SEAT_CACHE = {};
+  // 每件模型按实测差值坐到场景地面上（trueMinY 原本高出 -1.15 多少就往下补多少）。
+  // 各件自定的 position.y 是历史遗留：簸箕 +0.12 让它悬空 1.15，虎头帽悬空 1.05，
+  // 凉帽 0.95，米酒坛 0.57，蓝染的染缸几乎埋进地里。模型不再整体前倾之后这些全暴露出来。
+  // 焦点同步下移同样的量，取景关系与逐项调好的距离保持不变。
+  var SEAT_ADJUST = {hutoumao: -1.047, weiwu: 0, landye: -0.150, liangmao: -0.952, boji: -1.150, zhidai: -0.319, mijiutan: -0.570};
+  var FOCUS_BASE = {weiwu: -0.10, zhidai: -0.17};
   // 引擎 603KB + 贴图约 13MB 只在观众真的点开 3D 时才拉，见 init()/boot() 的分工
   var booted = false, booting = null, pendingShow = null;
 
   var ITEMS = [
     { id: 'hutoumao', name: '虎头帽', subtitle: '定南客家童帽', icon: '\u{1F42F}', zoom: 4.2,
       desc: '黑底多层棉布基底，以红、黄、蓝、白、绿真丝线手工刺绣。前幅覆盖夸张虎头纹样，带立体凸起的刺绣眼睛、鼻子、眉毛和胡须，对称结构，两侧护耳，后方小披风，边缘饰有穗子和花边。' },
-    { id: 'weiwu', name: '客家围屋', subtitle: '龙南关西新围', icon: '\u{1F3EF}', zoom: 8.6,
+    { id: 'weiwu', name: '客家围屋', subtitle: '龙南关西新围', icon: '\u{1F3EF}', zoom: 8.2,
       desc: '依据关西新围公开形制资料构建的长方形围合示意：三层围墙、夯土与青砖层次、双门、四角炮楼、三进院落和中轴祠堂。模型用于呈现空间关系，并非文物测绘复原。' },
     { id: 'landye', name: '蓝染布', subtitle: '客家草木染', icon: '\u{1F9F5}', zoom: 4.8,
       desc: '折叠的分层布料，深邃靛蓝色带白色防染图案，含植物纹样与几何纹样。粗糙手工棉麻材质，天然板蓝根染料呈现从出缸绿到氧化蓝的水墨晕染渐变效果。' },
@@ -129,22 +137,35 @@
     brimTrim.position.y = -0.04;
     g.add(brimTrim);
 
-    // ---- 前幅虎头刺绣（纹理曲面） ----
+    // ---- 前幅虎头刺绣：投影到帽体球面上的圆形绣片 ----
+    // 原来是一块 PlaneGeometry 微微鼓一下、摆在 z=0.8：方形直角露在圆帽轮廓之外，
+    // 近看像贴了张广告牌。改成把圆盘逐点投到半径与帽体一致的球面上，绣片随帽面弯。
     if (textures.tigerEmb) {
-      var faceGeo = new THREE.PlaneGeometry(1.2, 1.2, 20, 20);
+      var R = 1.014, thC = 0.96, span = 0.62, spanY = 0.54;
+      var faceGeo = new THREE.CircleGeometry(0.5, 46);
       var fp = faceGeo.attributes.position;
       for (var fi = 0; fi < fp.count; fi++) {
-        var fx = fp.getX(fi), fy = fp.getY(fi);
-        fp.setZ(fi, Math.max(0, 1 - Math.sqrt(fx * fx + fy * fy) * 0.75) * 0.18);
+        var ang = (fp.getX(fi) / 0.5) * span;            // 绕竖直轴
+        var pol = thC - (fp.getY(fi) / 0.5) * spanY;     // 与顶点的极角
+        fp.setXYZ(fi, R * Math.sin(pol) * Math.sin(ang), R * Math.cos(pol), R * Math.sin(pol) * Math.cos(ang));
       }
       faceGeo.computeVertexNormals();
       var faceMesh = new THREE.Mesh(faceGeo, new THREE.MeshStandardMaterial({
-        map: textures.tigerEmb, roughness: 0.55, metalness: 0.03,
-        transparent: true, alphaTest: 0.08
+        map: textures.tigerEmb, roughness: 0.55, metalness: 0.03, side: THREE.DoubleSide
       }));
-      faceMesh.position.set(0, 0.5, 0.8);
+      faceMesh.position.y = 0.1;
       faceMesh.castShadow = true;
       g.add(faceMesh);
+      // 绣片外圈压一道金线，圆边的收口看得见
+      var ringPts = [];
+      for (var ri = 0; ri <= 64; ri++) {
+        var ra = (ri / 64) * Math.PI * 2;   // 与绣片同一套映射，走这片圆盘自己的边
+        var rang = span * Math.cos(ra), rpol = thC - spanY * Math.sin(ra);
+        ringPts.push(new THREE.Vector3(R * Math.sin(rpol) * Math.sin(rang), 0.1 + R * Math.cos(rpol), R * Math.sin(rpol) * Math.cos(rang)));
+      }
+      var faceRing = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringPts), 72, 0.022, 6, true), matGold);
+      faceRing.name = 'embroidery_gold_border';
+      g.add(faceRing);
     }
 
     // ---- 立体刺绣眼睛（凸起） ----
@@ -453,9 +474,12 @@
       }
     }
     // 卵石与条石台基。围前的禾坪（晒谷卵石埕）和半月池是赣南围屋的门面，缺了就不像。
-    box('pebble_rubble_foundation',W+0.34,0.22,D+0.34,stone,0,0.11,0);
-    // 门前的卵石埕与半月池试过四种摆法（抬高、贴地、内嵌、收紧），在 320px 高的视口与默认俯角下
-    // 都读成悬在台面外的一块板，先不放进模型；要恢复得同时改场景地面半径或默认俯角。
+    // 台基分两进：下进要含住 2:1 收分外扩的墙脚（墙中线外 0.20）与角楼台座（外 0.32），
+    // 否则墙脚会从台基侧边穿出去；底面抬离地面 0.004，避免与场景地面共面闪皮。
+    box('pebble_rubble_foundation',W+0.62,0.09,D+0.62,stone,0,0.069,0);
+    box('rubble_plinth_upper',W+0.44,0.09,D+0.44,mortar,0,0.159,0);
+    // 门前的卵石埕与半月池试过四种摆法，在 320px 高的视口与默认俯角下都读成悬在台面外的一块板，
+    // 先不放进模型；要恢复得同时改场景地面半径或默认俯角。
 
 
 
@@ -463,7 +487,7 @@
     // 三层围墙；正面两座门（主门与侧门）用分段墙体保留真实洞口。
     var wallY=y0+3*floorH, menZan=[], guShi=[];
     function facade(z, back) {
-      var openings=back?[[-0.9,0.40]]:[[-0.78,0.48],[0.82,0.34]], cursor=-W/2;
+      var openings=back?[[-0.9,0.40]]:[[-0.78,0.48],[0.82,0.34]];var xLo=-(W/2-0.30), xHi=W/2-0.30, cursor=xLo;
       openings.forEach(function(o,oi){
         var left=o[0]-o[1]/2,right=o[0]+o[1]/2,mid=(left+right)/2,gw=o[1],tag=(back?'rear':'front');
         if(left>cursor) wall(tag+'_wall_'+oi,cursor+(left-cursor)/2,z,left-cursor,.20,3,'x');
@@ -479,18 +503,19 @@
         });
         if(!back&&oi===0) box('main_gate_stone_plaque',.54,.15,.07,lime,mid,1.37,z+.14,false);
         cursor=right;
-      }); if(cursor<W/2) wall((back?'rear':'front')+'_wall_end',cursor+(W/2-cursor)/2,z,W/2-cursor,.20,3,'x');
+      }); if(cursor<xHi) wall((back?'rear':'front')+'_wall_end',cursor+(xHi-cursor)/2,z,xHi-cursor,.20,3,'x');
     }
     facade(D/2,false); facade(-D/2,true);
     inst('gate_door_studs',new THREE.CylinderGeometry(.026,.026,.05,10),lime,menZan);
     inst('gate_drum_piers',new THREE.BoxGeometry(.10,.17,.13),stone,guShi);
-    [-1,1].forEach(function(s){wall('east_west_enclosing_wall_'+s,s*W/2,0,D,.20,3,'z');});
+    // 侧面墙在角楼内缘收头：两堵带收分的墙直接贯穿，四角会拱出一片不像墙的"鳍"
+    [-1,1].forEach(function(s){wall('east_west_enclosing_wall_'+s,s*W/2,0,D-0.60,.20,3,'z');});
     // 墙身枪眼：分层外挑量跟着收分走，孔洞才不会浮在墙面之外。
     var slitM=[], winM=[], merlons=[], walkM=[], off=[0.176,0.140,0.116];
     for(var side=0;side<4;side++) for(var level=0;level<3;level++) for(var j=0;j<9;j++){
       var q=(j-4)*0.36, xx=0,zz=0,yy=y0+floorH*(level+.56);
       if(side===0){xx=q;zz=D/2+off[level];} if(side===1){xx=q;zz=-D/2-off[level];}
-      if(side===2){xx=W/2+off[level];zz=q*D/W;} if(side===3){xx=-W/2-off[level];zz=q*D/W;}
+      if(side===2){xx=W/2+off[level];zz=q*0.66;} if(side===3){xx=-W/2-off[level];zz=q*0.66;}
       if((side===0||side===1)&&level===0&&Math.abs(xx)<1.12) continue;
       slitM.push([xx,yy,zz,0,side<2?0:Math.PI/2]);
       if(level>0&&j%2===0) winM.push([xx,yy+0.17,zz*1.02,0,side<2?0:Math.PI/2]);
@@ -500,24 +525,24 @@
     // 墙顶女儿墙、压顶与一排垛口；走马廊石板铺在内沿
     box('perimeter_parapet_front',W,.12,.23,brick,0,wallY+.06,D/2,false); box('perimeter_parapet_back',W,.12,.23,brick,0,wallY+.06,-D/2,false);
     box('perimeter_parapet_left',.23,.12,D,brick,-W/2,wallY+.06,0,false); box('perimeter_parapet_right',.23,.12,D,brick,W/2,wallY+.06,0,false);
-    for(var ms=0;ms<2;ms++) for(var mi=0;mi<14;mi++){
-      var mq=(mi-6.5)*0.26;
+    for(var ms=0;ms<2;ms++) for(var mi=0;mi<13;mi++){
+      var mq=(mi-6)*0.225;
       merlons.push([mq,wallY+.19,ms?D/2+.055:-D/2-.055]);
     }
-    for(var me=0;me<2;me++) for(var mj=0;mj<10;mj++){
-      var mz=(mj-4.5)*0.26;
+    for(var me=0;me<2;me++) for(var mj=0;mj<9;mj++){
+      var mz=(mj-4)*0.21;
       merlons.push([me?W/2+.055:-W/2-.055,wallY+.19,mz]);
     }
     inst('parapet_crenellations',new THREE.BoxGeometry(.15,.14,.12),brick,merlons);
     for(var wi2=0;wi2<2;wi2++) for(var wj=0;wj<12;wj++){
-      walkM.push([(wj-5.5)*0.29,wallY+.125,wi2?D/2-.13:-D/2+.13]);
+      walkM.push([(wj-5.5)*0.245,wallY+.125,wi2?D/2-.13:-D/2+.13]);
     }
     for(var wk=0;wk<2;wk++) for(var wl=0;wl<9;wl++){
-      walkM.push([wk?W/2-.13:-W/2+.13,wallY+.125,(wl-4)*0.29]);
+      walkM.push([wk?W/2-.13:-W/2+.13,wallY+.125,(wl-4)*0.235]);
     }
     inst('wall_walk_paving',new THREE.BoxGeometry(.27,.022,.2),stone,walkM);
 
-    // 四角炮楼：收分砖身、腰檐、四角攒尖顶，比围墙和垛口都高出一截才压得住画面。
+    // 四角炮楼：收分砖身、腰檐、两层歇山顶，比围墙和垛口都高出一截才压得住画面。
     var towerSlit=[];
     [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(function(c,idx){
       var x=c[0]*(W/2-.02),z=c[1]*(D/2-.02),tw=.50;
@@ -1177,9 +1202,39 @@
       default: currentModel = buildHutoumao();
     }
     scene.add(currentModel);
-    // 小件器物要拉近才看得清编织与釉面，按条目给的取景距离走
+    var seat = SEAT_CACHE[id];
+    if (!seat) {
+      var lo = {x: Infinity, y: Infinity, z: Infinity}, hi = {x: -Infinity, y: -Infinity, z: -Infinity};
+      var sM = new THREE.Matrix4(), sV = new THREE.Vector3();
+      // 逐实例逐顶点量。用几何包围盒近似那一版会漏掉部分网格（织带的最低点量成 -Infinity，
+      // 结果整件被往下多推了 1.2），而这里每个 id 只算一次并缓存，代价可以接受。
+      currentModel.traverse(function (o) {
+        if (!o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
+        var pos = o.geometry.attributes.position, n = o.isInstancedMesh ? o.count : 1;
+        for (var k = 0; k < n; k++) {
+          if (o.isInstancedMesh) { o.getMatrixAt(k, sM); sM.premultiply(o.matrixWorld); }
+          else { sM.copy(o.matrixWorld); }
+          for (var v = 0; v < pos.count; v++) {
+            sV.fromBufferAttribute(pos, v).applyMatrix4(sM);
+            if (sV.x < lo.x) lo.x = sV.x; if (sV.x > hi.x) hi.x = sV.x;
+            if (sV.y < lo.y) lo.y = sV.y; if (sV.y > hi.y) hi.y = sV.y;
+            if (sV.z < lo.z) lo.z = sV.z; if (sV.z > hi.z) hi.z = sV.z;
+          }
+        }
+      });
+      seat = SEAT_CACHE[id] = {lo: lo, hi: hi};
+    }
+    var lo2 = seat.lo, hi2 = seat.hi;
+    var seatDelta = SEAT_ADJUST[id] || 0;
+    currentModel.position.y += seatDelta;
+    currentModel.updateMatrixWorld(true);
+    // 小件器物要拉近才看得清编织与釉面：条目给的取景距离当作下限
     var spec = ITEMS.filter(function (it) { return it.id === id; })[0];
-    cameraFocusY = id === 'weiwu' ? -0.10 : (id === 'zhidai' ? -0.17 : 0.15);
+    // 包围球取景：任何一点到注视点都不超过半径，按半径/sin(半视场) 定距离就不会裁切
+    var cy = (lo2.y + hi2.y) / 2 + seatDelta;
+    var sphereR = Math.sqrt(Math.pow((hi2.x - lo2.x) / 2, 2) + Math.pow((hi2.y - lo2.y) / 2, 2) + Math.pow((hi2.z - lo2.z) / 2, 2));
+    var fitDist = sphereR / Math.sin((camera.fov * Math.PI / 180) / 2);
+    cameraFocusY = (FOCUS_BASE[id] === undefined ? 0.15 : FOCUS_BASE[id]) + seatDelta;
     targetRotX = id === 'weiwu' ? 0.44 : 0.25;
     // Return to the canonical view by the shortest arc. Assigning 0.4 outright left
     // rotY at whatever the auto-rotation had accumulated, so the lerp unwound tens of
@@ -1219,9 +1274,14 @@
     zoom += (targetZoom - zoom) * 0.08;
     panX += (targetPanX - panX) * 0.1;
     panY += (targetPanY - panY) * 0.1;
-    if (currentModel) { currentModel.rotation.x = rotX; currentModel.rotation.y = rotY; }
-    camera.position.set(panX, cameraFocusY + 0.25 + panY, zoom);
-    camera.lookAt(panX, cameraFocusY + panY, 0);
+    // 俯仰交给相机绕行，模型只绕自身竖轴转台旋转。
+    // 原来这里写的是 currentModel.rotation.x = rotX：模型被整块向前倾 0.44 弧度，
+    // 围屋前缘（局部 z≈1.6）因此扎进地板 0.9 深、后缘浮起，就是"与底面穿模"的根因；
+    // 而且地面阴影是水平的，模型一倾，接触面的穿帮更明显。
+    if (currentModel) { currentModel.rotation.y = rotY; }
+    var focusY = cameraFocusY + panY;
+    camera.position.set(panX, focusY + zoom * Math.sin(rotX), zoom * Math.cos(rotX));
+    camera.lookAt(panX, focusY, 0);
     renderer.render(scene, camera);
   }
 
