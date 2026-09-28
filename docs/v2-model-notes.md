@@ -54,7 +54,7 @@
 - [百度百科：冬头帕](https://wapbaike.baidu.com/view/8542895.htm)（护额双层黑棉布对折高约2寸、织带宽约2cm 长约2尺、纹样种类）
 - [赣南日报](http://szb.gnrbs.cn/h6/html5/2023-01/10/content_196739_17413155.htm)
 - [澎湃新闻：冬头帕与织带](https://www.thepaper.cn/newsDetail_forward_18689300)
-- [龙南客家织带技艺资料（项目提供的 v2 参考文本）](../.cache/v2-client-document.txt)
+- [甲方提供的《非遗.docx》织带部分](../针对v2版本甲方修改意见/非遗.docx)
 
 ## 渲染与取景
 

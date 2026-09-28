@@ -592,19 +592,16 @@ def check_launchers():
                 fail("地址.html 里 %s 不是一条可点的链接" % need)
             if '<div class="url">%s</div>' % need not in a:
                 fail("地址.html 里 %s 没有作为可见文字写出来" % need)
-        # v2、v3 只是 qcode 上的迭代号。页面上得自己把这件事说清楚，否则看的人就会
-        # 照着版本号去点 https://v2.longnankejia-dev.pages.dev/ —— 实测 404，死链。
-        # 这里钉的是「版本 v2 → v3」整句而不是单独的 v3：这个词页面上出现两处，
-        # 只查一个词的话抹掉演进说明也照样绿（L8 反向用例验的就是这个）。
-        for need in ("v2-base", "版本 v2 → v3", "不是分支名"):
+        # codex 上的 v2 是尚无公共预览地址的本地版本；不能把它与 main/qcode/dev 混淆。
+        for need in ("v2-base", "v2 这一轮改动在 codex 分支", "不是网页地址或分支名"):
             if need not in a:
-                fail("地址.html 丢了「%s」——v2/v3 是版本号不是分支名，这页要自己说清记在哪条分支上" % need)
+                fail("地址.html 丢了「%s」——应标出 v2 对应 codex 本地分支且没有线上入口" % need)
         for bad in re.findall(r"https?://v\d\.[\w.-]*pages\.dev", a):
             fail("地址.html 把版本号当成了分支地址 %s——Pages 的子域名只认分支名，没有这一条" % bad)
         for ref in re.findall(r'(?:src|href)="((?!https?:|#|javascript:)[^"]+)"', a):
             if not os.path.exists(rel(ref)):
                 fail("地址.html 引用了本地文件 %s，但它不存在" % ref)
-    notes.append("启动脚本与地址页：只引用存在的文件，三条分支地址与部署映射一致，版本号不当分支名用")
+    notes.append("启动脚本与地址页：三条公网地址与部署映射一致，codex v2 明确标作本地版本")
 
 
 def check_video_attribution():
