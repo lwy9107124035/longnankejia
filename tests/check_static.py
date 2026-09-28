@@ -376,6 +376,11 @@ def check_deploy_workflow():
         fail("cf-pages.yml 不再注入生产密钥，线上大模型引擎会静默失效")
     if "CLOUDFLARE_API_TOKEN" not in ctxt:
         fail("cf-pages.yml 没有用 CLOUDFLARE_API_TOKEN 认证")
+    prep = re.search(r"- name: 组装站点并同步服务端密钥([\s\S]*?)- name: 部署", ctxt)
+    if not prep or "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}" not in prep.group(1):
+        fail("Wrangler secret 上传步骤没有收到 CLOUDFLARE_API_TOKEN")
+    if not prep or "CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" not in prep.group(1):
+        fail("Wrangler secret 上传步骤没有收到 CLOUDFLARE_ACCOUNT_ID")
     cf_moved = set(re.findall(r'(?:cp -r |cp )"(?:_site/)?([A-Za-z0-9_./-]+)"? _site', ctxt))
     cf_moved |= set(re.findall(r'cp -r ([A-Za-z0-9_./ -]+) _site(?:/assets)?/', ctxt))
     for m in sorted({x for grp in cf_moved for x in grp.split() if x} - allow):
