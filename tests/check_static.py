@@ -41,6 +41,12 @@ def read(path):
         return f.read()
 
 
+def loaded_css():
+    """Audit the actual stylesheets the page loads, including module styles."""
+    refs = re.findall(r'<link\b[^>]*href=["\']([^"\']+\.css)["\']', read(rel("index.html")))
+    return "\n".join(read(rel(*ref.split("/"))) for ref in refs if is_local(ref))
+
+
 def is_local(ref):
     if re.match(r"^(https?:|data:|mailto:|tel:|//)", ref) or ref.startswith("#"):
         return False
@@ -200,7 +206,7 @@ def check_css_vars():
     A leftover var(--bg-card) does not throw — it just resolves to nothing, so the rule
     silently loses its colour. Catch that here rather than in a screenshot review.
     """
-    css = read(rel("css", "style.css"))
+    css = loaded_css()
     defined = set(re.findall(r"(--[\w-]+)\s*:", css))
     used = re.findall(r"var\(\s*(--[\w-]+)\s*(,)?", css)
     for name, has_fallback in used:
@@ -482,7 +488,7 @@ def check_hometown_map():
     # 这一整块面板是纯展示：JS 里写出来的每个类名都必须在样式里有规则。
     # 曾经删 .pr-* 时把 .hm-land 一起带走了，SVG 没有 fill 就默认涂黑，
     # 县界变成一团黑影，而 193 项断言全绿——因为没人检查计算样式。
-    css = read(rel("css", "style.css"))
+    css = loaded_css()
     panel = re.search(r'id="panelHometown"[\s\S]*?</div>\s*</div>', html)
     used = set()
     for blob in (src, panel.group(0) if panel else ""):
@@ -586,10 +592,19 @@ def check_launchers():
                 fail("地址.html 里 %s 不是一条可点的链接" % need)
             if '<div class="url">%s</div>' % need not in a:
                 fail("地址.html 里 %s 没有作为可见文字写出来" % need)
+        # v2、v3 只是 qcode 上的迭代号。页面上得自己把这件事说清楚，否则看的人就会
+        # 照着版本号去点 https://v2.longnankejia-dev.pages.dev/ —— 实测 404，死链。
+        # 这里钉的是「版本 v2 → v3」整句而不是单独的 v3：这个词页面上出现两处，
+        # 只查一个词的话抹掉演进说明也照样绿（L8 反向用例验的就是这个）。
+        for need in ("v2-base", "版本 v2 → v3", "不是分支名"):
+            if need not in a:
+                fail("地址.html 丢了「%s」——v2/v3 是版本号不是分支名，这页要自己说清记在哪条分支上" % need)
+        for bad in re.findall(r"https?://v\d\.[\w.-]*pages\.dev", a):
+            fail("地址.html 把版本号当成了分支地址 %s——Pages 的子域名只认分支名，没有这一条" % bad)
         for ref in re.findall(r'(?:src|href)="((?!https?:|#|javascript:)[^"]+)"', a):
             if not os.path.exists(rel(ref)):
                 fail("地址.html 引用了本地文件 %s，但它不存在" % ref)
-    notes.append("启动脚本与地址页：只引用存在的文件，三条分支地址与部署映射一致")
+    notes.append("启动脚本与地址页：只引用存在的文件，三条分支地址与部署映射一致，版本号不当分支名用")
 
 
 def check_video_attribution():

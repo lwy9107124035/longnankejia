@@ -1,0 +1,41 @@
+/* v2 家乡地图交互增强。由 index.html 在 style.css 后加载。 */
+#hmMap.hm-map { padding: 10px; overflow: hidden; }
+.hm-tools { display: grid; gap: 8px; margin: 0 0 10px; }
+.hm-tool-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hm-tool-hint, .hm-map-status { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.hm-zoom, .hm-filter { display: flex; align-items: center; gap: 5px; }
+.hm-zoom button, .hm-filter button, .hm-place-link {
+  min-height: 44px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--card); color: var(--primary-deep); font: inherit; cursor: pointer;
+  touch-action: manipulation;
+}
+.hm-zoom button { min-width: 38px; padding: 5px 10px; font-size: 13px; }
+.hm-zoom button[data-map-action="in"], .hm-zoom button[data-map-action="out"] { font-size: 20px; line-height: 1; }
+.hm-filter { flex-wrap: wrap; }
+.hm-filter button { padding: 5px 12px; font-size: 11px; }
+.hm-filter button.is-active { border-color: var(--primary); background: var(--primary); color: #fff; }
+.hm-place-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.hm-place-link { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; }
+.hm-place-link span { font-size: 12px; }
+.hm-place-link small { color: var(--muted); font-size: 10px; }
+.hm-place-link.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.hm-place-link[hidden] { display: none; }
+.hm-kind-site.hm-place-link { border-color: var(--accent-soft); }
+.hm-kind-seat.hm-place-link { border-color: var(--primary-soft); }
+.hm-viewport { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); }
+.hm-world { transform-box: view-box; transform-origin: 0 0; }
+.hm-svg { width: 100%; height: auto; max-height: none; touch-action: none; cursor: grab; user-select: none; }
+.hm-svg:active { cursor: grabbing; }
+.hm-place { cursor: pointer; }
+.hm-place.is-filtered { display: none; }
+.hm-hit { fill: transparent; stroke: transparent; pointer-events: all; }
+.hm-place:hover .hm-hit, .hm-place:focus .hm-hit { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+.hm-place:focus-visible .hm-dot { stroke: var(--accent); stroke-width: 2.6; }
+.hm-map-status { min-height: 1.5em; }
+@media (max-width: 380px) {
+  #hmMap.hm-map { padding: 7px; }
+  .hm-tool-row { align-items: flex-start; flex-direction: column; }
+  .hm-zoom button { min-height: 44px; }
+  .hm-place-list { gap: 5px; }
+  .hm-place-link { min-height: 44px; padding: 5px 9px; }
+}

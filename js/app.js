@@ -83,6 +83,7 @@
           }
         }
 
+        window.UI.Chat.addSources(bubble, result.sources);
         attachVideos(bubble, question, result.text, result);
       });
     }).catch(function (err) {
