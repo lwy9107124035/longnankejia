@@ -410,6 +410,11 @@ def check_deploy_workflow():
         fail("cf-pages.yml 必须在豆包分支部署前把 longnankejia-dev 生产分支切到 doubao")
     if 'pages secret put SILICONFLOW_API_KEY --project-name="$PROJECT" --env="$CF_ENV"' not in ctxt:
         fail("cf-pages.yml 没有安全同步服务端密钥")
+    prep = re.search(r"- name: 组装站点并同步服务端密钥([\s\S]*?)- name: 部署", ctxt)
+    if not prep or "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}" not in prep.group(1):
+        fail("Wrangler secret 上传步骤没有收到 CLOUDFLARE_API_TOKEN")
+    if not prep or "CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" not in prep.group(1):
+        fail("Wrangler secret 上传步骤没有收到 CLOUDFLARE_ACCOUNT_ID")
     if 'printf \'%s\' "$CF_KEY" |' not in ctxt:
         fail("cf-pages.yml 必须将 API key 从 stdin 管道传入 Wrangler")
     if 'wrangler@4.137.0' not in ctxt:
