@@ -23,7 +23,7 @@ try {
   const targets=await(await fetch(`http://127.0.0.1:${port}/json/list`)).json();
   ws=new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl);
   await new Promise((r,j)=>{ws.addEventListener('open',r,{once:true});ws.addEventListener('error',j,{once:true});});
-  let serial=0;const pending=new Map();const errors=[];
+  let serial=0;const pending=new Map();const errors=[],consoleLogs=[],failedRequests=[];
   ws.addEventListener('message',e=>{
     const m=JSON.parse(e.data);
     if(m.id&&pending.has(m.id)){
@@ -31,6 +31,8 @@ try {
       m.error?p.reject(new Error(JSON.stringify(m.error))):p.resolve(m.result);
     }
     if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails);
+    if(m.method==='Runtime.consoleAPICalled')consoleLogs.push({type:m.params.type,text:m.params.args.map(a=>a.value||a.description||'').join(' ')});
+    if(m.method==='Network.loadingFailed')failedRequests.push(m.params);
   });
   const send=(method,params={})=>new Promise((resolve,reject)=>{
     const id=++serial;// 软件渲染下一次全顶点遍历就可能几十秒；30s 超时曾三次把没跑完的报告当成旧结论
@@ -48,16 +50,26 @@ try {
     const r=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,...(clip?{clip}:{})});
     fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(r.data,'base64'));
   };
-  await send('Page.enable');await send('Runtime.enable');
+  await send('Page.enable');await send('Runtime.enable');await send('Network.enable');
   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
   await send('Page.navigate',{url:'http://127.0.0.1:8787/index.html#/'+(mapOnly?'hometown':'model3d')});
-  if(!mapOnly)await ev(`new Promise((resolve,reject)=>{let n=0;const t=setInterval(()=>{if(window.Showcase3D&&Showcase3D.booted()){clearInterval(t);resolve(true);}else if(++n>150){clearInterval(t);reject(new Error('3D boot failed'));}},200);})`,true);
+  if(!mapOnly){
+    const boot=await ev(`new Promise(resolve=>{let n=0;const t=setInterval(()=>{if(window.Showcase3D&&Showcase3D.booted()){clearInterval(t);resolve({ok:true});}else if(++n>150){clearInterval(t);resolve({ok:false,hash:location.hash,readyState:document.readyState,showcase:!!window.Showcase3D,viewport:document.querySelector('#c3dViewport')?.innerText,three:!!window.THREE,resources:performance.getEntriesByType('resource').filter(r=>/three|textures/.test(r.name)).map(r=>({name:r.name,duration:r.duration,size:r.transferSize}))});}},200);})`,true);
+    if(!boot.ok)throw new Error('3D boot failed: '+JSON.stringify({boot,errors,consoleLogs:consoleLogs.slice(-12),failedRequests}));
+  }
   else await sleep(700);
   const report={models:[],errors,checks:[]};
   const check=(name,pass,detail)=>{report.checks.push({name,pass,detail});if(!pass)process.exitCode=1;};
   const ids=mapOnly?[]:await ev('Showcase3D.items().map(x=>x.id)');
+  const selectInUi=async id=>{
+    await ev(`document.querySelector('#c3dList .c3d-item[data-id="${id}"]').click()`);
+    await sleep(1600);
+    const item=await ev(`Showcase3D.items().find(x=>x.id===${JSON.stringify(id)})`);
+    const selected=await ev(`(()=>{const b=document.querySelector('#c3dList .c3d-item.active');return b?.getAttribute('data-id')===${JSON.stringify(id)}&&document.querySelector('#c3dName')?.textContent===b.querySelector('.c3d-item-name').textContent+' · '+b.querySelector('.c3d-item-sub').textContent;})()`);
+    check(id+' 界面选中项、模型名称与当前模型同步',selected,{item});
+  };
   for(const id of ids){
-    await ev(`Showcase3D.show(${JSON.stringify(id)})`);await sleep(1600);
+    await selectInUi(id);
     // 七件全截：以前只截围屋与织带，另外五件没有任何可视证据，虎头帽那块戳在帽外的方形贴片和六件浮空才拖到现在
     // 不带 clip：带 clip 的截图路径会在 captureBeyondViewport 触发容器 resize 之后取图，
     // WebGL 画布已被 setSize 清空，七张 3D 图全成 3KB 空白；整页截图才有内容。
@@ -102,7 +114,7 @@ try {
     }
   }
   for(const id of (mapOnly?[]:['weiwu','zhidai'])){
-    await ev(`Showcase3D.show('${id}')`);await sleep(1500);
+    await selectInUi(id);
     const rect=await ev(`(()=>{const r=document.querySelector('#c3dViewport canvas').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
     // Use the real controls; the model must respond without changing its internals.
     await send('Input.dispatchMouseEvent',{type:'mousePressed',x:rect.x,y:rect.y,button:'left',buttons:1,clickCount:1});
@@ -115,7 +127,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride',{width:360,height:800,deviceScaleFactor:1,mobile:true});
   await send('Page.reload');await sleep(3500);
   for(const id of (mapOnly?[]:['weiwu','zhidai'])){
-    await ev(`Showcase3D.show('${id}')`);await sleep(1400);await shot('mobile-'+id);
+    await selectInUi(id);await shot('mobile-'+id);
     if(!process.argv.includes('--baseline')){
       const framing=await ev(`(()=>{const g=Showcase3D.debugModel(),c=Showcase3D.debugCamera();g.updateMatrixWorld(true);let max=0;g.traverse(o=>{if(!o.isMesh)return;const m=new THREE.Matrix4(),v=new THREE.Vector3();for(let k=0;k<(o.isInstancedMesh?o.count:1);k++){if(o.isInstancedMesh){o.getMatrixAt(k,m);m.premultiply(o.matrixWorld);}else m.copy(o.matrixWorld);for(let j=0;j<o.geometry.attributes.position.count;j++){v.fromBufferAttribute(o.geometry.attributes.position,j).applyMatrix4(m).project(c);max=Math.max(max,Math.abs(v.x),Math.abs(v.y));}}});return max;})()`);
       check(id+' 手机默认视图完整',framing<0.98,framing);
