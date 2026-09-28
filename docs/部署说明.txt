@@ -14,6 +14,8 @@
 ----
   生产（main 分支）     https://longnankejia.pages.dev/
   开发预览（dev 分支）  https://longnankejia-dev.pages.dev/
+  v2 预览（codex 分支） https://codex.longnankejia-dev.pages.dev/
+  qcode 验收预览        https://qcode.longnankejia-dev.pages.dev/
   镜像                  https://lwy9107124035.github.io/longnankejia/
                         https://lwy9107124035.github.io/longnankejia/dev/
 
@@ -36,11 +38,14 @@
 
 日常更新
 --------
-  git add -A
-  git commit -m "改了什么"
-  git push origin main
+当前这个工作区的 v2 版本只在 codex 分支更新。推送前先执行 `git branch --show-current`，
+确认输出严格为 `codex`，再检查 `git status --short` 中的文件；提交后只运行：
 
-约 30 秒生效。进度：Actions → “Deploy to Cloudflare Pages” 与 “Deploy to GitHub Pages”。
+  git push origin codex
+
+不要把 v2 推到 main、qcode 或 dev。生产 main 与其他人的工作分支各自独立。
+
+codex 推送后由 Cloudflare Pages 工作流部署；GitHub Pages 镜像只跟随 main，不由这次 v2 推送触发。
 注意 dev 的自动更新要等 dev 分支同步过 main（工作流文件只在 main 上，GitHub 读的是
 被 push 那个 ref 里的工作流），在那之前 dev 靠每小时定时从 main 侧带出来。
 
@@ -57,7 +62,9 @@ docs/（比赛通知与简历）、tests/、scripts/、data/、assets/source/ �
 tests/badge-template.npy 和 scripts/ 下的脚本，所以换成白名单。
 
 dev 预览那份刻意不注入 API Key，页面按设计回落到本地知识库引擎；预览站是
-另一个公开域名，不该再带一份线上密钥（tests/check_static.py 会守这条）。
+另一个公开域名，不该再带一份线上密钥（tests/check_static.py 会守这条）。codex v2
+预览同样不注入 API Key。cf-pages.yml 会在 codex 分支推送后部署到
+longnankejia-dev 项目的 codex 分支别名。
 
 
 入口二维码

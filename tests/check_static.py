@@ -397,18 +397,22 @@ def check_deploy_workflow():
     if not keyed or "main" not in keyed.group(1) or "qcode" not in keyed.group(1):
         fail("cf-pages.yml 带密钥的分支不再是 main + qcode，"
              "预览上的大模型问答和语音输入会静默变成「未配置」")
+    if keyed and "codex" in keyed.group(1):
+        fail("cf-pages.yml 不应给 codex v2 预览注入 API Key")
     if 'KEY=""' not in ctxt:
         fail("cf-pages.yml 不再给其余分支留空密钥：任何分支都会带上真实密钥")
     if "SILICONFLOW_API_KEY" not in ctxt:
         fail("cf-pages.yml 不再注入生产密钥，线上大模型引擎会静默失效")
     if "CLOUDFLARE_API_TOKEN" not in ctxt:
         fail("cf-pages.yml 没有用 CLOUDFLARE_API_TOKEN 认证")
+    if "branches: [main, dev, codex]" not in ctxt:
+        fail("cf-pages.yml 没有在 codex 分支推送后部署 v2 预览")
     cf_moved = set(re.findall(r'(?:cp -r |cp )"(?:_site/)?([A-Za-z0-9_./-]+)"? _site', ctxt))
     cf_moved |= set(re.findall(r'cp -r ([A-Za-z0-9_./ -]+) _site(?:/assets)?/', ctxt))
     for m in sorted({x for grp in cf_moved for x in grp.split() if x} - allow):
         fail("cf-pages.yml 把 %s 也搬进了上线目录；白名单只有 %s" % (m, "、".join(sorted(allow))))
     notes.append("公开入口 = Cloudflare Pages（main→longnankejia，其余→longnankejia-dev；"
-                 "main 与 qcode 带密钥，其它分支不带）")
+                 "main 与 qcode 带密钥，其它分支不带；codex 推送自动部署 v2 预览）")
     notes.append("上线走 pages.yml（main → 根，dev → /dev/，预览不带密钥）；Netlify 仅手动")
 
 
@@ -573,35 +577,37 @@ def check_launchers():
         if not os.path.exists(rel(m)):
             fail("%s 被文档或启动脚本提到，但仓库里没有这个文件" % m)
     for need in ("longnankejia.pages.dev", "qcode.longnankejia-dev.pages.dev",
-                 "longnankejia-dev.pages.dev", "git rev-parse --abbrev-ref HEAD"):
+                 "longnankejia-dev.pages.dev", "codex.longnankejia-dev.pages.dev",
+                 "git rev-parse --abbrev-ref HEAD"):
         if need not in qd:
-            fail("qidong.bat 丢了「%s」——本地预览必须说清楚是哪个分支、线上是哪三个地址" % need)
+            fail("qidong.bat 丢了「%s」——本地预览必须说清楚是哪个分支和线上地址" % need)
     addr = rel("地址.html")
     if not os.path.exists(addr):
-        fail("地址.html 缺失——三个分支的入口页，双击就用")
+        fail("地址.html 缺失——四个分支的入口页，双击就用")
     else:
         a = read(addr)
-        for need in ("三个分支", "正式入口", "验收分支", "豆包的工作分支"):
+        for need in ("四个分支", "正式入口", "验收分支", "豆包的工作分支", "v2 预览（当前版本）"):
             if need not in a:
                 fail("地址.html 丢了「%s」——这页是给人双击看的，标题和分支说明要在" % need)
         for need in ("https://longnankejia.pages.dev/",
                      "https://qcode.longnankejia-dev.pages.dev/",
-                     "https://longnankejia-dev.pages.dev/"):
+                     "https://longnankejia-dev.pages.dev/",
+                     "https://codex.longnankejia-dev.pages.dev/"):
             # 每条地址既要是点得动的链接，也要是看得见的文字：只满足一半的卡片等于没有
             if 'href="%s"' % need not in a:
                 fail("地址.html 里 %s 不是一条可点的链接" % need)
             if '<div class="url">%s</div>' % need not in a:
                 fail("地址.html 里 %s 没有作为可见文字写出来" % need)
-        # codex 上的 v2 是尚无公共预览地址的本地版本；不能把它与 main/qcode/dev 混淆。
-        for need in ("v2-base", "v2 这一轮改动在 codex 分支", "不是网页地址或分支名"):
+        # v2 页面必须明确映射到 codex 分支的固定预览地址。
+        for need in ("v2-base", "v2 这一轮改动在 codex 分支", "codex.longnankejia-dev.pages.dev"):
             if need not in a:
-                fail("地址.html 丢了「%s」——应标出 v2 对应 codex 本地分支且没有线上入口" % need)
+                fail("地址.html 丢了「%s」——应标出 v2 对应 codex 分支和线上入口" % need)
         for bad in re.findall(r"https?://v\d\.[\w.-]*pages\.dev", a):
             fail("地址.html 把版本号当成了分支地址 %s——Pages 的子域名只认分支名，没有这一条" % bad)
         for ref in re.findall(r'(?:src|href)="((?!https?:|#|javascript:)[^"]+)"', a):
             if not os.path.exists(rel(ref)):
                 fail("地址.html 引用了本地文件 %s，但它不存在" % ref)
-    notes.append("启动脚本与地址页：三条公网地址与部署映射一致，codex v2 明确标作本地版本")
+    notes.append("启动脚本与地址页：四条公网地址与部署映射一致，codex v2 有独立预览入口")
 
 
 def check_video_attribution():

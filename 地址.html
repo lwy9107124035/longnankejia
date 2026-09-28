@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>三个分支的网页地址 · 龙南客家非遗数字助手</title>
+<title>四个分支的网页地址 · 龙南客家非遗数字助手</title>
 <style>
   :root {
     --ink: #1F2A24; --ink-soft: #46544C; --muted: #7C8A82;
@@ -31,6 +31,7 @@
   }
   .tag.q { background: var(--accent); }
   .tag.d { background: var(--muted); }
+  .tag.c { background: #4767a8; }
   .name { font-size: 17px; font-weight: 700; color: var(--primary-deep); }
   .url { margin-top: 3px; font-size: 13px; color: var(--accent); word-break: break-all; }
   .note { margin-top: 6px; font-size: 12.5px; color: var(--ink-soft); }
@@ -52,7 +53,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>三个分支的网页地址</h1>
+  <h1>四个分支的网页地址</h1>
   <p class="sub">龙南客家非遗数字助手 · 点卡片即开，手机也能直接收藏</p>
 
   <a class="card" href="https://longnankejia.pages.dev/">
@@ -64,9 +65,9 @@
 
   <a class="card" href="https://qcode.longnankejia-dev.pages.dev/">
     <span class="tag q">qcode</span>
-    <div class="name">验收分支（当前改动都在这里）</div>
+    <div class="name">独立验收分支</div>
     <div class="url">https://qcode.longnankejia-dev.pages.dev/</div>
-    <div class="note">带 API Key，可以直接在这里试问答和语音输入。改动合并进 main 之前，线上只有这一份是新的。</div>
+    <div class="note">独立于 codex v2 的验收分支。带 API Key，可直接试问答和语音输入。</div>
   </a>
 
   <a class="card" href="https://longnankejia-dev.pages.dev/">
@@ -76,20 +77,28 @@
     <div class="note">不注入 API Key，所以大模型问答与语音输入会如实提示"这个地址没有配置"，其余功能照常。</div>
   </a>
 
+  <a class="card" href="https://codex.longnankejia-dev.pages.dev/">
+    <span class="tag c">codex</span>
+    <div class="name">v2 预览（当前版本）</div>
+    <div class="url">https://codex.longnankejia-dev.pages.dev/</div>
+    <div class="note">对应 codex 分支的 v2。未注入 API Key，问答与语音输入会提示未配置；3D 模型、地图与典藏可直接体验。</div>
+  </a>
+
   <div class="row">
-    <button type="button" onclick="['https://longnankejia.pages.dev/','https://qcode.longnankejia-dev.pages.dev/','https://longnankejia-dev.pages.dev/'].forEach(function (u) { window.open(u, '_blank'); })">三个都打开</button>
-    <button type="button" onclick="window.open('https://qcode.longnankejia-dev.pages.dev/#/hometown','_blank')">直接看家乡地图</button>
-    <button type="button" onclick="window.open('https://qcode.longnankejia-dev.pages.dev/#/dialect','_blank')">直接听方言原声</button>
+    <button type="button" onclick="['https://longnankejia.pages.dev/','https://qcode.longnankejia-dev.pages.dev/','https://longnankejia-dev.pages.dev/','https://codex.longnankejia-dev.pages.dev/'].forEach(function (u) { window.open(u, '_blank'); })">四个都打开</button>
+    <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/hometown','_blank')">直接看 v2 家乡地图</button>
+    <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/model3d','_blank')">直接看 v2 的 3D 模型</button>
+    <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/dialect','_blank')">直接听方言原声</button>
   </div>
 
   <div class="box">
     <p><b>v2 这一轮改动在 codex 分支。</b>它从 main 基线 <code>eab8f30</code> 开始，基线标签为 <code>v2-base</code>。
-    <code>v2</code> 是版本号，不是网页地址或分支名；codex 尚无线上预览地址，本地双击启动时会显示当前分支与提交号。</p>
-    <p><b>三个可点地址</b>分别是正式版 main、独立工作的 qcode、以及 dev；它们不代表 codex 上的 v2 页面。</p>
+    codex 分支的固定预览地址是 <code>https://codex.longnankejia-dev.pages.dev/</code>；<code>v2</code> 是版本号。</p>
+    <p><b>四个可点地址</b>分别是正式版 main、独立工作的 qcode、dev，以及 codex 上的 v2 预览。codex 地址部署后会随 codex 分支更新。</p>
     <p><b>本地那份和线上这份不是一回事。</b>双击 <code>qidong.bat</code> 打开的是这个文件夹当前检出的分支，
     它要 push 并且部署过，线上才会变。启动脚本会打印 <code>branch 名字 @ commit</code>，
     想知道自己在看哪一份就看那一行。</p>
-    <p><b>要不要加速器？</b>不需要。<code>*.pages.dev</code> 这三个地址实测可直连；
+    <p><b>要不要加速器？</b>不需要。<code>*.pages.dev</code> 这些地址实测可直连；
     手机用移动网络也能打开。</p>
     <p><b>要扫码的场合</b>：任意一个页面顶栏「扫码访问」会把当前地址画成二维码，馆内观众扫它即可。</p>
   </div>

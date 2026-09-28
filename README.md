@@ -14,8 +14,8 @@ v2 专项验收：`node tests/v2_knowledge.test.mjs`；启动本地 8787 服务�
 ## 本地运行
 
 ```
-双击 qidong.bat          # 起本地服务，并告诉你是哪个分支、线上三个地址各是什么
-双击 地址.html           # 三个分支的入口页，点开即用（也能直接收藏到浏览器）
+双击 qidong.bat          # 起本地服务，并告诉你是哪个分支、线上四个地址各是什么
+双击 地址.html           # 四个分支的入口页，点开即用（也能直接收藏到浏览器）
 双击 zhanting.bat        # 停止服务
 ```
 
@@ -27,18 +27,20 @@ v2 专项验收：`node tests/v2_knowledge.test.mjs`；启动本地 8787 服务�
 
 ## 各分支的线上地址（手机也能直接开，不必启动任何东西）
 
-双击仓库根目录的 **`地址.html`** 就是这一页的可视化版本，三条地址做成大卡片，点一下就开。
+双击仓库根目录的 **`地址.html`** 就是这一页的可视化版本，四条地址做成大卡片，点一下就开。
 
 | 分支 | 地址 | 谁在用 |
 | --- | --- | --- |
 | `main` | https://longnankejia.pages.dev/ | 正式入口，展板上印的就是它 |
 | `qcode` | https://qcode.longnankejia-dev.pages.dev/ | 本次改动验收分支 |
 | `dev` | https://longnankejia-dev.pages.dev/ | 豆包的工作分支 |
+| `codex` | https://codex.longnankejia-dev.pages.dev/ | v2 工作与预览分支 |
 
-三条都是 Cloudflare Pages 的固定地址，不会每次部署换域名；带 `*.pages.dev` 的那两条
+四条都是 Cloudflare Pages 的固定地址，不会每次部署换域名；带 `*.pages.dev` 的预览
 属于同一个项目 `longnankejia-dev`，分支名就是子域名。想比较两个版本，开两个浏览器
 窗口分别访问即可。`main` 与 `qcode` 部署时注入 API Key（大模型问答、语音输入可用），
-`dev` 没有，那两项会如实提示未配置。
+`dev` 与 `codex` 没有，那两项会如实提示未配置。codex 分支从 main 的 v2 基线开始并自动部署；
+更新 v2 时只推送 codex，不要推送到其他分支。
 
 ## 目录结构
 
@@ -306,6 +308,7 @@ python scripts/audit_video_pages.py    # 三份材料互相核对
 生产站：**https://longnankejia.pages.dev/**（`main`，Cloudflare Pages）
 验收分支：**https://qcode.longnankejia-dev.pages.dev/**（`qcode`）
 开发预览：**https://longnankejia-dev.pages.dev/**（`dev`，豆包的工作分支）
+v2 预览：**https://codex.longnankejia-dev.pages.dev/**（`codex`，不注入 API Key）
 镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/dev/（GitHub Pages）
 备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）
 
@@ -318,15 +321,18 @@ python scripts/audit_video_pages.py    # 三份材料互相核对
 
 三点约定，都有守卫且跑过反向用例：
 
-- **只有 main 与 qcode 注入 API Key**，其余分支（含 dev 预览）写空 key，页面按设计提示
+本工作区当前维护的是 codex 上的 v2。更新与发布前先确认 `git branch --show-current` 输出
+为 `codex`；提交完成后只执行 `git push origin codex`，不要把这份改动推到 `main`、`qcode` 或 `dev`。
+
+- **只有 main 与 qcode 注入 API Key**，其余分支（含 dev 与 codex 预览）写空 key，页面按设计提示
   「这个地址没有配置语音识别服务」并回落到本地知识库引擎。qcode 是验收分支，要在预览地址上
   当场试大模型问答和语音输入，所以带 key；代价是那个 `*.pages.dev` 域名公开可访问，拿到链接
   的人能借用该账号额度——这与 main 的暴露面相同（密钥本来就是明文下发到浏览器里的）。
 - **CI 用的 Cloudflare 令牌只有一项权限**：`Account → Cloudflare Pages → Edit`。
   官方 "Edit Cloudflare Workers" 模板会连带 13 项（Workers KV/R2/Scripts、Memberships、
   Account Settings…），对只推静态站的 CI 太宽，所以走 Custom Token。
-- **工作流文件只存在于 `main`**，靠显式 `ref: dev` 取开发分支内容（`pages.yml`）。GitHub 读的是
-  「被 push 那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的 `AI_OWNER.md`），
+- **GitHub Pages 镜像工作流 `pages.yml` 只存在于 `main`**，靠显式 `ref: dev` 取开发分支内容。
+  GitHub 读的是「被 push 那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的 `AI_OWNER.md`），
   不该由我提交——所以 **dev 的 CF/GitHub Pages 更新要等 dev 同步过 main 才会自动跑**，
   在那之前靠 `main` 的推送与每小时 `:17` 定时（仅 `pages.yml`）。
 
