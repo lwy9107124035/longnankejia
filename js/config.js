@@ -1,8 +1,8 @@
 /**
  * 全局配置 —— 后续扩展入口都收拢在这里
  * ------------------------------------------------------------
- * AI 接入：把 mode 改为 'api'，并在 js/secrets.js 里填入 apiKey。
- * secrets.js 在 .gitignore 中，不会推送到 Git。
+ * AI 接入：线上请求通过同源 Pages Function 转发，密钥保存在 Cloudflare 服务端绑定中；
+ * 本地开发可在被 .gitignore 忽略的 js/secrets.js 中填写 apiKey，直接调用上游接口。
  */
 window.APP_CONFIG = {
   app: {
@@ -23,12 +23,15 @@ window.APP_CONFIG = {
     // 'rules' = 只用本地知识库（离线演示，不联网）
     // 'api'   = 混合链路：本地知识库优先，未命中才转大模型；大模型不可用时回到
     //           馆内最接近的资料。三条路径都必须给出内容，不允许回"回答不了"。
-    // 切换为 'api' 前，请先在 js/secrets.js 中填入 apiKey
+    // 线上由 Pages Function 使用服务端密钥；本地可用 js/secrets.js 覆盖为直连模式。
     mode: 'api',
 
     api: {
       baseUrl: 'https://api.siliconflow.cn/v1/chat/completions',
-      // 密钥从 secrets.js 读取，此处无需填写
+      proxyUrl: (window.location && window.location.hostname === 'lwy9107124035.github.io')
+        ? 'https://longnankejia.pages.dev/api/ai/chat/completions'
+        : '/api/ai/chat/completions',
+      // 本地直连密钥（若有）；线上通过 proxyUrl 转发，密钥不会下发到浏览器。
       apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || '',
       model: 'Qwen/Qwen2.5-7B-Instruct',
       temperature: 0.7,
@@ -42,10 +45,13 @@ window.APP_CONFIG = {
     },
 
     // 语音输入（问答框的麦克风）：录音走 MediaRecorder，转写用国内可直连的 ASR 接口，
-    // 与问答共用同一个 apiKey。刻意不用 Chrome 自带的 webkitSpeechRecognition——
+    // 与问答共用服务端密钥。刻意不用 Chrome 自带的 webkitSpeechRecognition——
     // 那个要把音频发到谷歌服务器，馆内网络连不通，点了只会转到超时。
     asr: {
       url: 'https://api.siliconflow.cn/v1/audio/transcriptions',
+      proxyUrl: (window.location && window.location.hostname === 'lwy9107124035.github.io')
+        ? 'https://longnankejia.pages.dev/api/ai/audio/transcriptions'
+        : '/api/ai/audio/transcriptions',
       // 实测同一句普通话（3.5 秒，离线合成）：SenseVoiceSmall 要 40.7～97.4 秒，
       // 还把"蓝染/制靛"听成"兰染/质垫"；Qwen3-ASR-1.7B 0.7～12 秒且逐字正确。
       model: 'Qwen/Qwen3-ASR-1.7B',

@@ -156,7 +156,7 @@
     var def = (window.APP_CONFIG && window.APP_CONFIG.ai) || {};
     var ovr = read(LS.api, {});
     var merged = Object.assign({}, def, ovr);
-    // apiKey 始终从 secrets.js 读（不走 localStorage，避免泄露）
+    // 本地直连 apiKey 从 secrets.js 读（不走 localStorage，避免泄露）；线上由服务端代理持有密钥。
     if (def.api) {
       merged.api = Object.assign({}, def.api, {
         apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || def.api.apiKey || ''
