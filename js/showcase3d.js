@@ -22,24 +22,24 @@
       desc: '黑缎为底，前额立体虎头刺绣以桃红、橙红、白色丝线绣制，眼部圆润有神，额顶饰"王"字。帽身周围有多处彩色花卉刺绣贴片，两侧饰以白色与彩色小绒球，是客家儿童祈福辟邪的标志性首服。' },
     { id: 'weiwu', name: '客家围屋', subtitle: '龙南关西新围', icon: '\u{1F3EF}', zoom: 7.8,
       desc: '经典客家方形围屋，国字形九井十八厅，高耸生土夯土墙配青石基座，四角三层歇山顶炮楼碉楼，墙体布满梅花枪眼。重檐门楼高悬关西新围金字牌匾，门前半月风水池与旗杆夹石，呈现坚固堡垒与礼制秩序。' },
-    { id: 'dajinshan', name: '客家大襟衫', subtitle: '传统客家蓝衫', icon: '\u{1F458}', zoom: 4.6,
-      desc: '赣南客家传统服饰代表，展于人台之上。天然靛蓝竖纹粗布染制，立领右衽大襟，领口至前襟镶滚桃红色挑花织带，袖口外翻露出多层红蓝白彩织挑花边饰。配深藏青阔腿裤，裤脚同饰挑花织带。' },
+    { id: 'dajinshan', name: '客家大襟衫', subtitle: '传统客家蓝衫与绣花鞋', icon: '\u{1F458}', zoom: 4.6,
+      desc: '赣南客家传统服饰代表，展陈于实木人台之上。植物纯天然靛蓝粗布裁制，立领右衽大襟与彩色挑花织带滚边，袖口外翻露出红格衬里；下承客家深蓝宽松大裆裤，展台前侧并置一对实拍展柜同款手工刺绣紫红翘头花鞋。' },
     { id: 'dongtoupa', name: '客家冬头帕', subtitle: '妇女御寒首服', icon: '\u{1F9E3}', zoom: 4.2,
-      desc: '客家妇女防风御寒标志性头饰。博物馆玻璃柜中展陈两件冬头帕：一件红黑条纹，一件深褐色。红黑条纹冬头帕有白色底条与红色横纹交织，前端垂下两条彩色挑花织带与末端流苏，寓意带带相传。' },
+      desc: '客家妇女防风御寒标志性头饰。黑缎提花护额与下垂披肩，两侧对称垂落长款客家挑花织带，织入万字纹与吉祥花纹，末端下缀红白双色细密流苏，寓意代代相传。' },
     { id: 'bowei', name: '客家绣花脖围', subtitle: '如意八宝云肩', icon: '\u{1F4FF}', zoom: 3.8,
       desc: '客家妇女节庆盛装佩戴的如意云肩。黑底内环，八瓣如意云形外展，以白、淡紫、粉红多色丝绸拼缝，精绣桃红橙色缠枝花卉与如意纹。每瓣尖端缀圆形錾刻纯银徽牌，銀质小铃球悬于接缝处。' },
     { id: 'landye', name: '客家蓝染', subtitle: '渔仔潭围草木染', icon: '\u{1F9F5}', zoom: 4.8,
       desc: '展示两方靛蓝扎染方巾：一方深靛蓝底白色同心圆环纹，一方浅底放射状冰裂花纹。旁置青花瓷坛与古法双耳粗陶发酵染缸，呈现板蓝根草木染"三浸三晒三发酵"的传统工艺。' },
     { id: 'boji', name: '杨村竹编', subtitle: '客家农具与竹器', icon: '\u{1F9FA}', zoom: 3.2,
       desc: '博物馆展陈的杨村竹编：左为浅弧底竹编提篮，双弯弓竹提手，细密人字编纹；右为带盖竹编食盒，圆鼓造型，顶部精编穹顶盖，侧面六角透花编，方木搭扣提梁。展现杨村篾匠精湛手艺。' },
-    { id: 'zhidai', name: '客家织带', subtitle: '绠瓠子与挑花带', icon: '\u{1F9F3}', zoom: 3.5,
-      desc: '展示多条客家传统挑花织带。蓝灰底布上散放长条织带，有桃红底白字"幸福美满""四世同堂"挑花纹样带，也有蓝白色带中织入吉祥文字的蓝色系织带，末端均有分股彩色流苏。' },
+    { id: 'zhidai', name: '客家织带', subtitle: '挑花木刀与彩带架', icon: '\u{1F9F3}', zoom: 3.5,
+      desc: '传统客家挑花织带制作与展陈场景。木架高悬多条自然垂落与堆叠的五彩挑花织带，经线束间斜插传承人实拍同款挑花木筘刀与分绞竹棒；台面配以客家竹编针线篓，内盛五彩丝线团，还原原生态织造。' },
     { id: 'zisundai', name: '客家子孙袋', subtitle: '刺绣祈福布袋', icon: '\u{1F45C}', zoom: 3.6,
       desc: '客家传统刺绣祈福布袋。袋身方形，中央浅黄底绣红橙色缠枝花卉纹，两侧镶蓝色布边，上下各饰一条红底白色铜钱纹几何花边。袋口收束为条纹格子布，是客家人祈求子孙繁衍的吉祥信物。' },
     { id: 'zhiyi', name: '客家纸艺', subtitle: '纸艺梅花盆景', icon: '\u{1F338}', zoom: 3.5,
-      desc: '世界客家非遗展示馆藏品。以纸搓捻塑形的仿真梅花盆景：褐色纸塑主干苍劲盘曲，枝条横斜伸展，满缀数十朵粉橙色纸折梅花与嫩绿花苞。底部为深绿色六角形古典花盆，盆面浮雕花鸟纹样。' },
-    { id: 'zhiji', name: '客家织机', subtitle: '传统手工织布机', icon: '\u{2699}', zoom: 5.5,
-      desc: '龙南博物馆实物展陈的传统客家手工织布机。原木框架结构，前低后高，后端弯弓形张力架撑起蓝白色经线，经线穿过分绞棒与综框向前伸展，前端已织出一段蓝色条纹布匹。整机木质温润，绳索穿连。' },
+      desc: '世界客家非遗展示馆实拍藏品。以纸搓捻塑形的S形苍劲梅花盆景，主干苍劲盘曲向右展臂迎客，满缀数十朵粉橙色层叠纸折梅花与墨绿花苞；六角古典暗绿釉盆六面饰有白色开光山水画框，盆面铺满白卵石。' },
+    { id: 'zhiji', name: '客家织机', subtitle: '打纬筘框与木梭织机', icon: '\u{2699}', zoom: 5.5,
+      desc: '龙南博物馆实拍同款传统客家手工织布机。前设宽板织妇坐凳，后端竹弓张力架撑起蓝白经线束；配置悬吊摆动式打纬筘框、布面上停驻流线型木梭与蓝色线芯，真实还原客家农耕织布工序。' },
     { id: 'yuwenshubi', name: '鱼纹梳篦', subtitle: '发簪与精雕木梳', icon: '\u{1F451}', zoom: 2.8,
       desc: '客家妇女传统金银与梳篦发饰。展台中央前置精雕鱼纹半月木梳篦，梳脊浮雕"吉庆有余"嵌金双鱼，下缀密排细梳齿；后侧并排展示一对鎏金发簪：左簪顶端为"吉"字镂空雕花与如意卷草纹，右簪顶端为立体花卉镂雕，均嵌有翠绿宝石与螺旋绕丝。' }
   ];
@@ -623,6 +623,63 @@
     hemTrim.position.set(0, -0.14, 0);
     hemTrim.scale.set(1.0, 1.0, 0.36);
     g.add(hemTrim);
+
+    // ===== 8. 客家传统大裆裤（深蓝粗布宽腿裤，展陈于衣摆下方） =====
+    var matPants = new THREE.MeshStandardMaterial({
+      color: 0x1E334D, roughness: 0.88, side: THREE.DoubleSide
+    });
+    [-0.14, 0.14].forEach(function (px) {
+      var leg = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.58, 20, 4, true), matPants);
+      leg.position.set(px, -0.42, 0);
+      leg.scale.set(1.0, 1.0, 0.48);
+      g.add(leg);
+    });
+
+    // ===== 9. 展台前置：客家传统手工刺绣翘头花鞋（实拍展柜同款） =====
+    var shoeStand = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.03, 0.22), matDarkWood);
+    shoeStand.position.set(0, -0.74, 0.16);
+    shoeStand.receiveShadow = true;
+    g.add(shoeStand);
+
+    var matShoeViolet = new THREE.MeshStandardMaterial({ color: 0xC2185B, roughness: 0.55 });
+    var matShoeGold = new THREE.MeshStandardMaterial({ color: 0xFFD54F, roughness: 0.4 });
+    var matShoeSole = new THREE.MeshStandardMaterial({ color: 0xF5F0E8, roughness: 0.8 });
+
+    [-0.10, 0.10].forEach(function (sx, idx) {
+      var shoeGroup = new THREE.Group();
+      shoeGroup.position.set(sx, -0.71, 0.16);
+      shoeGroup.rotation.y = idx === 0 ? 0.08 : -0.08;
+
+      // 白布千层底
+      var sole = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.016, 0.19), matShoeSole);
+      sole.position.y = 0.008;
+      shoeGroup.add(sole);
+
+      // 鞋面（品红/紫红色真丝缎面）
+      var vamp = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.045, 16, 1, false, 0, Math.PI), matShoeViolet);
+      vamp.rotation.x = -Math.PI / 2;
+      vamp.position.set(0, 0.035, -0.01);
+      vamp.scale.set(0.9, 1.8, 0.8);
+      shoeGroup.add(vamp);
+
+      // 客家船形微翘鞋尖（翘头）
+      var toe = new THREE.Mesh(new THREE.ConeGeometry(0.038, 0.05, 8), matShoeViolet);
+      toe.rotation.x = -Math.PI / 3;
+      toe.position.set(0, 0.038, 0.085);
+      shoeGroup.add(toe);
+
+      // 鞋面金线与彩线刺绣牡丹花饰
+      var flower = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), matShoeGold);
+      flower.position.set(0, 0.055, 0.04);
+      flower.scale.set(1.4, 0.6, 1.2);
+      shoeGroup.add(flower);
+
+      var flowerCore = new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 4), new THREE.MeshStandardMaterial({ color: 0x00E676 }));
+      flowerCore.position.set(0, 0.065, 0.04);
+      shoeGroup.add(flowerCore);
+
+      g.add(shoeGroup);
+    });
 
     g.position.y = 0.08;
     return g;
@@ -1461,12 +1518,23 @@
     rim.position.y = -0.33;
     rim.rotation.x = Math.PI / 2;
     g.add(rim);
-    // 盆面浮雕装饰（简化为色带）
-    var matRelief = new THREE.MeshStandardMaterial({ color: 0x5A9A6A, roughness: 0.55 });
-    var relief = new THREE.Mesh(new THREE.TorusGeometry(0.20, 0.01, 8, 6), matRelief);
-    relief.position.y = -0.39;
-    relief.rotation.x = Math.PI / 2;
-    g.add(relief);
+
+    // 盆面6面开光彩绘浮雕（视频中六个侧面均有白色开光山水画框）
+    var matPanel = new THREE.MeshStandardMaterial({ color: 0xFDFBF7, roughness: 0.7 });
+    var matPanelInk = new THREE.MeshStandardMaterial({ color: 0x2A3B30, roughness: 0.8 });
+    for (var fi = 0; fi < 6; fi++) {
+      var fa = fi * Math.PI * 2 / 6 + Math.PI / 6;
+      var fRad = 0.205;
+      var panel = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.085, 0.006), matPanel);
+      panel.position.set(Math.cos(fa) * fRad, -0.42, Math.sin(fa) * fRad);
+      panel.rotation.y = -fa + Math.PI / 2;
+      g.add(panel);
+      // 开光内水墨意境微浮雕
+      var ink = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.03, 0.008), matPanelInk);
+      ink.position.set(Math.cos(fa) * (fRad + 0.002), -0.43, Math.sin(fa) * (fRad + 0.002));
+      ink.rotation.y = -fa + Math.PI / 2;
+      g.add(ink);
+    }
 
     // 白卵石
     var matPebble = new THREE.MeshStandardMaterial({ color: 0xF0EDE5, roughness: 0.6 });
@@ -1482,13 +1550,14 @@
     // ---- 树干（主干 + 分枝） ----
     var matBark = new THREE.MeshStandardMaterial({ color: 0x5A3520, roughness: 0.92 });
 
-    // 主干
+    // 主干（视频实拍：S形向右斜展苍劲造型）
     var trunkPts = [
-      new THREE.Vector3(0, -0.32, 0),
-      new THREE.Vector3(-0.03, -0.15, 0.02),
-      new THREE.Vector3(0.04, 0.0, -0.01),
-      new THREE.Vector3(-0.02, 0.15, 0.03),
-      new THREE.Vector3(0.01, 0.28, 0.0)
+      new THREE.Vector3(-0.04, -0.32, 0),
+      new THREE.Vector3(-0.06, -0.16, 0.03),
+      new THREE.Vector3(0.03, -0.02, 0.04),
+      new THREE.Vector3(0.09, 0.12, 0.02),
+      new THREE.Vector3(0.02, 0.25, 0.01),
+      new THREE.Vector3(-0.01, 0.36, 0.0)
     ];
     var trunkCurve = new THREE.CatmullRomCurve3(trunkPts);
     var trunk = new THREE.Mesh(new THREE.TubeGeometry(trunkCurve, 24, 0.035, 8, false), matBark);
@@ -1876,6 +1945,37 @@
        // g.add(knotBar); 简化流苏连接处
     });
 
+    // ===== 3. 视频实拍工具：挑花木筘刀（斜插于织带经线束中） =====
+    var matSword = new THREE.MeshStandardMaterial({ color: 0xD7B377, roughness: 0.45 });
+    var sword = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.035, 0.006), matSword);
+    sword.position.set(0.12, 0.48, 0.02);
+    sword.rotation.z = -0.35;
+    sword.rotation.y = 0.15;
+    sword.castShadow = true;
+    g.add(sword);
+
+    // 分绞竹棒
+    var rod = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.42, 8), matBamboo);
+    rod.rotation.z = Math.PI / 2 + 0.1;
+    rod.position.set(-0.05, 0.58, -0.02);
+    g.add(rod);
+
+    // ===== 4. 视频实拍配景：台面竹编针线篓（盛放五彩丝线团） =====
+    var matBasket = new THREE.MeshStandardMaterial({ color: 0xDDB87B, roughness: 0.82 });
+    var basket = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.10, 0.08, 20), matBasket);
+    basket.position.set(0.42, 0.08, 0.12);
+    basket.castShadow = true;
+    g.add(basket);
+
+    // 篓内彩线团（洋红、湖蓝、米白、金黄）
+    var threadColors = [0xC2185B, 0x1E88E5, 0xF5F0E8, 0xFFB300];
+    threadColors.forEach(function (c, idx) {
+      var spool = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
+      var sa = idx * Math.PI * 0.5;
+      spool.position.set(0.42 + Math.cos(sa) * 0.045, 0.11, 0.12 + Math.sin(sa) * 0.045);
+      g.add(spool);
+    });
+
     g.position.y = -0.35;
     return g;
   }
@@ -2043,6 +2143,44 @@
       var diag = new THREE.Mesh(new THREE.TubeGeometry(diagCurve, 6, 0.015, 6, false), matWood);
       g.add(diag);
     }
+
+    // ---- 视频实拍核心构件：打纬筘框（前后摆动的沉重木框） ----
+    var beaterGroup = new THREE.Group();
+    beaterGroup.position.set(0, -0.05, 0.12);
+    [-0.26, 0.26].forEach(function (bx) {
+      var arm = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.45, 0.02), matDarkWood);
+      arm.position.set(bx, 0.10, 0);
+      beaterGroup.add(arm);
+    });
+    var beaterTop = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.03, 0.025), matWood);
+    beaterTop.position.set(0, 0.32, 0);
+    beaterGroup.add(beaterTop);
+    var beaterBot = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.035, 0.035), matDarkWood);
+    beaterBot.position.set(0, -0.12, 0);
+    beaterGroup.add(beaterBot);
+    var reed = new THREE.Mesh(new THREE.PlaneGeometry(0.50, 0.22),
+      new THREE.MeshStandardMaterial({ color: 0xDCD6CD, roughness: 0.5, metalness: 0.2, side: THREE.DoubleSide }));
+    reed.position.set(0, 0.10, 0);
+    beaterGroup.add(reed);
+    g.add(beaterGroup);
+
+    // ---- 视频实拍关键道具：客家流线型木梭（船形织梭，盛放蓝色纬纱线芯） ----
+    var shuttleGroup = new THREE.Group();
+    shuttleGroup.position.set(0.08, -0.40, 0.32);
+    shuttleGroup.rotation.y = 0.45;
+    var shuttleBody = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.022, 0.04), matWood);
+    shuttleGroup.add(shuttleBody);
+    [-0.12, 0.12].forEach(function (tx) {
+      var tip = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.04, 6), matDarkWood);
+      tip.rotation.z = (tx > 0 ? -1 : 1) * Math.PI / 2;
+      tip.position.set(tx, 0, 0);
+      shuttleGroup.add(tip);
+    });
+    var bobbin = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.12, 8), matThread);
+    bobbin.rotation.z = Math.PI / 2;
+    bobbin.position.set(0, 0.002, 0);
+    shuttleGroup.add(bobbin);
+    g.add(shuttleGroup);
 
     g.position.y = 0.10;
     return g;
