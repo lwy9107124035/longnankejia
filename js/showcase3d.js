@@ -18,20 +18,26 @@
   var booted = false, booting = null, pendingShow = null;
 
   var ITEMS = [
-    { id: 'hutoumao', name: '虎头帽', subtitle: '定南客家童帽', icon: '\u{1F42F}', zoom: 4.2,
-      desc: '黑底多层棉布基底，以红、黄、蓝、白、绿真丝线手工刺绣。前幅覆盖夸张虎头纹样，带立体凸起的刺绣眼睛、鼻子、眉毛和胡须，对称结构，两侧护耳，后方小披风，边缘饰有穗子和花边。' },
+    { id: 'hutoumao', name: '客家花帽', subtitle: '龙南刺绣花帽', icon: '\u{1F42F}', zoom: 4.2,
+      desc: '黑缎为底，前额立体的如意云头眉额饰有纯银八仙神像与细银链银铃，两侧饰以红绿双色立体丝绒花球，后方小披风垂挂鲜艳红飘带与大银铃。是客家儿童祈福辟邪的标志性首服。' },
     { id: 'weiwu', name: '客家围屋', subtitle: '龙南关西新围', icon: '\u{1F3EF}', zoom: 7.8,
-      desc: '经典客家方形围屋，国字形布局，高耸夯土墙，深灰色瓦顶，四角炮楼，墙面分布梅花形枪眼。条石铺砌前院，中轴对称，突出防御性堡垒特征与客家建筑秩序。' },
-    { id: 'landye', name: '蓝染布', subtitle: '客家草木染', icon: '\u{1F9F5}', zoom: 4.8,
-      desc: '折叠的分层布料，深邃靛蓝色带白色防染图案，含植物纹样与几何纹样。粗糙手工棉麻材质，天然板蓝根染料呈现从出缸绿到氧化蓝的水墨晕染渐变效果。' },
+      desc: '经典客家方形围屋，国字形九井十八厅，高耸生土夯土墙配青石基座，四角三层歇山顶炮楼碉楼，墙体布满梅花枪眼。重檐门楼高悬关西新围金字牌匾，门前半月风水池与旗杆夹石，呈现坚固堡垒与礼制秩序。' },
+    { id: 'dajinshan', name: '客家大襟衫', subtitle: '传统客家蓝衫', icon: '\u{1F458}', zoom: 4.6,
+      desc: '赣南客家传统服饰代表。天然植物靛蓝染制，立领右衽大襟，领口与大襟边缘镶滚双重彩织挑花织带，袖口外翻露出红白细格里布与挑花边饰，配以手工一字布结盘扣，悬于实木衣架展陈。' },
+    { id: 'dongtoupa', name: '客家冬头帕', subtitle: '妇女御寒首服', icon: '\u{1F9E3}', zoom: 4.2,
+      desc: '客家妇女防风御寒标志性头饰，也是客家织带的母体。T型黑胡桃木展架陈列，黑色织锦横向护额，两侧披肩自然垂挂，前端垂下两条长达数十厘米的五彩挑花织带与末端流苏，寓意带带相传。' },
+    { id: 'bowei', name: '客家绣花脖围', subtitle: '如意八宝云肩', icon: '\u{1F4FF}', zoom: 3.8,
+      desc: '客家妇女节庆盛装佩戴的如意云肩。黑丝绒底圈，多层如意云瓣层叠绽开，真丝彩线精绣牡丹与花鸟，每个云瓣尖角钉缀一圈錾刻长命富贵的圆形纯银浮雕徽牌与双层银锁吊坠。' },
+    { id: 'landye', name: '客家蓝染', subtitle: '渔仔潭围草木染', icon: '\u{1F9F5}', zoom: 4.8,
+      desc: '双层原木榫卯晒布架，垂挂大长幅深浅渐变的靛蓝印花土布，呈现水墨晕染与冰裂白花。架下置有古法双耳粗陶发酵染缸，缸口浮起天然蓝花，配以新鲜板蓝根草药捆。' },
+    { id: 'boji', name: '杨村竹编', subtitle: '客家农具与竹器', icon: '\u{1F9FA}', zoom: 2.8,
+      desc: '核心产区杨村镇传统竹编。浅圆弧底簸箕，中央一挑一压密编，外圈透光六角编，双层竹青篾扎边收口；内盛金黄晚稻谷粒，斜搭一把精细编织的竹笊篱与双层竹提梁食盒。' },
+    { id: 'zhidai', name: '客家织带', subtitle: '绠瓠子与挑花带', icon: '\u{1F9F3}', zoom: 3.5,
+      desc: '龙南传统织带工艺全景呈现。包含两端穿木棒的原木绠瓠子、木齿带尺与张紧经线架。编织中的织带黑线为底，红黄蓝绿白多色挑花织出吉祥如意与万字连续纹，末端分股流苏飘逸。' },
     { id: 'liangmao', name: '客家凉帽', subtitle: '宁龙片妇女首服', icon: '\u{1F3A9}', zoom: 3.4,
-      desc: '竹篾编成扁平帽檐，顶覆蓝布，檐缘垂一圈靛蓝褶布遮面遮阳，是龙南及赣南客家妇女田间劳作的标志性首服，与蓝染、竹编两项技艺直接相关。' },
-    { id: 'boji', name: '竹编簸箕', subtitle: '客家农具', icon: '\u{1F9FA}', zoom: 2.7,
-      desc: '浅口圆形竹编器，篾片一压一挑编成，圈口缠竹皮收边，底设三足。用于扬去谷物糠秕、晾晒米果与茶叶，是龙南客家日常最具代表性的竹编活计。' },
-    { id: 'zhidai', name: '客家织带', subtitle: '彩织腰带', icon: '\u{1F9F3}', zoom: 3.4,
-      desc: '靛蓝为底，以红、黄、白、绿丝线织出菱形与锯齿纹，分段构图，末端留流苏。旧时作腰带、绑腿与福袋系带，纹样寓意吉祥连绵。' },
-    { id: 'mijiutan', name: '客家米酒坛', subtitle: '龙南米酒', icon: '\u{1F3FA}', zoom: 3.0,
-      desc: '酱釉陶坛，肩部弦纹，坛口覆红纸以绳扎封。龙南家家酿米酒，冬头帕与米酒同为待客与月子滋补之物，坛身釉色因铁质析出而深浅不匀。' }
+      desc: '竹篾编成扁平帽檐，顶开透气天窗并饰红丝绒同心结，檐缘垂挂一圈高密度风琴百褶深靛蓝面帘，下颌系客家挑花织带，是龙南及赣南客家妇女田间劳作的标志性首服。' },
+    { id: 'mijiutan', name: '客家米酒坛', subtitle: '龙南冬酒陶坛', icon: '\u{1F3FA}', zoom: 3.0,
+      desc: '酱釉陶坛，拉胚弦纹与铁质析出油滴釉色，坛口覆大红油纸并以天然麻绳扎封，坛肩带有客家冬酒红印标签。龙南客家冬酒家家酿造，温润醇厚。' }
   ];
 
   function loadThree() {
@@ -318,13 +324,114 @@
       // 穗子杆
       var tassel = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.003, 0.12, 4), matGold);
       tassel.position.set(sx, -0.02, sz);
-      g.add(tassel);
       // 穗子头
       var tHead = new THREE.Mesh(new THREE.SphereGeometry(0.015, 6, 4),
         si % 3 === 0 ? matRed : (si % 3 === 1 ? matYellow : matBlue));
       tHead.position.set(sx, -0.08, sz);
       g.add(tHead);
     }
+
+    // ---- 银饰与如意额帘材质 ----
+    var silverTex = canvasTex('silverEngraving', 1, 1);
+    var matSilver = new THREE.MeshStandardMaterial({
+      bumpMap: silverTex || null,
+      bumpScale: 0.04,
+      color: 0xEEF0F8,
+      roughness: 0.22,
+      metalness: 0.85
+    });
+
+    // ---- 前额如意云头红锦缎额带（参考原图211实物） ----
+    var ruyiBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.01, 1.02, 0.16, 36, 1, true, -Math.PI * 0.32, Math.PI * 0.64),
+      matRed
+    );
+    ruyiBand.position.y = 0.52;
+    g.add(ruyiBand);
+
+    [-0.08, 0.08].forEach(function (dy) {
+      var ruyiTrim = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.025, 1.025, 0.015, 36, 1, true, -Math.PI * 0.32, Math.PI * 0.64),
+        matGold
+      );
+      ruyiTrim.position.y = 0.52 + dy;
+      g.add(ruyiTrim);
+    });
+
+    // 额带钉缀7尊纯银铸造八仙人牌与下垂细银链排铃
+    for (var bi = -3; bi <= 3; bi++) {
+      var ba = (bi / 3) * 0.38;
+      var bx = Math.sin(ba) * 1.03;
+      var bz = Math.cos(ba) * 1.03;
+
+      var plaque = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.10, 0.018), matSilver);
+      plaque.position.set(bx, 0.54, bz);
+      plaque.rotation.y = ba;
+      g.add(plaque);
+
+      var arch = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.018, 12, 1, false, 0, Math.PI), matSilver);
+      arch.rotation.x = Math.PI / 2;
+      arch.rotation.z = Math.PI / 2 - ba;
+      arch.position.set(bx, 0.59, bz);
+      g.add(arch);
+
+      // 下垂细银链
+      var chainCurve = new THREE.LineCurve3(
+        new THREE.Vector3(bx, 0.48, bz),
+        new THREE.Vector3(bx, 0.36 - Math.abs(bi) * 0.015, bz)
+      );
+      var chain = new THREE.Mesh(new THREE.TubeGeometry(chainCurve, 3, 0.003, 4, false), matSilver);
+      g.add(chain);
+
+      var bell = new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 6), matSilver);
+      bell.position.set(bx, 0.35 - Math.abs(bi) * 0.015, bz);
+      g.add(bell);
+    }
+
+    // ---- 帽顶红绿双色立体丝绒花球（参考原图211实物） ----
+    [-0.30, 0.30].forEach(function (px, pidx) {
+      var pMat = pidx === 0 ? matRed : matGreen;
+      var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.010, 0.14, 8), matGold);
+      stem.position.set(px, 1.08, 0.12);
+      stem.rotation.z = (pidx === 0 ? 0.22 : -0.22);
+      g.add(stem);
+
+      var pomCenter = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 14), pMat);
+      pomCenter.position.set(px * 1.25, 1.18, 0.12);
+      g.add(pomCenter);
+
+      for (var pi = 0; pi < 10; pi++) {
+        var pa = (pi / 10) * Math.PI * 2;
+        var pCluster = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), pMat);
+        pCluster.position.set(
+          px * 1.25 + Math.cos(pa) * 0.07,
+          1.18 + Math.sin(pa) * 0.07,
+          0.12 + (pi % 2 === 0 ? 0.025 : -0.025)
+        );
+        g.add(pCluster);
+      }
+    });
+
+    // ---- 后披风下垂大红长飘带与大银铃（参考原图211实物） ----
+    [-0.18, 0.18].forEach(function (rx) {
+      var ribbonCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(rx, 0.08, -0.96),
+        new THREE.Vector3(rx * 1.15, -0.15, -0.94),
+        new THREE.Vector3(rx * 0.9, -0.36, -0.90),
+        new THREE.Vector3(rx * 0.8, -0.52, -0.86)
+      ]);
+      var ribbon = new THREE.Mesh(new THREE.TubeGeometry(ribbonCurve, 16, 0.016, 4, false), matRed);
+      g.add(ribbon);
+
+      var bigBell = new THREE.Mesh(new THREE.SphereGeometry(0.038, 12, 10), matSilver);
+      bigBell.position.set(rx * 0.8, -0.55, -0.86);
+      g.add(bigBell);
+
+      var bellRim = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.006, 6, 16), matSilver);
+      bellRim.rotation.x = Math.PI / 2;
+      bellRim.position.set(rx * 0.8, -0.55, -0.86);
+      g.add(bellRim);
+    });
 
     // ---- 装饰花纹点缀（散布） ----
     var decoColors = [matRed, matYellow, matBlue, matGreen, matWhite];
@@ -340,6 +447,405 @@
       g.add(d);
     });
 
+    return g;
+  }
+
+  /* ================================================================
+     客家大襟衫 —— 传统客家蓝衫 + 实木衣架展陈 + 立领右衽大襟 + 双道彩织挑花滚边 + 翻袖格纹 + 布结盘扣
+     ================================================================ */
+  function buildDajinshan() {
+    var g = new THREE.Group();
+    var blueTex = canvasTex('dajinshanCloth', 1, 1);
+    var beltTex = canvasTex('wovenBelt', 1, 2.5);
+
+    var matIndigo = new THREE.MeshStandardMaterial({
+      map: blueTex,
+      color: 0xffffff,
+      roughness: 0.86,
+      side: THREE.DoubleSide
+    });
+    var matLiningCheck = new THREE.MeshStandardMaterial({
+      color: 0xB91C1C,
+      roughness: 0.80,
+      side: THREE.DoubleSide
+    });
+    var matTrim = new THREE.MeshStandardMaterial({
+      map: beltTex,
+      color: 0xffffff,
+      roughness: 0.78,
+      side: THREE.DoubleSide
+    });
+    var matWood = new THREE.MeshStandardMaterial({ color: 0x4A3018, roughness: 0.72 });
+    var matDarkWood = new THREE.MeshStandardMaterial({ color: 0x2A1808, roughness: 0.8 });
+    var matBlackSilk = new THREE.MeshStandardMaterial({ color: 0x111317, roughness: 0.85 });
+    var matGold = new THREE.MeshStandardMaterial({ color: 0xD4A843, roughness: 0.35, metalness: 0.4 });
+
+    // ===== 1. 实木展示衣架（榫卯挂架） =====
+    var baseBoard = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.04, 0.34), matDarkWood);
+    baseBoard.position.set(0, -0.78, 0);
+    baseBoard.receiveShadow = true;
+    g.add(baseBoard);
+
+    [-0.42, 0.42].forEach(function (px) {
+      var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 1.82, 12), matWood);
+      pole.position.set(px, 0.13, 0);
+      pole.castShadow = true;
+      g.add(pole);
+
+      var poleCap = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), matDarkWood);
+      poleCap.position.set(px, 1.05, 0);
+      g.add(poleCap);
+    });
+
+    var hangerBar = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.32, 12), matWood);
+    hangerBar.rotation.z = Math.PI / 2;
+    hangerBar.position.set(0, 0.96, 0);
+    hangerBar.castShadow = true;
+    g.add(hangerBar);
+
+    [-0.66, 0.66].forEach(function (ex) {
+      var tip = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), matDarkWood);
+      tip.position.set(ex, 0.96, 0);
+      g.add(tip);
+    });
+
+    // ===== 2. 衣身主干（平展微褶、下摆微展） =====
+    var bodyH = 1.08;
+    var bodyGeo = new THREE.CylinderGeometry(0.38, 0.52, bodyH, 36, 12, true);
+    var bp = bodyGeo.attributes.position;
+    for (var bi = 0; bi < bp.count; bi++) {
+      var bx = bp.getX(bi), by = bp.getY(bi), bz = bp.getZ(bi);
+      var bt = (bodyH / 2 - by) / bodyH;
+      bz = bz * (0.28 + bt * 0.08);
+      var wave = Math.sin(bx * 14) * 0.018 * bt;
+      bp.setZ(bi, bz + wave);
+    }
+    bodyGeo.computeVertexNormals();
+    var coatBody = new THREE.Mesh(bodyGeo, matIndigo);
+    coatBody.position.set(0, 0.38, 0);
+    coatBody.castShadow = true;
+    coatBody.receiveShadow = true;
+    g.add(coatBody);
+
+    // ===== 3. 客家立领（小圆立领） =====
+    var collar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.145, 0.085, 24, 1, true),
+      matIndigo
+    );
+    collar.position.set(0, 0.96, 0);
+    collar.scale.set(1.0, 1.0, 0.65);
+    g.add(collar);
+
+    var collarTrim = new THREE.Mesh(
+      new THREE.TorusGeometry(0.142, 0.012, 6, 24),
+      matTrim
+    );
+    collarTrim.rotation.x = Math.PI / 2;
+    collarTrim.position.set(0, 1.00, 0);
+    collarTrim.scale.set(1.0, 0.65, 1.0);
+    g.add(collarTrim);
+
+    // ===== 4. 右衽大襟弧线滚边（大襟挑花带） =====
+    var lapelCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.04, 0.92, 0.07),
+      new THREE.Vector3(0.15, 0.82, 0.08),
+      new THREE.Vector3(0.26, 0.68, 0.085),
+      new THREE.Vector3(0.33, 0.50, 0.09),
+      new THREE.Vector3(0.35, 0.22, 0.095),
+      new THREE.Vector3(0.38, -0.15, 0.10)
+    ]);
+    var lapelBand = new THREE.Mesh(new THREE.TubeGeometry(lapelCurve, 24, 0.018, 4, false), matTrim);
+    g.add(lapelBand);
+
+    var lapelEdge = new THREE.Mesh(new THREE.TubeGeometry(lapelCurve, 24, 0.005, 4, false), matGold);
+    g.add(lapelEdge);
+
+    // ===== 5. 传统宽大连肩平袖 =====
+    [-1, 1].forEach(function (side) {
+      var sleeveCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.35, 0.92, 0),
+        new THREE.Vector3(side * 0.52, 0.76, 0.01),
+        new THREE.Vector3(side * 0.68, 0.54, 0.02)
+      ]);
+      var sleeve = new THREE.Mesh(new THREE.TubeGeometry(sleeveCurve, 12, 0.14, 16, false), matIndigo);
+      sleeve.scale.set(1.0, 1.0, 0.45);
+      sleeve.castShadow = true;
+      g.add(sleeve);
+
+      // 袖口外翻露出红格衬里与挑花织边（翻袖特征，客家妇女劳作利落考究）
+      var cuffLining = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.145, 0.148, 0.09, 16, 1, true),
+        matLiningCheck
+      );
+      cuffLining.position.set(side * 0.68, 0.54, 0.02);
+      cuffLining.rotation.z = side * 0.55;
+      cuffLining.scale.set(1.0, 1.0, 0.48);
+      g.add(cuffLining);
+
+      var cuffTrim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.148, 0.014, 6, 20),
+        matTrim
+      );
+      cuffTrim.position.set(side * 0.70, 0.51, 0.02);
+      cuffTrim.rotation.y = Math.PI / 2;
+      cuffTrim.rotation.x = side * 0.55;
+      cuffTrim.scale.set(1.0, 0.48, 1.0);
+      g.add(cuffTrim);
+    });
+
+    // ===== 6. 手工一字布结盘扣（传统纯黑布纽扣） =====
+    var buttonPos = [
+      [0.02, 0.94, 0.08],
+      [0.10, 0.86, 0.085],
+      [0.22, 0.74, 0.09],
+      [0.31, 0.58, 0.095],
+      [0.34, 0.38, 0.10]
+    ];
+    buttonPos.forEach(function (pos) {
+      var knotBall = new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 6), matBlackSilk);
+      knotBall.position.set(pos[0], pos[1], pos[2]);
+      g.add(knotBall);
+
+      var knotBar = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.008, 0.008), matBlackSilk);
+      knotBar.position.set(pos[0], pos[1], pos[2] - 0.002);
+      g.add(knotBar);
+    });
+
+    // ===== 7. 衣摆下边缘滚边 =====
+    var hemTrim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.525, 0.525, 0.035, 36, 1, true),
+      matTrim
+    );
+    hemTrim.position.set(0, -0.14, 0);
+    hemTrim.scale.set(1.0, 1.0, 0.36);
+    g.add(hemTrim);
+
+    g.position.y = 0.08;
+    return g;
+  }
+
+  /* ================================================================
+     客家冬头帕 —— T型实木展架 + 黑缎提花护额 + 两侧下垂披肩 + 双道长款五彩挑花织带与流苏
+     ================================================================ */
+  function buildDongtoupa() {
+    var g = new THREE.Group();
+    var silkTex = canvasTex('dongtoupaFabric', 1, 1);
+    var zhidaiTex = canvasTex('zhidaiHighRes', 1, 2);
+
+    var matSilk = new THREE.MeshStandardMaterial({
+      map: silkTex,
+      color: 0xffffff,
+      roughness: 0.72,
+      side: THREE.DoubleSide
+    });
+    var matZhidai = new THREE.MeshStandardMaterial({
+      map: zhidaiTex,
+      color: 0xffffff,
+      roughness: 0.78,
+      side: THREE.DoubleSide
+    });
+    var matStand = new THREE.MeshStandardMaterial({ color: 0x2A1B0E, roughness: 0.75 });
+    var matRedSilk = new THREE.MeshStandardMaterial({ color: 0xB91C1C, roughness: 0.55 });
+    var matWhiteSilk = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.6 });
+
+    // ===== 1. 经典T型黑胡桃木展架 =====
+    var base = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.045, 0.28), matStand);
+    base.position.set(0, -0.68, 0);
+    base.receiveShadow = true;
+    g.add(base);
+
+    var standPole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 1.58, 12), matStand);
+    standPole.position.set(0, 0.11, 0);
+    standPole.castShadow = true;
+    g.add(standPole);
+
+    var tBar = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.15, 12), matStand);
+    tBar.rotation.z = Math.PI / 2;
+    tBar.position.set(0, 0.90, 0);
+    tBar.castShadow = true;
+    g.add(tBar);
+
+    [-0.575, 0.575].forEach(function (tx) {
+      var finial = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 6), matStand);
+      finial.position.set(tx, 0.90, 0);
+      g.add(finial);
+    });
+
+    // ===== 2. 冬头帕横向护额与披肩主体 =====
+    var scarfW = 1.08, scarfH = 0.58;
+    var scarfGeo = new THREE.PlaneGeometry(scarfW, scarfH, 36, 16);
+    var sp = scarfGeo.attributes.position;
+    for (var si = 0; si < sp.count; si++) {
+      var sx = sp.getX(si), sy = sp.getY(si);
+      var rx = Math.abs(sx) / (scarfW / 2);
+      var drop = rx > 0.65 ? Math.pow(rx - 0.65, 1.8) * 0.28 : 0;
+      var forward = Math.sin(rx * Math.PI) * 0.045;
+      sp.setY(si, sy - drop);
+      sp.setZ(si, forward);
+    }
+    scarfGeo.computeVertexNormals();
+    var scarfMesh = new THREE.Mesh(scarfGeo, matSilk);
+    scarfMesh.position.set(0, 0.68, 0.02);
+    scarfMesh.castShadow = true;
+    g.add(scarfMesh);
+
+    var topBorder = new THREE.Mesh(new THREE.BoxGeometry(scarfW, 0.022, 0.015), matRedSilk);
+    topBorder.position.set(0, 0.965, 0.025);
+    g.add(topBorder);
+
+    // ===== 3. 两条标志性下垂长款客家挑花织带（代代相传核心载体） =====
+    [-0.18, 0.18].forEach(function (bx, idx) {
+      var beltL = 0.98;
+      var beltW = 0.13;
+      var beltGeo = new THREE.PlaneGeometry(beltW, beltL, 8, 32);
+      var bp = beltGeo.attributes.position;
+      for (var bi = 0; bi < bp.count; bi++) {
+        var by = bp.getY(bi);
+        var t = 1 - (by + beltL / 2) / beltL;
+        var wave = Math.sin(t * 3.8 + idx * 1.5) * 0.026 * t;
+        bp.setZ(bi, 0.035 + wave);
+      }
+      beltGeo.computeVertexNormals();
+      var belt = new THREE.Mesh(beltGeo, matZhidai);
+      belt.position.set(bx, 0.90 - beltL / 2, 0.035);
+      belt.castShadow = true;
+      g.add(belt);
+
+      var topKnot = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), matRedSilk);
+      topKnot.position.set(bx, 0.90, 0.05);
+      g.add(topKnot);
+
+      var bottomY = 0.90 - beltL;
+      var bar = new THREE.Mesh(new THREE.BoxGeometry(beltW * 0.95, 0.018, 0.014), matRedSilk);
+      bar.position.set(bx, bottomY, 0.045);
+      g.add(bar);
+
+      for (var fi = 0; fi < 9; fi++) {
+        var fx = bx - beltW * 0.4 + fi * (beltW * 0.8 / 8);
+        var fMat = fi % 2 === 0 ? matWhiteSilk : matRedSilk;
+        var tassel = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.0015, 0.12, 4), fMat);
+        tassel.position.set(fx, bottomY - 0.065, 0.045);
+        tassel.rotation.z = (fi - 4) * 0.04;
+        g.add(tassel);
+      }
+    });
+
+    g.position.y = 0.05;
+    return g;
+  }
+
+  /* ================================================================
+     客家绣花脖围 —— 如意八宝云肩 + 黑丝绒牡丹刺绣 + 錾银徽牌压领 + 垂悬双层长命富贵银锁
+     ================================================================ */
+  function buildBowei() {
+    var g = new THREE.Group();
+    var velvetTex = canvasTex('cloudShoulderVelvet', 1, 1);
+    var silverTex = canvasTex('silverEngraving', 1, 1);
+
+    var matVelvet = new THREE.MeshStandardMaterial({
+      map: velvetTex,
+      color: 0xffffff,
+      roughness: 0.88,
+      side: THREE.DoubleSide
+    });
+    var matStand = new THREE.MeshStandardMaterial({ color: 0x221810, roughness: 0.75 });
+    var matSilver = new THREE.MeshStandardMaterial({
+      bumpMap: silverTex || null,
+      bumpScale: 0.04,
+      color: 0xEEEEF6,
+      roughness: 0.24,
+      metalness: 0.85
+    });
+    var matGoldTrim = new THREE.MeshStandardMaterial({ color: 0xD4A843, roughness: 0.35, metalness: 0.45 });
+    var matBlackVelvet = new THREE.MeshStandardMaterial({ color: 0x0E0E12, roughness: 0.9 });
+
+    // ===== 1. 实木展示立架（前倾展台） =====
+    var standBase = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.05, 24), matStand);
+    standBase.position.set(0, -0.62, 0);
+    standBase.receiveShadow = true;
+    g.add(standBase);
+
+    var standStem = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.028, 0.82, 16), matStand);
+    standStem.position.set(0, -0.22, 0);
+    standStem.castShadow = true;
+    g.add(standStem);
+
+    var collarMount = new THREE.Group();
+    collarMount.position.set(0, 0.20, 0);
+    collarMount.rotation.x = 0.52;
+
+    // ===== 2. 内圈领环（黑丝绒滚边） =====
+    var innerCollar = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.038, 8, 36), matBlackVelvet);
+    collarMount.add(innerCollar);
+
+    var collarGoldRing = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.008, 6, 36), matGoldTrim);
+    collarMount.add(collarGoldRing);
+
+    // ===== 3. 多层如意八宝云肩瓣（层叠如意大盘） =====
+    var shoulderDisc = new THREE.Mesh(
+      new THREE.RingGeometry(0.22, 0.72, 48, 4),
+      matVelvet
+    );
+    shoulderDisc.castShadow = true;
+    collarMount.add(shoulderDisc);
+
+    var rimRing = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.016, 6, 48), matGoldTrim);
+    collarMount.add(rimRing);
+
+    for (var pi = 0; pi < 8; pi++) {
+      var pa = (pi / 8) * Math.PI * 2;
+      var px = Math.cos(pa) * 0.72;
+      var py = Math.sin(pa) * 0.72;
+
+      var lobe = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 8), matVelvet);
+      lobe.scale.set(1.0, 1.0, 0.15);
+      lobe.position.set(px, py, -0.01);
+      collarMount.add(lobe);
+
+      var medal = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.014, 16), matSilver);
+      medal.rotation.x = Math.PI / 2;
+      medal.position.set(px, py, 0.02);
+      collarMount.add(medal);
+
+      var medalBead = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.005, 4, 16), matSilver);
+      medalBead.position.set(px, py, 0.025);
+      collarMount.add(medalBead);
+    }
+
+    // ===== 5. 前胸悬挂的双层长命富贵纯银锁与细银链 =====
+    var lockGroup = new THREE.Group();
+    lockGroup.position.set(0, -0.26, 0.04);
+
+    [-0.08, 0.08].forEach(function (lx) {
+      var chain = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.004, 0.004, 0.14, 6),
+        matSilver
+      );
+      chain.position.set(lx, 0.07, 0);
+      lockGroup.add(chain);
+    });
+
+    var lockBody = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.11, 0.02), matSilver);
+    lockGroup.add(lockBody);
+
+    var lockArch = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.012, 6, 16, Math.PI), matSilver);
+    lockArch.position.y = 0.055;
+    lockGroup.add(lockArch);
+
+    [-0.06, 0, 0.06].forEach(function (bx) {
+      var bellStem = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 0.04, 4), matSilver);
+      bellStem.position.set(bx, -0.07, 0);
+      lockGroup.add(bellStem);
+
+      var bell = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 6), matSilver);
+      bell.position.set(bx, -0.09, 0);
+      lockGroup.add(bell);
+    });
+
+    collarMount.add(lockGroup);
+    g.add(collarMount);
+
+    g.position.y = 0.02;
     return g;
   }
 
@@ -1756,6 +2262,9 @@
     switch (id) {
       case 'hutoumao': currentModel = buildHutoumao(); break;
       case 'weiwu': currentModel = buildWeiwu(); break;
+      case 'dajinshan': currentModel = buildDajinshan(); break;
+      case 'dongtoupa': currentModel = buildDongtoupa(); break;
+      case 'bowei': currentModel = buildBowei(); break;
       case 'landye': currentModel = buildLandye(); break;
       case 'liangmao': currentModel = buildLiangmao(); break;
       case 'boji': currentModel = buildBoji(); break;

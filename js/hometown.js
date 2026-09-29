@@ -139,6 +139,19 @@
     updateTransform(true);
   }
 
+  function focusPlace(p) {
+    if (!p) return;
+    var proj = projector();
+    var q = proj(p.lon, p.lat);
+    scale = 1.9;
+    var ox = W / 2, oy = H / 2;
+    var maxPanX = (scale - 1) * ox;
+    var maxPanY = (scale - 1) * oy;
+    panX = Math.max(-maxPanX, Math.min(maxPanX, (ox - q[0]) * scale));
+    panY = Math.max(-maxPanY, Math.min(maxPanY, (oy - q[1]) * scale));
+    updateTransform(true);
+  }
+
   function render() {
     var proj = projector();
     var spots = placeSpots(proj);
@@ -161,6 +174,27 @@
       + '<text x="0" y="-16" text-anchor="middle" font-size="10" font-weight="700" fill="var(--primary-deep)">N</text>'
       + '</g>');
 
+    // 图例
+    svg.push('<g class="hm-legend" transform="translate(34, 30)">'
+      + '<circle cx="6" cy="6" r="4.5" class="hm-dot hm-kind-seat"></circle>'
+      + '<text x="16" y="9.5" class="hm-legend-text">县城</text>'
+      + '<circle cx="56" cy="6" r="3.5" class="hm-dot hm-kind-town"></circle>'
+      + '<text x="66" y="9.5" class="hm-legend-text">乡镇</text>'
+      + '<circle cx="106" cy="6" r="3.5" class="hm-dot hm-kind-site"></circle>'
+      + '<text x="116" y="9.5" class="hm-legend-text">文保点</text>'
+      + '</g>');
+
+    // 比例尺
+    svg.push('<g class="hm-scalebar" transform="translate(34, 665)">'
+      + '<line class="hm-scalebar-line" x1="0" y1="0" x2="105" y2="0"></line>'
+      + '<line class="hm-scalebar-line" x1="0" y1="-3" x2="0" y2="3"></line>'
+      + '<line class="hm-scalebar-line" x1="52.5" y1="-2" x2="52.5" y2="2"></line>'
+      + '<line class="hm-scalebar-line" x1="105" y1="-3" x2="105" y2="3"></line>'
+      + '<text class="hm-scalebar-text" x="0" y="-5" text-anchor="middle">0</text>'
+      + '<text class="hm-scalebar-text" x="52.5" y="-5" text-anchor="middle">5</text>'
+      + '<text class="hm-scalebar-text" x="105" y="-5" text-anchor="middle">10 km</text>'
+      + '</g>');
+
     svg.push('<g class="hm-viewport">');
 
     // 背景微网格
@@ -173,14 +207,26 @@
     }
     svg.push('</g>');
 
+    // 龙南行政边界
     svg.push('<path class="hm-land" d="' + outlinePath(proj) + '"></path>');
+
+    // 桃江水系与濂江支流
+    svg.push('<path class="hm-river" d="M 402 575 C 415 510 435 440 455 365 C 470 310 450 250 435 200 C 428 175 435 158 450 155 C 465 152 485 150 515 125 C 535 105 550 85 565 68"></path>');
+    svg.push('<path class="hm-river-branch" d="M 450 98 C 445 120 440 138 450 155"></path>');
+
+    // 九连山脉地势丘陵
+    svg.push('<g class="hm-mountain">'
+      + '<path d="M 370 595 Q 400 580 430 598 Q 455 585 480 600"></path>'
+      + '<path d="M 385 580 Q 405 570 425 582 Q 445 572 465 585"></path>'
+      + '</g>');
 
     spots.forEach(function (d) {
       var p = data.places[d.idx];
       var n = exhibitsFor(p.name).length;
       svg.push('<g class="hm-place" data-i="' + d.idx + '" tabindex="0" role="button"'
         + ' aria-label="' + esc(p.name) + '，书里有 ' + n + ' 处讲到它">'
-        + '<circle class="hm-hit" cx="' + d.x.toFixed(1) + '" cy="' + d.y.toFixed(1) + '" r="26"></circle>'
+        + '<circle class="hm-hit" cx="' + d.x.toFixed(1) + '" cy="' + d.y.toFixed(1) + '" r="34"></circle>'
+        + '<circle class="hm-pulse" cx="' + d.x.toFixed(1) + '" cy="' + d.y.toFixed(1) + '" r="14"></circle>'
         + '<text class="hm-label" x="' + d.x.toFixed(1) + '" y="' + d.ly.toFixed(1) + '" text-anchor="middle">'
         + esc(p.name) + '<tspan class="hm-badge">' + n + '</tspan></text>'
         + '<line class="hm-leader" x1="' + d.x.toFixed(1) + '" y1="' + (d.ly + 3).toFixed(1)
@@ -214,6 +260,14 @@
         zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, cx, cy);
       }, { passive: false });
 
+      mapEl.addEventListener('dblclick', function (e) {
+        if (e.target.closest && e.target.closest('.hm-ctrl')) return;
+        var rect = mapEl.getBoundingClientRect();
+        var cx = ((e.clientX - rect.left) / rect.width) * W - W / 2;
+        var cy = ((e.clientY - rect.top) / rect.height) * H - H / 2;
+        zoomBy(1.4, cx, cy);
+      });
+
       mapEl.addEventListener('mousedown', function (e) {
         if (e.target.closest && e.target.closest('.hm-ctrl')) return;
         dragging = true; didMove = false;
@@ -225,7 +279,7 @@
         if (!dragging) return;
         var dx = (e.clientX - sx) * (W / mapEl.clientWidth);
         var dy = (e.clientY - sy) * (H / mapEl.clientHeight);
-        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) didMove = true;
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) didMove = true;
         if (scale > 1.0) {
           panX = spX + dx;
           panY = spY + dy;
@@ -255,13 +309,15 @@
       }, { passive: true });
 
       mapEl.addEventListener('touchmove', function (e) {
-        if (e.touches && e.touches.length === 1 && dragging && scale > 1.0) {
+        if (e.touches && e.touches.length === 1 && dragging) {
           var dx = (e.touches[0].clientX - sx) * (W / mapEl.clientWidth);
           var dy = (e.touches[0].clientY - sy) * (H / mapEl.clientHeight);
-          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) didMove = true;
-          panX = spX + dx;
-          panY = spY + dy;
-          updateTransform(false);
+          if (Math.abs(dx) > 12 || Math.abs(dy) > 12) didMove = true;
+          if (scale > 1.0) {
+            panX = spX + dx;
+            panY = spY + dy;
+            updateTransform(false);
+          }
         } else if (e.touches && e.touches.length === 2 && pinchDist > 0) {
           var t1 = e.touches[0], t2 = e.touches[1];
           var d = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -313,6 +369,7 @@
   function select(p) {
     if (!p) return;
     selected = p;
+    focusPlace(p);
     Array.prototype.forEach.call(mapEl.querySelectorAll('.hm-place'), function (g) {
       g.classList.toggle('is-active', parseInt(g.getAttribute('data-i'), 10) === data.places.indexOf(p));
     });

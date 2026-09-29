@@ -713,10 +713,45 @@ input { font-family: inherit; }
   fill: var(--primary-faint); stroke: var(--primary);
   stroke-width: 1.6; stroke-linejoin: round;
 }
+.hm-river {
+  stroke: #6fa0b9; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0.75;
+}
+.hm-river-branch {
+  stroke: #8cbcd4; stroke-width: 1.4; fill: none; stroke-linecap: round; opacity: 0.65;
+}
+.hm-mountain {
+  stroke: var(--primary); stroke-width: 0.9; fill: none; opacity: 0.35; stroke-dasharray: 4, 3;
+}
+.hm-legend {
+  font-size: 10px; fill: var(--ink-soft); pointer-events: none; opacity: 0.88;
+}
+.hm-legend-text {
+  font-size: 10px; fill: var(--ink-soft); font-family: sans-serif;
+}
+.hm-scalebar {
+  pointer-events: none; opacity: 0.8;
+}
+.hm-scalebar-line {
+  stroke: var(--ink-soft); stroke-width: 1.2;
+}
+.hm-scalebar-text {
+  font-size: 9px; fill: var(--muted); font-family: sans-serif;
+}
 .hm-place { cursor: pointer; }
 .hm-place:focus { outline: none; }
 .hm-place:focus .hm-dot { stroke: var(--accent); stroke-width: 2.6; }
 .hm-dot { fill: var(--primary); stroke: #FFF; stroke-width: 1.2; }
+.hm-pulse {
+  fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: 0; pointer-events: none;
+}
+.hm-place.is-active .hm-pulse {
+  opacity: 0.85; animation: hmPulseAnim 1.6s ease-out infinite;
+}
+@keyframes hmPulseAnim {
+  0% { transform: scale(0.8); opacity: 0.9; }
+  70% { transform: scale(1.8); opacity: 0; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
 .hm-kind-town { fill: var(--primary); }   /* 乡镇点用默认色，也写成显式规则，守卫才有得查 */
 .hm-kind-site { fill: var(--accent); }
 .hm-kind-seat { fill: var(--primary-deep); }

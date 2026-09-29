@@ -87,10 +87,29 @@
     '比起', '相较', '有何区别', '有何不同', '有什么不一样', '哪点不同',
     '其他地方', '别的省', '各地', '全国'
   ];
+  var DIFF_WORDS = ['区别', '不同', '差异', '有何区别', '有何不同', '有什么不一样', '哪点不同', '差别'];
+  var SAME_WORDS = ['相似', '相同', '相通', '一致', '共同点', '共性', '相似之处', '相同之处', '一样的地方'];
+
   function isComparativeQuery(question) {
     var q = cleanQuestion(question);
     for (var i = 0; i < COMPARATIVE_WORDS.length; i++) {
       if (q.indexOf(COMPARATIVE_WORDS[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function isDiffQuery(question) {
+    var q = cleanQuestion(question);
+    for (var i = 0; i < DIFF_WORDS.length; i++) {
+      if (q.indexOf(DIFF_WORDS[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function isSameQuery(question) {
+    var q = cleanQuestion(question);
+    for (var i = 0; i < SAME_WORDS.length; i++) {
+      if (q.indexOf(SAME_WORDS[i]) !== -1) return true;
     }
     return false;
   }
@@ -120,6 +139,13 @@
         if (v.length >= 2 && hay.indexOf(v) !== -1) {
           score += v.length >= 4 ? 2.5 : 2.0;
           if (matched.indexOf(kw) === -1) matched.push(kw);
+        } else if (v.length === 4) {
+          // 4字复合词（如"蓝染区别"、"织带工艺"、"竹编工序"）：若前半与后半分别出现在问题中，同样计入高权重匹配
+          var head = v.slice(0, 2), tail = v.slice(2);
+          if (hay.indexOf(head) !== -1 && hay.indexOf(tail) !== -1) {
+            score += 3.2;
+            if (matched.indexOf(kw) === -1) matched.push(kw);
+          }
         }
         // 2-gram 命中 → 累加
         tokens.forEach(function (t) {
@@ -129,6 +155,53 @@
         });
       });
     });
+
+    // 定向意图加权：针对"区别/不同"与"相似/相同"进行精准定向分流，彻底解决同类对比混淆
+    var hasDiffIntent = isDiffQuery(hay);
+    var hasSameIntent = isSameQuery(hay);
+    var entryTitle = entry.title || '';
+    var isDiffEntry = entry.id.indexOf('diff') !== -1 || entryTitle.indexOf('区别') !== -1 || entryTitle.indexOf('不同') !== -1;
+    var isSameEntry = entry.id.indexOf('same') !== -1 || entryTitle.indexOf('相似') !== -1 || entryTitle.indexOf('相同') !== -1 || entryTitle.indexOf('相通') !== -1;
+
+    if (hasDiffIntent && !hasSameIntent) {
+      if (isDiffEntry) {
+        score += 8.0;
+        if (matched.indexOf('区别') === -1) matched.push('区别');
+      } else if (isSameEntry || entry.id === 'landye') {
+        score -= 8.0;
+      }
+    } else if (hasSameIntent && !hasDiffIntent) {
+      if (isSameEntry) {
+        score += 8.0;
+        if (matched.indexOf('相似') === -1) matched.push('相似');
+      } else if (isDiffEntry || entry.id === 'landye') {
+        score -= 8.0;
+      }
+    }
+
+    // 工艺制作意图消歧：提问工艺制作时，专项工艺条目优先于泛化概括条目
+    var hasCraftIntent = hay.indexOf('工艺') !== -1 || hay.indexOf('制作') !== -1 || hay.indexOf('怎么做') !== -1 || hay.indexOf('怎么织') !== -1 || hay.indexOf('怎么编') !== -1 || hay.indexOf('工序') !== -1;
+    var isCraftEntry = entry.id.indexOf('craft') !== -1 || entryTitle.indexOf('工艺') !== -1 || entryTitle.indexOf('制作') !== -1;
+    if (hasCraftIntent) {
+      if (isCraftEntry) {
+        score += 6.0;
+        if (matched.indexOf('工艺') === -1) matched.push('工艺');
+      } else if (entry.id === 'zhidai' || entry.id === 'zhubian') {
+        score -= 6.0;
+      }
+    }
+
+    // 传承人意图消歧：提问特定传承人时，传承人专项条目优先
+    var hasInheritorIntent = hay.indexOf('传承人') !== -1 || hay.indexOf('老艺人') !== -1 || hay.indexOf('徐昌添') !== -1 || hay.indexOf('廖秋华') !== -1 || hay.indexOf('黄竹英') !== -1;
+    var isInheritorEntry = entry.id.indexOf('inheritor') !== -1 || entryTitle.indexOf('传承人') !== -1;
+    if (hasInheritorIntent) {
+      if (isInheritorEntry) {
+        score += 8.0;
+        if (matched.indexOf('传承人') === -1) matched.push('传承人');
+      } else if (entry.id === 'zhidai' || entry.id === 'zhubian') {
+        score -= 6.0;
+      }
+    }
 
     // 2-gram 的部分重合封顶再计入。不封顶的话，问题越长分越高：
     // 实测「潮汕工夫茶的冲泡步骤是什么」靠 23 个 2-gram 蹭到 1.35，越过了阈值，
@@ -239,7 +312,13 @@
         return '· ' + s.entry.title + '：' + headLine(s.entry.answer, 90);
       }).join('\n');
     if (question && isComparativeQuery(question)) {
-      prompt += '\n【用户提问包含跨地域或品类对比，请结合客家非遗与其它地区的工艺、原料或文化背景，明确分析相似之处与不同特色，条理分明地作答，切勿只重复单一地方资料】';
+      if (isDiffQuery(question) && !isSameQuery(question)) {
+        prompt += '\n【用户提问重点询问区别与不同特色，请针对客家非遗的独有特质（如产业与围屋相伴、山地劳作实用防护、跨项融合成靛蓝织带等）进行条理分明的对比分析，切勿泛泛重复相似点】';
+      } else if (isSameQuery(question) && !isDiffQuery(question)) {
+        prompt += '\n【用户提问重点询问相似与相通之处，请针对植物原料同源、自然发酵氧化原理、手工防染智慧与农耕造物观展开条理分明的对比分析，切勿偏题到不同之处】';
+      } else {
+        prompt += '\n【用户提问包含跨地域对比，请结合客家非遗与其他地区的工艺、原料或文化背景，明确分析相似之处与不同特色，条理分明地作答，切勿只重复单一地方资料】';
+      }
     }
     return prompt;
   }

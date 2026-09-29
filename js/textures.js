@@ -800,6 +800,334 @@
     return s.canvas;
   }
 
+  /* ---------- 客家大襟衫：深靛蓝棉麻布面与彩织挑花滚边 ---------- */
+  function dajinshanCloth() {
+    var s = createCanvas(512, 512), ctx = s.ctx;
+    // 传统植物靛青老土布底色
+    var bg = ctx.createLinearGradient(0, 0, 512, 512);
+    bg.addColorStop(0, '#1E3A5F');
+    bg.addColorStop(0.5, '#172E4C');
+    bg.addColorStop(1, '#112239');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // 经纬麻线微细交织感
+    ctx.lineWidth = 0.8;
+    for (var x = 0; x < 512; x += 3) {
+      ctx.strokeStyle = x % 6 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.12)';
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 512); ctx.stroke();
+    }
+    for (var y = 0; y < 512; y += 3) {
+      ctx.strokeStyle = y % 6 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.10)';
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+    }
+
+    // 草木浸染形成的微妙自然色晕
+    for (var i = 0; i < 40; i++) {
+      var rx = Math.random() * 512, ry = Math.random() * 512, rr = 40 + Math.random() * 80;
+      var rad = ctx.createRadialGradient(rx, ry, 0, rx, ry, rr);
+      rad.addColorStop(0, 'rgba(40, 85, 130, 0.08)');
+      rad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = rad;
+      ctx.fillRect(0, 0, 512, 512);
+    }
+
+    // 大襟与领边标志性镶滚彩织挑花织带（红地万字纹与绿白锦边）
+    var borderW = 56;
+    ctx.fillStyle = '#B91C1C';
+    ctx.fillRect(0, 0, borderW, 512);
+    ctx.strokeStyle = '#F59E0B';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(2, 0, borderW - 4, 512);
+
+    // 挑花几何菱格与万字骨架
+    for (var py = 8; py < 512; py += 32) {
+      // 白色细金线菱形
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(borderW / 2, py);
+      ctx.lineTo(borderW - 8, py + 16);
+      ctx.lineTo(borderW / 2, py + 32);
+      ctx.lineTo(8, py + 16);
+      ctx.closePath();
+      ctx.stroke();
+
+      // 内嵌金色十字吉祥纹
+      ctx.fillStyle = '#FBBF24';
+      ctx.fillRect(borderW / 2 - 2, py + 10, 4, 12);
+      ctx.fillRect(borderW / 2 - 6, py + 14, 12, 4);
+
+      // 青绿挑线点缀
+      ctx.fillStyle = '#10B981';
+      ctx.beginPath();
+      ctx.arc(borderW / 2, py + 16, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 细窄第二道黑白滚边
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(borderW, 0, 8, 512);
+    ctx.fillStyle = '#E2E8F0';
+    for (var dy = 0; dy < 512; dy += 8) {
+      ctx.fillRect(borderW + 2, dy, 4, 4);
+    }
+
+    return s.canvas;
+  }
+
+  /* ---------- 客家冬头帕：黑缎暗纹与护额垂带边饰 ---------- */
+  function dongtoupaFabric() {
+    var s = createCanvas(512, 512), ctx = s.ctx;
+    // 沉稳黑绸缎底色
+    ctx.fillStyle = '#141418';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // 细密竖向织锦暗纹（提花暗条纹质感）
+    for (var x = 0; x < 512; x += 4) {
+      ctx.strokeStyle = x % 16 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 512); ctx.stroke();
+    }
+
+    // 护额前沿大红锦缎镶边与彩色挑花带条饰
+    ctx.fillStyle = '#991B1B';
+    ctx.fillRect(0, 440, 512, 72);
+
+    ctx.strokeStyle = '#D4A843';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, 440); ctx.lineTo(512, 440); ctx.stroke();
+
+    // 连续回纹与回环如意纹
+    for (var rx = 10; rx < 512; rx += 28) {
+      ctx.strokeStyle = '#FEF08A';
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(rx, 452, 18, 18);
+      ctx.strokeStyle = '#38BDF8';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(rx + 4, 456, 10, 10);
+    }
+
+    // 丝绸细腻高光
+    var hl = ctx.createLinearGradient(0, 0, 512, 0);
+    hl.addColorStop(0, 'rgba(255,255,255,0)');
+    hl.addColorStop(0.5, 'rgba(255,255,255,0.04)');
+    hl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hl;
+    ctx.fillRect(0, 0, 512, 440);
+
+    return s.canvas;
+  }
+
+  /* ---------- 客家绣花脖围：黑丝绒底如意云肩刺绣 ---------- */
+  function cloudShoulderVelvet() {
+    var s = createCanvas(512, 512), ctx = s.ctx;
+    // 华贵深黑天鹅绒底色
+    ctx.fillStyle = '#0F0F14';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // 天鹅绒细腻起绒微粒
+    var imgData = ctx.getImageData(0, 0, 512, 512);
+    var d = imgData.data;
+    for (var p = 0; p < d.length; p += 4) {
+      var n = (Math.random() - 0.5) * 12;
+      d[p] += n; d[p + 1] += n; d[p + 2] += n + 2;
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // 金线盘绣双如意云头大轮廓
+    ctx.strokeStyle = '#F59E0B';
+    ctx.lineWidth = 4.5;
+    ctx.beginPath();
+    ctx.arc(256, 256, 210, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#D97706';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(256, 256, 196, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 八瓣如意云肩花瓣内部工笔彩绣（牡丹、祥蝠、瑞草）
+    for (var petal = 0; petal < 8; petal++) {
+      var ang = (petal / 8) * Math.PI * 2;
+      var px = 256 + Math.cos(ang) * 135;
+      var py = 256 + Math.sin(ang) * 135;
+
+      // 牡丹花头（洋红与朱砂渐变）
+      ctx.fillStyle = petal % 2 === 0 ? '#E11D48' : '#EA580C';
+      ctx.beginPath();
+      ctx.arc(px, py, 26, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 花瓣层次
+      for (var f = 0; f < 5; f++) {
+        var fa = (f / 5) * Math.PI * 2;
+        ctx.fillStyle = '#FDA4AF';
+        ctx.beginPath();
+        ctx.arc(px + Math.cos(fa) * 12, py + Math.sin(fa) * 12, 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 金色花蕊
+      ctx.fillStyle = '#FDE047';
+      ctx.beginPath();
+      ctx.arc(px, py, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 翠绿羽状丝叶
+      [-0.4, 0.4].forEach(function (off) {
+        var lx = px + Math.cos(ang + off) * 36;
+        var ly = py + Math.sin(ang + off) * 36;
+        ctx.fillStyle = '#059669';
+        ctx.beginPath();
+        ctx.ellipse(lx, ly, 14, 7, ang + off, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#A7F3D0';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+    }
+
+    // 边缘钉缀圆形银徽牌底位（八颗银扣位）
+    for (var bi = 0; bi < 8; bi++) {
+      var ba = (bi / 8) * Math.PI * 2 + Math.PI / 8;
+      var bx = 256 + Math.cos(ba) * 206;
+      var by = 256 + Math.sin(ba) * 206;
+      ctx.fillStyle = '#E2E8F0';
+      ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#94A3B8';
+      ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    return s.canvas;
+  }
+
+  /* ---------- 银饰浮雕：纯银八仙、银牌与银铃浮雕质感 ---------- */
+  function silverEngraving() {
+    var s = createCanvas(256, 256), ctx = s.ctx;
+    // 银光微冷高光金属底
+    var grad = ctx.createRadialGradient(128, 128, 10, 128, 128, 128);
+    grad.addColorStop(0, '#FFFFFF');
+    grad.addColorStop(0.35, '#E2E8F0');
+    grad.addColorStop(0.7, '#CBD5E1');
+    grad.addColorStop(1, '#94A3B8');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+
+    // 外圈连珠纹（客家錾银经典边缘）
+    for (var i = 0; i < 32; i++) {
+      var a = (i / 32) * Math.PI * 2;
+      var x = 128 + Math.cos(a) * 110;
+      var y = 128 + Math.sin(a) * 110;
+      ctx.fillStyle = '#F8FAFC';
+      ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    // 内圈凹槽轮廓
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(128, 128, 96, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(128, 128, 93, 0, Math.PI * 2); ctx.stroke();
+
+    // 中央浮雕神像与“长命富贵”吉祥铭文
+    ctx.fillStyle = '#334155';
+    ctx.font = 'bold 36px "Songti SC", "SimSun", serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('富贵', 128, 115);
+    ctx.fillText('长命', 128, 155);
+
+    // 錾花阴影与高光拉丝线
+    ctx.fillStyle = '#F8FAFC';
+    ctx.fillText('富贵', 126, 113);
+    ctx.fillText('长命', 126, 153);
+
+    return s.canvas;
+  }
+
+  /* ---------- 高精客家织带：黑底多色真丝经纬挑花带 ---------- */
+  function zhidaiHighRes() {
+    var s = createCanvas(512, 1024), ctx = s.ctx;
+    // 纯黑棉纱打底（客家织带经典黑色经线地）
+    ctx.fillStyle = '#111317';
+    ctx.fillRect(0, 0, 512, 1024);
+
+    // 经线网格密集纵向排列（11根白线与双侧分色线）
+    for (var x = 0; x < 512; x += 4) {
+      ctx.strokeStyle = (x >= 200 && x <= 312) ? 'rgba(255,255,255,0.08)' : 'rgba(180,30,30,0.06)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 1024); ctx.stroke();
+    }
+
+    // 两侧挑花滚边（红、白、黑相间回纹带）
+    [-1, 1].forEach(function (dir) {
+      var bx = dir === -1 ? 0 : 448;
+      ctx.fillStyle = '#B91C1C';
+      ctx.fillRect(bx, 0, 64, 1024);
+      for (var y = 0; y < 1024; y += 32) {
+        ctx.fillStyle = '#FBBF24';
+        ctx.beginPath();
+        ctx.moveTo(bx + 16, y);
+        ctx.lineTo(bx + 48, y + 16);
+        ctx.lineTo(bx + 16, y + 32);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(bx + 28, y + 12, 8, 8);
+      }
+    });
+
+    // 织带中央织出的客家经典吉祥铭文与连环万字纹
+    var words = ['如', '意', '吉', '祥', '福', '寿', '万', '代'];
+    ctx.font = 'bold 54px "Kaiti SC", "KaiTi", serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (var wi = 0; wi < words.length; wi++) {
+      var cy = 70 + wi * 120;
+
+      // 菱形锦地框架
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(256, cy - 54);
+      ctx.lineTo(390, cy);
+      ctx.lineTo(256, cy + 54);
+      ctx.lineTo(122, cy);
+      ctx.closePath();
+      ctx.stroke();
+
+      // 内层朱红衬线
+      ctx.strokeStyle = '#DC2626';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(256, cy - 48);
+      ctx.lineTo(378, cy);
+      ctx.lineTo(256, cy + 48);
+      ctx.lineTo(134, cy);
+      ctx.closePath();
+      ctx.stroke();
+
+      // 铭文字样（白线挑花，金边点缀）
+      ctx.fillStyle = '#DC2626';
+      ctx.fillText(words[wi], 258, cy + 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(words[wi], 256, cy);
+
+      // 角落万字挑线点
+      ctx.fillStyle = '#10B981';
+      ctx.fillRect(256 - 4, cy - 38, 8, 8);
+      ctx.fillRect(256 - 4, cy + 30, 8, 8);
+    }
+
+    return s.canvas;
+  }
+
   window.Textures = {
     redFabric: redFabric,
     tigerFace: tigerFaceTexture,
@@ -810,6 +1138,12 @@
     bambooWeave: bambooWeave,
     wovenBelt: wovenBelt,
     glazeJar: glazeJar,
-    hatCloth: hatCloth
+    hatCloth: hatCloth,
+    dajinshanCloth: dajinshanCloth,
+    dongtoupaFabric: dongtoupaFabric,
+    cloudShoulderVelvet: cloudShoulderVelvet,
+    silverEngraving: silverEngraving,
+    zhidaiHighRes: zhidaiHighRes
   };
 })();
+
