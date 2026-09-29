@@ -856,364 +856,257 @@
   /* ================================================================
      客家围屋 — 方形堡垒 + 夯土墙 + 四角炮楼 + 梅花枪眼 + 石板院
      ================================================================ */
+  /* ================================================================
+     客家围屋 —— 标志性防御性堡垒建筑：四角炮楼 + 夯土外墙 + 内部三进祠堂 + 环形走马楼
+     ================================================================ */
   function buildWeiwu() {
     var g = new THREE.Group();
 
     var matWall = textures.rammedEarth
-      ? new THREE.MeshStandardMaterial({ map: textures.rammedEarth, roughness: 0.92, metalness: 0.01 })
-      : new THREE.MeshStandardMaterial({ color: 0xA8957C, roughness: 0.92 });
+      ? new THREE.MeshStandardMaterial({ map: textures.rammedEarth, roughness: 0.95, metalness: 0.0 })
+      : new THREE.MeshStandardMaterial({ color: 0x947D63, roughness: 0.95 });
     var matRoof = textures.roofTiles
       ? new THREE.MeshStandardMaterial({ map: textures.roofTiles, roughness: 0.78 })
-      : new THREE.MeshStandardMaterial({ color: 0x36322E, roughness: 0.78 });
+      : new THREE.MeshStandardMaterial({ color: 0x2A2623, roughness: 0.78 });
     var matStone = textures.stonePaving
       ? new THREE.MeshStandardMaterial({ map: textures.stonePaving, roughness: 0.88 })
-      : new THREE.MeshStandardMaterial({ color: 0x827D78, roughness: 0.88 });
-    var matDarkStone = new THREE.MeshStandardMaterial({ color: 0x5C5650, roughness: 0.85 });
-    var matWood = new THREE.MeshStandardMaterial({ color: 0x5C3A1E, roughness: 0.65 });
-    var matDarkWood = new THREE.MeshStandardMaterial({ color: 0x382212, roughness: 0.7 });
-    var matDoor = new THREE.MeshStandardMaterial({ color: 0x24160A, roughness: 0.55 });
-    var matGold = new THREE.MeshStandardMaterial({ color: 0xD4A843, roughness: 0.3, metalness: 0.5 });
-    var matRed = new THREE.MeshStandardMaterial({ color: 0xB82424, roughness: 0.5 });
-    var matHole = new THREE.MeshStandardMaterial({ color: 0x151210, roughness: 0.92 });
-    var matPond = new THREE.MeshStandardMaterial({ color: 0x264648, roughness: 0.18, metalness: 0.35 });
+      : new THREE.MeshStandardMaterial({ color: 0x75706B, roughness: 0.88 });
+    var matDarkStone = new THREE.MeshStandardMaterial({ color: 0x4A4642, roughness: 0.9 });
+    var matWood = new THREE.MeshStandardMaterial({ color: 0x4A2E1B, roughness: 0.75 });
+    var matPond = new THREE.MeshStandardMaterial({ color: 0x1A383A, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.9 });
+    var matDoor = new THREE.MeshStandardMaterial({ color: 0x1F1109, roughness: 0.6 });
+    var matWindow = new THREE.MeshStandardMaterial({ color: 0x0A0806, roughness: 0.9 });
+    
+    if (textures.rammedEarth) textures.rammedEarth.repeat.set(4, 2);
+    if (textures.roofTiles) textures.roofTiles.repeat.set(5, 5);
+    if (textures.stonePaving) textures.stonePaving.repeat.set(4, 4);
 
-    if (textures.rammedEarth) textures.rammedEarth.repeat.set(3, 1.5);
-    if (textures.roofTiles) textures.roofTiles.repeat.set(4, 4);
-    if (textures.stonePaving) textures.stonePaving.repeat.set(3, 3);
+    var W = 2.6; // 整体宽度
+    var L = 2.4; // 整体深度
+    var H = 0.6; // 主墙高
+    var T = 0.18; // 外墙厚
+    var roofOverhang = 0.08;
 
-    // ===== 尺寸参数 =====
-    var W = 2.2, H = 1.45, T = 0.14; // 宽、高、墙厚
-    var stoneBaseH = 0.38;          // 下石上土：底部青石基高度
-    var roofH = 0.50;
-
-    // ===== 1. 基座（大条石地台 + 禾坪） =====
-    var basePlinth = new THREE.Mesh(new THREE.BoxGeometry(W + 0.35, 0.16, W + 0.35), matDarkStone);
-    basePlinth.position.set(0, 0.08, 0);
+    // ----- 1. 基础青石地台与外部环境 -----
+    var basePlinth = new THREE.Mesh(new THREE.BoxGeometry(W + 0.4, 0.08, L + 0.4), matDarkStone);
+    basePlinth.position.set(0, 0.04, 0);
     basePlinth.receiveShadow = true;
     g.add(basePlinth);
 
-    // 前方延伸的青石禾坪（晒谷场与宗族活动外坪）
-    var heping = new THREE.Mesh(new THREE.BoxGeometry(W + 0.25, 0.14, 0.75), matStone);
-    heping.position.set(0, 0.07, W / 2 + 0.50);
+    // 门前禾坪（打谷场）
+    var heping = new THREE.Mesh(new THREE.BoxGeometry(W, 0.06, 0.8), matStone);
+    heping.position.set(0, 0.03, L / 2 + 0.4);
     heping.receiveShadow = true;
     g.add(heping);
 
-    // 门前环抱的半月风水池塘（客家月池，防火蓄水、聚财纳福）
-    var pondGeo = new THREE.CircleGeometry(0.55, 32, 0, Math.PI);
+    // 半月池（风水塘）
+    var pondGeo = new THREE.CylinderGeometry(W * 0.4, W * 0.4, 0.05, 32, 1, false, 0, Math.PI);
     var pond = new THREE.Mesh(pondGeo, matPond);
-    pond.rotation.x = -Math.PI / 2;
-    pond.position.set(0, 0.145, W / 2 + 0.85);
+    pond.position.set(0, 0.06, L / 2 + 0.8);
     g.add(pond);
-
-    // 半月池石驳坎护岸（青石砌沿）
-    var curbGeo = new THREE.TorusGeometry(0.55, 0.025, 6, 32, Math.PI);
+    // 池塘青石护岸
+    var curbGeo = new THREE.TorusGeometry(W * 0.4, 0.02, 6, 32, Math.PI);
     var curb = new THREE.Mesh(curbGeo, matDarkStone);
     curb.rotation.x = Math.PI / 2;
-    curb.position.set(0, 0.15, W / 2 + 0.85);
+    curb.position.set(0, 0.07, L / 2 + 0.8);
     g.add(curb);
 
-    // 禾坪两端的功名旗杆石（客家崇文重教的石夹旗杆石）
-    [-0.75, 0.75].forEach(function (fx) {
-      var poleBase = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.16, 0.07), matDarkStone);
-      poleBase.position.set(fx, 0.20, W / 2 + 0.42);
+    // 门前功名桅杆夹石（一对）
+    [-0.8, 0.8].forEach(function (fx) {
+      var poleBase = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.1), matDarkStone);
+      poleBase.position.set(fx, 0.1, L / 2 + 0.3);
       g.add(poleBase);
-      var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.45, 8), matWood);
-      pole.position.set(fx, 0.48, W / 2 + 0.42);
+      var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.7, 8), matWood);
+      pole.position.set(fx, 0.45, L / 2 + 0.3);
       g.add(pole);
     });
 
-    // ===== 2. 外墙（下石上土坚固防御体系） =====
-    // 基础青石勒脚（四周环绕）
-    [-W/2, W/2].forEach(function (sx) {
-      var sidePlinth = new THREE.Mesh(new THREE.BoxGeometry(T + 0.03, stoneBaseH, W + 0.03), matDarkStone);
-      sidePlinth.position.set(sx, 0.16 + stoneBaseH / 2, 0);
-      g.add(sidePlinth);
-    });
-    var backPlinth = new THREE.Mesh(new THREE.BoxGeometry(W + 0.03, stoneBaseH, T + 0.03), matDarkStone);
-    backPlinth.position.set(0, 0.16 + stoneBaseH / 2, -W / 2);
-    g.add(backPlinth);
+    // ----- 2. 主体围墙（生土夯筑） -----
+    var wallGroup = new THREE.Group();
+    wallGroup.position.y = 0.08;
 
-    // 前墙青石勒脚（留出大门洞）
-    var frontPlinthW = (W - 0.52) / 2;
-    [-1, 1].forEach(function (s) {
-      var fp = new THREE.Mesh(new THREE.BoxGeometry(frontPlinthW, stoneBaseH, T + 0.03), matDarkStone);
-      fp.position.set(s * (0.26 + frontPlinthW / 2), 0.16 + stoneBaseH / 2, W / 2);
-      g.add(fp);
-    });
+    // 左、右、后墙
+    var sideW = new THREE.Mesh(new THREE.BoxGeometry(T, H, L), matWall);
+    sideW.position.set(-W / 2 + T / 2, H / 2, 0);
+    sideW.castShadow = true;
+    wallGroup.add(sideW);
 
-    // 上部生土夯土墙
-    var rammedH = H - stoneBaseH;
-    var rammedY = 0.16 + stoneBaseH + rammedH / 2;
+    var sideE = new THREE.Mesh(new THREE.BoxGeometry(T, H, L), matWall);
+    sideE.position.set(W / 2 - T / 2, H / 2, 0);
+    sideE.castShadow = true;
+    wallGroup.add(sideE);
 
-    // 前墙夯土段（左、门楣、右）
-    [-1, 1].forEach(function (s) {
-      var seg = new THREE.Mesh(new THREE.BoxGeometry(frontPlinthW, rammedH, T), matWall);
-      seg.position.set(s * (0.26 + frontPlinthW / 2), rammedY, W / 2);
-      seg.castShadow = true;
-      g.add(seg);
-    });
-    var lintel = new THREE.Mesh(new THREE.BoxGeometry(0.52, rammedH * 0.45, T), matWall);
-    lintel.position.set(0, 0.16 + stoneBaseH + rammedH * 0.775, W / 2);
-    g.add(lintel);
+    var backN = new THREE.Mesh(new THREE.BoxGeometry(W - T * 2, H, T), matWall);
+    backN.position.set(0, H / 2, -L / 2 + T / 2);
+    backN.castShadow = true;
+    wallGroup.add(backN);
 
-    // 后墙夯土
-    var back = new THREE.Mesh(new THREE.BoxGeometry(W, rammedH, T), matWall);
-    back.position.set(0, rammedY, -W / 2);
-    back.castShadow = true;
-    g.add(back);
+    // 前墙（留大门洞）
+    var doorW = 0.35;
+    var frontL = new THREE.Mesh(new THREE.BoxGeometry((W - doorW) / 2 - T, H, T), matWall);
+    frontL.position.set(-W / 4 - doorW / 4 - T / 2, H / 2, L / 2 - T / 2);
+    frontL.castShadow = true;
+    wallGroup.add(frontL);
 
-    // 左右墙夯土
-    [-1, 1].forEach(function (s) {
-      var side = new THREE.Mesh(new THREE.BoxGeometry(T, rammedH, W), matWall);
-      side.position.set(s * W / 2, rammedY, 0);
-      side.castShadow = true;
-      g.add(side);
-    });
+    var frontR = new THREE.Mesh(new THREE.BoxGeometry((W - doorW) / 2 - T, H, T), matWall);
+    frontR.position.set(W / 4 + doorW / 4 + T / 2, H / 2, L / 2 - T / 2);
+    frontR.castShadow = true;
+    wallGroup.add(frontR);
 
-    // ===== 3. 大门防卫与礼制门楼（关西新围门厅式样） =====
-    var doorStoneFrame = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.82, 0.08), matDarkStone);
-    doorStoneFrame.position.set(0, 0.49, W / 2 + 0.03);
-    g.add(doorStoneFrame);
+    // 门楣上方夯土
+    var doorTopH = 0.3;
+    var frontTop = new THREE.Mesh(new THREE.BoxGeometry(doorW, doorTopH, T), matWall);
+    frontTop.position.set(0, H - doorTopH / 2, L / 2 - T / 2);
+    wallGroup.add(frontTop);
 
-    // 门前三级青条石台阶
-    for (var st = 0; st < 3; st++) {
-      var stepMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.68 - st * 0.06, 0.04, 0.08),
-        matStone
-      );
-      stepMesh.position.set(0, 0.18 + (2 - st) * 0.04, W / 2 + 0.12 + st * 0.07);
-      g.add(stepMesh);
-    }
+    // 主围墙悬山顶/平顶覆瓦
+    var mainRoofGeo = new THREE.BoxGeometry(W + roofOverhang * 2, 0.04, T + roofOverhang * 2);
+    // 左、右、后、前檐顶
+    var r1 = new THREE.Mesh(mainRoofGeo, matRoof);
+    r1.scale.set(T / W, 1, L / T);
+    r1.position.set(-W / 2 + T / 2, H + 0.02, 0);
+    wallGroup.add(r1);
 
-    // 门前一对精雕青石抱鼓石（门枕石）
-    [-0.26, 0.26].forEach(function (bx) {
-      var bBase = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.10, 0.10), matDarkStone);
-      bBase.position.set(bx, 0.22, W / 2 + 0.13);
-      g.add(bBase);
-      var bDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 16), matStone);
-      bDrum.rotation.z = Math.PI / 2;
-      bDrum.position.set(bx, 0.31, W / 2 + 0.13);
-      g.add(bDrum);
-    });
+    var r2 = new THREE.Mesh(mainRoofGeo, matRoof);
+    r2.scale.set(T / W, 1, L / T);
+    r2.position.set(W / 2 - T / 2, H + 0.02, 0);
+    wallGroup.add(r2);
 
-    // 门扇（两扇黑漆铁皮木门）
-    [-1, 1].forEach(function (s) {
-      var door = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.68, 0.04), matDoor);
-      door.position.set(s * 0.11, 0.46, W / 2 + 0.05);
-      g.add(door);
+    var r3 = new THREE.Mesh(mainRoofGeo, matRoof);
+    r3.scale.set((W - T * 2) / W, 1, 1);
+    r3.position.set(0, H + 0.02, -L / 2 + T / 2);
+    wallGroup.add(r3);
 
-      for (var dr = 0; dr < 4; dr++) {
-        for (var dc = 0; dc < 2; dc++) {
-          var nail = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), matGold);
-          nail.position.set(s * 0.11 + (dc - 0.5) * 0.09, 0.24 + dr * 0.14, W / 2 + 0.075);
-          g.add(nail);
-        }
-      }
-      var ring = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.005, 6, 12), matGold);
-      ring.position.set(s * 0.11 + (s > 0 ? -0.04 : 0.04), 0.46, W / 2 + 0.08);
-      g.add(ring);
-    });
+    var r4 = new THREE.Mesh(mainRoofGeo, matRoof);
+    r4.scale.set((W - T * 2) / W, 1, 1);
+    r4.position.set(0, H + 0.02, L / 2 - T / 2);
+    wallGroup.add(r4);
 
-    // 门楣上方砖雕出挑小门罩（歇山小雨檐）
-    var hoodGeo = new THREE.BoxGeometry(0.64, 0.04, 0.16);
-    var hood = new THREE.Mesh(hoodGeo, matRoof);
-    hood.position.set(0, 0.92, W / 2 + 0.09);
-    g.add(hood);
+    g.add(wallGroup);
 
-    // 堂号匾额（黑漆金字匾额）
-    var plaque = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.10, 0.03), matDarkWood);
-    plaque.position.set(0, 0.84, W / 2 + 0.08);
-    g.add(plaque);
-    var plaqueGold = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.045, 0.01), matGold);
-    plaqueGold.position.set(0, 0.84, W / 2 + 0.10);
-    g.add(plaqueGold);
+    // ----- 3. 门楼与防御铁门 -----
+    var doorFrame = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.1, H - doorTopH, 0.08), matDarkStone);
+    doorFrame.position.set(0, 0.08 + (H - doorTopH) / 2, L / 2 - T / 2 + 0.04);
+    g.add(doorFrame);
 
-    // 门头两侧悬挂一对喜庆客家大红灯笼
-    [-0.32, 0.32].forEach(function (lx) {
-      var lantern = new THREE.Mesh(new THREE.SphereGeometry(0.065, 14, 10), matRed);
-      lantern.scale.set(1, 1.15, 1);
-      lantern.position.set(lx, 0.78, W / 2 + 0.16);
-      g.add(lantern);
+    // 大门黑漆厚木铁皮门
+    var leftDoor = new THREE.Mesh(new THREE.BoxGeometry(doorW / 2, H - doorTopH - 0.05, 0.04), matDoor);
+    leftDoor.position.set(-doorW / 4, 0.08 + (H - doorTopH) / 2 - 0.025, L / 2 - T / 2);
+    g.add(leftDoor);
+    var rightDoor = new THREE.Mesh(new THREE.BoxGeometry(doorW / 2, H - doorTopH - 0.05, 0.04), matDoor);
+    rightDoor.position.set(doorW / 4, 0.08 + (H - doorTopH) / 2 - 0.025, L / 2 - T / 2);
+    // 右门微开
+    rightDoor.rotation.y = -0.3;
+    rightDoor.position.x += 0.02;
+    rightDoor.position.z -= 0.04;
+    g.add(rightDoor);
 
-      [0.06, -0.06].forEach(function (dy) {
-        var lRing = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.006, 6, 14), matGold);
-        lRing.rotation.x = Math.PI / 2;
-        lRing.position.set(lx, 0.78 + dy, W / 2 + 0.16);
-        g.add(lRing);
-      });
+    // 门槛与台阶
+    var step1 = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.4, 0.05, 0.15), matStone);
+    step1.position.set(0, 0.105, L / 2 + 0.08);
+    g.add(step1);
+    var step2 = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.2, 0.04, 0.12), matStone);
+    step2.position.set(0, 0.14, L / 2 + 0.02);
+    g.add(step2);
 
-      var tassel = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.002, 0.09, 6), matGold);
-      tassel.position.set(lx, 0.66, W / 2 + 0.16);
-      g.add(tassel);
-    });
+    // ----- 4. 标志性四角炮楼（角楼） -----
+    var towerW = 0.45;
+    var towerH = H + 0.25; // 比主墙高
+    var tPositions = [
+      [-W / 2 + T / 2, -L / 2 + T / 2],
+      [W / 2 - T / 2, -L / 2 + T / 2],
+      [-W / 2 + T / 2, L / 2 - T / 2],
+      [W / 2 - T / 2, L / 2 - T / 2]
+    ];
+    tPositions.forEach(function (pos) {
+      var towerGrp = new THREE.Group();
+      towerGrp.position.set(pos[0], 0.08, pos[1]);
+      
+      // 炮楼主体
+      var tBody = new THREE.Mesh(new THREE.BoxGeometry(towerW, towerH, towerW), matWall);
+      tBody.position.y = towerH / 2;
+      tBody.castShadow = true;
+      towerGrp.add(tBody);
+      
+      // 炮楼四坡屋顶
+      var tRoof = new THREE.Mesh(new THREE.ConeGeometry(towerW * 0.8, 0.25, 4), matRoof);
+      tRoof.rotation.y = Math.PI / 4; // 对角线对齐
+      tRoof.position.y = towerH + 0.125;
+      towerGrp.add(tRoof);
+      
+      // 枪眼/炮眼（每面两个，上层）
+      var holeGeo = new THREE.BoxGeometry(0.06, 0.08, 0.02);
+      var hole1 = new THREE.Mesh(holeGeo, matWindow);
+      hole1.position.set(0, towerH - 0.15, towerW / 2 + 0.01);
+      towerGrp.add(hole1);
+      var hole2 = new THREE.Mesh(holeGeo, matWindow);
+      hole2.position.set(towerW / 2 + 0.01, towerH - 0.15, 0);
+      hole2.rotation.y = Math.PI / 2;
+      towerGrp.add(hole2);
 
-    // ===== 4. 四角防御碉楼（高耸炮楼 + 出挑腰檐 + 了望窗） =====
-    var corners = [[-W/2, -W/2], [W/2, -W/2], [-W/2, W/2], [W/2, W/2]];
-    var twH = H * 1.36;
-    corners.forEach(function (c) {
-      var cx = c[0], cz = c[1];
-
-      var twStone = new THREE.Mesh(new THREE.BoxGeometry(0.42, stoneBaseH, 0.42), matDarkStone);
-      twStone.position.set(cx, 0.16 + stoneBaseH / 2, cz);
-      g.add(twStone);
-
-      var twRammedH = twH - stoneBaseH;
-      var tw = new THREE.Mesh(new THREE.BoxGeometry(0.38, twRammedH, 0.38), matWall);
-      tw.position.set(cx, 0.16 + stoneBaseH + twRammedH / 2, cz);
-      tw.castShadow = true;
-      g.add(tw);
-
-      var cornice = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.05, 0.48), matDarkWood);
-      cornice.position.set(cx, 0.16 + twH - 0.02, cz);
-      g.add(cornice);
-
-      // 走马廊出挑木挑梁
-      [-0.14, 0.14].forEach(function (bx) {
-        var b1 = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.032, 0.46), matDarkWood);
-        b1.position.set(cx + bx, 0.16 + twH - 0.045, cz);
-        g.add(b1);
-        var b2 = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.032, 0.024), matDarkWood);
-        b2.position.set(cx, 0.16 + twH - 0.045, cz + bx);
-        g.add(b2);
-      });
-
-      var trv = new Float32Array([
-        cx-0.28, 0.16+twH, cz+0.28,  cx+0.28, 0.16+twH, cz+0.28,  cx, 0.16+twH+0.24, cz,
-        cx+0.28, 0.16+twH, cz-0.28,  cx-0.28, 0.16+twH, cz-0.28,  cx, 0.16+twH+0.24, cz,
-        cx-0.28, 0.16+twH, cz-0.28,  cx-0.28, 0.16+twH, cz+0.28,  cx, 0.16+twH+0.24, cz,
-        cx+0.28, 0.16+twH, cz+0.28,  cx+0.28, 0.16+twH, cz-0.28,  cx, 0.16+twH+0.24, cz,
-      ]);
-      var trGeo = new THREE.BufferGeometry();
-      trGeo.setAttribute('position', new THREE.BufferAttribute(trv, 3));
-      trGeo.computeVertexNormals();
-      var tr = new THREE.Mesh(trGeo, matRoof);
-      g.add(tr);
-
-      var fin = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), matGold);
-      fin.position.set(cx, 0.16 + twH + 0.25, cz);
-      g.add(fin);
-
-      [[0, 0.20], [0, -0.20], [0.20, 0], [-0.20, 0]].forEach(function (off) {
-        var isX = Math.abs(off[0]) > 0;
-        var hx = cx + off[0], hz = cz + off[1];
-        var winFrame = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.02), matDarkWood);
-        winFrame.position.set(hx, 0.16 + twH * 0.78, hz);
-        if (isX) winFrame.rotation.y = Math.PI / 2;
-        g.add(winFrame);
-        var winHole = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.025), matHole);
-        winHole.position.set(hx, 0.16 + twH * 0.78, hz);
-        if (isX) winHole.rotation.y = Math.PI / 2;
-        g.add(winHole);
-      });
-
-      [[0, 0.20], [0, -0.20], [0.20, 0], [-0.20, 0]].forEach(function (off) {
-        var isX = Math.abs(off[0]) > 0;
-        var hx = cx + off[0], hz = cz + off[1];
-        var sh1 = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.012, 0.02), matHole);
-        var sh2 = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.035, 0.02), matHole);
-        sh1.position.set(hx, 0.16 + twH * 0.52, hz);
-        sh2.position.set(hx, 0.16 + twH * 0.52, hz);
-        if (isX) { sh1.rotation.y = Math.PI / 2; sh2.rotation.y = Math.PI / 2; }
-        g.add(sh1);
-        g.add(sh2);
-      });
+      g.add(towerGrp);
     });
 
-    // ===== 5. 墙面梅花形与十字形枪眼 =====
-    function addWallGunHole(x, y, z, ry) {
-      var h1 = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.014, 0.02), matHole);
-      var h2 = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.038, 0.02), matHole);
-      h1.position.set(x, y, z);
-      h2.position.set(x, y, z);
-      h1.rotation.y = ry;
-      h2.rotation.y = ry;
-      g.add(h1);
-      g.add(h2);
-    }
-    for (var r1 = 0; r1 < 2; r1++) {
-      for (var c1 = 0; c1 < 5; c1++) {
-        var gx = -0.72 + c1 * 0.36;
-        if (Math.abs(gx) < 0.28) continue;
-        addWallGunHole(gx, 0.65 + r1 * 0.45, W / 2 + 0.01, 0);
-      }
-    }
-    [-1, 1].forEach(function (s) {
-      for (var r2 = 0; r2 < 2; r2++) {
-        for (var c2 = 0; c2 < 4; c2++) {
-          addWallGunHole(s * (W / 2 + 0.01), 0.65 + r2 * 0.45, -0.6 + c2 * 0.4, Math.PI / 2);
-        }
-      }
-    });
+    // ----- 5. 内部中轴线祠堂（祖堂） -----
+    // 关西新围典型的"三进三开"中轴祠堂
+    var hallW = 0.7;
+    var hallL = 0.5;
+    
+    // 下厅
+    var hall1 = new THREE.Mesh(new THREE.BoxGeometry(hallW, 0.35, hallL), matWood);
+    hall1.position.set(0, 0.08 + 0.175, 0.4);
+    g.add(hall1);
+    var roof1 = new THREE.Mesh(new THREE.BoxGeometry(hallW + 0.1, 0.05, hallL + 0.1), matRoof);
+    roof1.position.set(0, 0.08 + 0.35, 0.4);
+    g.add(roof1);
 
-    // ===== 6. 大屋顶（四坡黛瓦 + 檐下挑枋 + 飞檐翘脊） =====
-    var rv = new Float32Array([
-      -W/2-0.22, 0.16+H, W/2+0.22,   W/2+0.22, 0.16+H, W/2+0.22,   0, 0.16+H+roofH, 0,
-      W/2+0.22, 0.16+H, -W/2-0.22,  -W/2-0.22, 0.16+H, -W/2-0.22,  0, 0.16+H+roofH, 0,
-      -W/2-0.22, 0.16+H, -W/2-0.22, -W/2-0.22, 0.16+H, W/2+0.22,   0, 0.16+H+roofH, 0,
-      W/2+0.22, 0.16+H, W/2+0.22,   W/2+0.22, 0.16+H, -W/2-0.22,  0, 0.16+H+roofH, 0,
-    ]);
-    var roofGeo = new THREE.BufferGeometry();
-    roofGeo.setAttribute('position', new THREE.BufferAttribute(rv, 3));
-    roofGeo.computeVertexNormals();
-    var roof = new THREE.Mesh(roofGeo, matRoof);
-    roof.castShadow = true;
-    g.add(roof);
+    // 中厅（略高）
+    var hall2 = new THREE.Mesh(new THREE.BoxGeometry(hallW, 0.45, hallL), matWood);
+    hall2.position.set(0, 0.08 + 0.225, -0.15);
+    g.add(hall2);
+    var roof2 = new THREE.Mesh(new THREE.BoxGeometry(hallW + 0.1, 0.06, hallL + 0.1), matRoof);
+    roof2.position.set(0, 0.08 + 0.45, -0.15);
+    // 悬山顶微斜
+    roof2.rotation.x = -0.1;
+    g.add(roof2);
 
-    [-1, 1].forEach(function (s) {
-      var eaveFront = new THREE.Mesh(new THREE.BoxGeometry(W + 0.38, 0.035, 0.06), matDarkWood);
-      eaveFront.position.set(0, 0.16 + H - 0.01, s * (W / 2 + 0.18));
-      g.add(eaveFront);
-      var eaveSide = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.035, W + 0.38), matDarkWood);
-      eaveSide.position.set(s * (W / 2 + 0.18), 0.16 + H - 0.01, 0);
-      g.add(eaveSide);
-    });
+    // 上厅（最高，供奉祖先）
+    var hall3 = new THREE.Mesh(new THREE.BoxGeometry(hallW, 0.55, hallL), matWood);
+    hall3.position.set(0, 0.08 + 0.275, -0.7);
+    g.add(hall3);
+    var roof3 = new THREE.Mesh(new THREE.BoxGeometry(hallW + 0.15, 0.08, hallL + 0.1), matRoof);
+    roof3.position.set(0, 0.08 + 0.55, -0.7);
+    g.add(roof3);
 
-    var ridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.12), matDarkWood);
-    ridge.position.y = 0.16 + H + roofH;
-    g.add(ridge);
-    [-1, 1].forEach(function (s) {
-      var horn = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.14, 4), matRoof);
-      horn.position.set(s * 0.08, 0.16 + H + roofH + 0.06, 0);
-      horn.rotation.z = s * 0.35;
-      g.add(horn);
-    });
+    // 内部环形走廊/回廊（简化为内圈矮屋）
+    var innerRingGeo = new THREE.BoxGeometry(W - T*2 - 0.2, 0.3, L - T*2 - 0.2);
+    var innerRingHoleGeo = new THREE.BoxGeometry(W - T*2 - 0.8, 0.4, L - T*2 - 0.8);
+    // 这里使用简单的四个长条来组合内环廊
+    var ring1 = new THREE.Mesh(new THREE.BoxGeometry(W - T*2 - 0.2, 0.3, 0.3), matWood);
+    ring1.position.set(0, 0.08 + 0.15, -L/2 + T + 0.25);
+    g.add(ring1);
+    var ring1R = new THREE.Mesh(new THREE.BoxGeometry(W - T*2 - 0.2 + 0.1, 0.04, 0.3 + 0.1), matRoof);
+    ring1R.position.set(0, 0.08 + 0.3, -L/2 + T + 0.25);
+    g.add(ring1R);
 
-    // ===== 7. 内部院落与核心祖堂（九栋十八厅神髓） =====
-    var courtInner = new THREE.Mesh(new THREE.BoxGeometry(W * 0.58, 0.03, W * 0.58), matStone);
-    courtInner.position.y = 0.18;
-    courtInner.receiveShadow = true;
-    g.add(courtInner);
+    var ring2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, L - T*2 - 0.2), matWood);
+    ring2.position.set(-W/2 + T + 0.25, 0.08 + 0.15, 0);
+    g.add(ring2);
+    var ring2R = new THREE.Mesh(new THREE.BoxGeometry(0.3 + 0.1, 0.04, L - T*2 - 0.2 + 0.1), matRoof);
+    ring2R.position.set(-W/2 + T + 0.25, 0.08 + 0.3, 0);
+    g.add(ring2R);
+    
+    var ring3 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, L - T*2 - 0.2), matWood);
+    ring3.position.set(W/2 - T - 0.25, 0.08 + 0.15, 0);
+    g.add(ring3);
+    var ring3R = new THREE.Mesh(new THREE.BoxGeometry(0.3 + 0.1, 0.04, L - T*2 - 0.2 + 0.1), matRoof);
+    ring3R.position.set(W/2 - T - 0.25, 0.08 + 0.3, 0);
+    g.add(ring3R);
 
-    var pondTianjing = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.02, 0.38), matPond);
-    pondTianjing.position.set(0, 0.19, 0.08);
-    g.add(pondTianjing);
-    var tianjingCurb = new THREE.Mesh(
-      new THREE.BoxGeometry(0.42, 0.03, 0.42),
-      matDarkStone
-    );
-    tianjingCurb.position.set(0, 0.19, 0.08);
-    g.add(tianjingCurb);
-
-    var hall = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.46), matWood);
-    hall.position.set(0, 0.54, -W * 0.24);
-    g.add(hall);
-
-    var hallRoof = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.08, 0.56), matRoof);
-    hallRoof.position.set(0, 0.92, -W * 0.24);
-    g.add(hallRoof);
-
-    [-0.24, 0.24].forEach(function (cx) {
-      var col = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.018, 0.70, 8), matRed);
-      col.position.set(cx, 0.53, -W * 0.24 + 0.24);
-      g.add(col);
-    });
-
+    // 稍微调整一下整体位置，让它居中展示更好看
+    g.position.y = -0.2;
     return g;
   }
-
-  /* ================================================================
-     蓝染布 — 双层榫卯晾布高架 + 三匹垂挂布料 + 古法双耳粗陶大染缸 + 蓝草捆
-     ================================================================ */
   function buildLandye() {
     var g = new THREE.Group();
 
@@ -1816,39 +1709,38 @@
   /* ================================================================
      客家织带 —— 传统挑花木带架 + 经线卷轴 + 悬垂彩织带 + 编结流苏 + 织刀木梭 + 线篓
      ================================================================ */
+  /* ================================================================
+     客家织带 —— 更精细的立体悬垂、多条错落彩带、堆叠效果
+     ================================================================ */
   function buildZhidai() {
     var g = new THREE.Group();
     var beltTex = canvasTex('wovenBelt', 1, 2.2);
 
-    // 材质
     var matWood = new THREE.MeshStandardMaterial({ color: 0x543B22, roughness: 0.72 });
     var matDarkWood = new THREE.MeshStandardMaterial({ color: 0x362210, roughness: 0.78 });
     var matBamboo = new THREE.MeshStandardMaterial({ color: 0xC89E58, roughness: 0.65 });
     var matRedSilk = new THREE.MeshStandardMaterial({ color: 0xB82424, roughness: 0.55 });
     var matIndigoSilk = new THREE.MeshStandardMaterial({ color: 0x1E3B5C, roughness: 0.6 });
-    var matGold = new THREE.MeshStandardMaterial({ color: 0xD4A843, roughness: 0.35, metalness: 0.4 });
-    var matBone = new THREE.MeshStandardMaterial({ color: 0xF5EFE1, roughness: 0.85 });
-
+    
     var beltMat = new THREE.MeshStandardMaterial({
       map: beltTex, color: 0xffffff, roughness: 0.78, side: THREE.DoubleSide
     });
 
     var standH = 1.05;
 
-    // ----- 1. 客家传统榫卯木带架基座 -----
+    // ----- 1. 织带木架基座 -----
     var base = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.48), matWood);
     base.position.set(0, 0.025, 0);
     base.receiveShadow = true;
     g.add(base);
 
-    // 四角承重垫足
     [[-0.56, -0.18], [0.56, -0.18], [-0.56, 0.18], [0.56, 0.18]].forEach(function (pos) {
       var foot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.08), matDarkWood);
       foot.position.set(pos[0], 0.01, pos[1]);
       g.add(foot);
     });
 
-    // 双侧立柱（方转圆立柱 + 榫头加固木）
+    // 立柱
     [-0.50, 0.50].forEach(function (x) {
       var postShoe = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.20), matDarkWood);
       postShoe.position.set(x, 0.06, 0);
@@ -1859,20 +1751,10 @@
       post.castShadow = true;
       g.add(post);
 
-      // 柱顶雕花宝珠木顶（绠瓠子意象柱头）
       var cap = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), matDarkWood);
       cap.position.set(x, standH + 0.05, 0);
       g.add(cap);
-
-      var finial = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.05, 8), matWood);
-      finial.position.set(x, standH + 0.09, 0);
-      g.add(finial);
     });
-
-    // 下横撑木档
-    var lowerBar = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.032, 0.032), matWood);
-    lowerBar.position.set(0, 0.18, 0);
-    g.add(lowerBar);
 
     // 后张力木轴
     var rearRoller = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 1.04, 12), matWood);
@@ -1880,7 +1762,6 @@
     rearRoller.position.set(0, 0.52, -0.14);
     g.add(rearRoller);
 
-    // 后侧张力木斜撑
     [-0.50, 0.50].forEach(function (x) {
       var strutCurve = new THREE.CatmullRomCurve3([
         new THREE.Vector3(x, 0.06, 0.07),
@@ -1891,25 +1772,14 @@
       g.add(strut);
     });
 
-    // 织架上主横梁（光滑挑花织梁）
+    // 主横梁
     var mainBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 1.14, 16), matWood);
     mainBeam.rotation.z = Math.PI / 2;
     mainBeam.position.set(0, standH, 0);
     mainBeam.castShadow = true;
     g.add(mainBeam);
 
-    // 梁端限位木挡盘与木销
-    [-0.55, 0.55].forEach(function (x) {
-      var flange = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.024, 14), matDarkWood);
-      flange.rotation.z = Math.PI / 2;
-      flange.position.set(x, standH, 0);
-      g.add(flange);
-      var peg = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.10, 8), matBamboo);
-      peg.position.set(x, standH, 0);
-      g.add(peg);
-    });
-
-    // 后轴盘绕的彩织带卷（未织完的经线带轴）
+    // 未织完的经线带轴
     var beltRoll = new THREE.Mesh(
       new THREE.CylinderGeometry(0.075, 0.075, 0.28, 24),
       new THREE.MeshStandardMaterial({ map: beltTex, roughness: 0.82 })
@@ -1918,40 +1788,51 @@
     beltRoll.position.set(-0.14, 0.52, -0.14);
     g.add(beltRoll);
 
-    // 架线工序：后轴至主梁的张紧五彩经线束阵列
-    var warpCount = 16;
+    // 张紧的五彩经线束阵列 (增加密度)
+    var warpCount = 28;
     for (var wi = 0; wi < warpCount; wi++) {
-      var wx = -0.22 + wi * (0.44 / (warpCount - 1));
+      var wx = -0.35 + wi * (0.7 / (warpCount - 1));
       var wCurve = new THREE.LineCurve3(
         new THREE.Vector3(wx, 0.52, -0.14),
         new THREE.Vector3(wx, standH, 0)
       );
-      var wMat = (wi % 3 === 0) ? matRedSilk : (wi % 3 === 1 ? matIndigoSilk : matBone);
+      var wMat = (wi % 3 === 0) ? matRedSilk : (wi % 3 === 1 ? matIndigoSilk : new THREE.MeshStandardMaterial({color: 0xF5EFE1, roughness:0.85}));
       var wThread = new THREE.Mesh(new THREE.TubeGeometry(wCurve, 4, 0.002, 3, false), wMat);
       g.add(wThread);
     }
 
-    // ----- 2. 真实立体悬垂客家织带 -----
-    function makeHangingBelt(xCenter, length, zOffset, sway) {
-      var w = 0.21;
-      var segsY = 32, segsX = 6;
+    // ----- 2. 高精度立体悬垂与堆叠织带 -----
+    function makeHangingBelt(xCenter, length, zOffset, sway, phase, addPooling) {
+      var w = 0.15;
+      var segsY = 64, segsX = 8; // 更高的多边形数以平滑褶皱
       var geo = new THREE.PlaneGeometry(w, length, segsX, segsY);
       var pos = geo.attributes.position;
 
       for (var i = 0; i < pos.count; i++) {
         var px = pos.getX(i);
         var py = pos.getY(i);
+        // t从0(顶)到1(底)
         var t = 1 - (py + length / 2) / length;
 
         var pz = 0;
-        if (t < 0.12) {
-          var arc = t / 0.12 * Math.PI * 0.5;
-          pz = Math.sin(arc) * 0.035;
+        var pXOffset = 0;
+        
+        if (t < 0.1) {
+          pz = Math.sin(t / 0.1 * Math.PI * 0.5) * 0.04;
+        } else if (addPooling && t > 0.8) {
+          // 底部堆叠褶皱效果
+          var poolT = (t - 0.8) / 0.2; // 0 to 1
+          pz = 0.04 + Math.sin(t * 15 + phase) * 0.08 * poolT;
+          pXOffset = Math.sin(t * 20) * 0.05 * poolT;
+          py = py + poolT * 0.15; // 压缩长度形成堆积
         } else {
-          pz = 0.035 + Math.sin(t * 3.6 + sway) * 0.032 * t + Math.cos(px * 12) * 0.007;
+          // 自然下垂的风动摇摆
+          pz = 0.04 + Math.sin(t * 4.5 + phase) * 0.05 * t + Math.cos(px * 15) * 0.008;
+          pXOffset = Math.sin(t * 3.5 + sway) * 0.04 * t;
         }
-        var rotTwist = Math.sin(t * 2.6 + sway) * 0.05 * t;
-        pos.setX(i, px * (1 - 0.04 * t) + rotTwist * 0.35);
+        
+        var rotTwist = Math.sin(t * 3.0 + sway) * 0.06 * t;
+        pos.setX(i, px * (1 - 0.02 * t) + rotTwist * 0.4 + pXOffset);
         pos.setY(i, py);
         pos.setZ(i, pz);
       }
@@ -1961,106 +1842,43 @@
       mesh.position.set(xCenter, standH - length / 2, zOffset);
       mesh.castShadow = true;
       g.add(mesh);
-
-      // 织带侧边滚边包线（增强立体厚度感）
-      [-1, 1].forEach(function (side) {
-        var edgeCurve = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(xCenter + side * w * 0.49, standH, zOffset),
-          new THREE.Vector3(xCenter + side * w * 0.485, standH - length * 0.35, zOffset + 0.025),
-          new THREE.Vector3(xCenter + side * w * 0.48, standH - length * 0.70, zOffset + 0.035),
-          new THREE.Vector3(xCenter + side * w * 0.47, standH - length, zOffset + 0.04)
-        ]);
-        var edgeRib = new THREE.Mesh(new THREE.TubeGeometry(edgeCurve, 16, 0.004, 4, false), matRedSilk);
-        g.add(edgeRib);
-      });
-
-      // 织带末端：平结编结横档与流苏
-      var knotY = standH - length;
-      var knotBar = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, 0.022, 0.018), matDarkWood);
-      knotBar.position.set(xCenter, knotY, zOffset + 0.04);
-      g.add(knotBar);
-
-      // 客家同心编结扣
-      var knotRing = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.008, 6, 16), matRedSilk);
-      knotRing.position.set(xCenter, knotY - 0.018, zOffset + 0.045);
-      g.add(knotRing);
-
-      // 多层渐变手工流苏丝穗（双色穿插）
-      var tasselCount = 11;
-      for (var f = 0; f < tasselCount; f++) {
-        var fx = (f - (tasselCount - 1) / 2) * (w * 0.80 / tasselCount);
-        var fMat = (f % 2 === 0) ? matBone : matRedSilk;
-        var fLen = 0.14 + (1 - Math.abs(fx) / (w * 0.5)) * 0.035;
-        var tassel = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.0035, 0.002, fLen, 5),
-          fMat
-        );
-        tassel.position.set(xCenter + fx, knotY - 0.018 - fLen / 2, zOffset + 0.045);
-        tassel.rotation.z = fx * 0.35;
-        tassel.rotation.x = 0.05;
-        g.add(tassel);
-      }
     }
 
-    makeHangingBelt(-0.20, 0.74, 0.03, 0.2);
-    makeHangingBelt(0.20, 0.70, 0.03, 1.4);
+    // 主织带（长，带底部堆叠）
+    makeHangingBelt(0, 0.95, 0.05, 0, 0, true);
+    // 侧边织带1（短，不同相位）
+    makeHangingBelt(-0.25, 0.65, 0.08, 0.5, 1.2, false);
+    // 侧边织带2（长，交错）
+    makeHangingBelt(0.28, 0.85, 0.02, -0.4, 2.5, true);
 
-    // ----- 3. 客家传统手工艺具道具 -----
-    // 客家竹带尺 / 打纬刀
-    var beater = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.012, 0.036), matBamboo);
-    beater.position.set(-0.28, 0.06, 0.13);
-    beater.rotation.y = 0.35;
-    beater.rotation.z = 0.02;
-    beater.castShadow = true;
-    g.add(beater);
+    // 散落在台面上的织带卷/平铺
+    var flatBeltGeo = new THREE.PlaneGeometry(0.15, 0.4, 4, 12);
+    var fPos = flatBeltGeo.attributes.position;
+    for(var j=0; j<fPos.count; j++) {
+       var fy = fPos.getY(j);
+       var fx = fPos.getX(j);
+       fPos.setZ(j, Math.sin(fy*20)*0.01 + Math.cos(fx*10)*0.005);
+    }
+    flatBeltGeo.computeVertexNormals();
+    var flatBelt = new THREE.Mesh(flatBeltGeo, beltMat);
+    flatBelt.rotation.x = -Math.PI / 2;
+    flatBelt.rotation.z = 0.4;
+    flatBelt.position.set(-0.35, 0.06, 0.1);
+    g.add(flatBelt);
 
-    // 刻花木梭子
-    var shuttleBody = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.015, 0.004, 0.24, 10),
-      matDarkWood
-    );
-    shuttleBody.rotation.z = Math.PI / 2;
-    shuttleBody.scale.set(1, 1, 0.5);
-    shuttleBody.position.set(0.18, 0.065, 0.14);
-    shuttleBody.rotation.y = -0.22;
-    shuttleBody.castShadow = true;
-    g.add(shuttleBody);
+    // 加上流苏
+    [-0.25, 0, 0.28].forEach(function(cx, idx) {
+       var len = [0.65, 0.95, 0.85][idx];
+       if(len >= 0.95) return; // 堆叠的就不加流苏了
+       var knotY = standH - len;
+       var knotBar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.015), matDarkWood);
+       knotBar.position.set(cx + Math.sin(1*3.5+0.5)*0.04, knotY, 0.08 + Math.sin(1*4.5+1.2)*0.05);
+       // g.add(knotBar); 简化流苏连接处
+    });
 
-    // 梭子中心的挑花红丝线
-    var shuttleSilk = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.017, 0.017, 0.11, 12),
-      matRedSilk
-    );
-    shuttleSilk.rotation.z = Math.PI / 2;
-    shuttleSilk.position.set(0.18, 0.065, 0.14);
-    shuttleSilk.rotation.y = -0.22;
-    g.add(shuttleSilk);
-
-    // 竹编线篓与丝线团
-    var basketGeo = new THREE.CylinderGeometry(0.06, 0.048, 0.06, 16, 1, true);
-    var basket = new THREE.Mesh(basketGeo, matBamboo);
-    basket.position.set(0.46, 0.075, 0.11);
-    basket.castShadow = true;
-    g.add(basket);
-
-    var ball1 = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), matRedSilk);
-    ball1.position.set(0.45, 0.085, 0.10);
-    g.add(ball1);
-    var ball2 = new THREE.Mesh(new THREE.SphereGeometry(0.020, 10, 8), matIndigoSilk);
-    ball2.position.set(0.47, 0.08, 0.125);
-    g.add(ball2);
-    var ball3 = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), matBone);
-    ball3.position.set(0.44, 0.09, 0.12);
-    g.add(ball3);
-
-    g.position.y = -0.38;
+    g.position.y = -0.35;
     return g;
   }
-
-
-  /* ================================================================
-     客家织机 —— 前低后高木框架 + 弯弓张力架 + 蓝白经线 + 综框 + 已织蓝布
-     ================================================================ */
   function buildZhiji() {
     var g = new THREE.Group();
 

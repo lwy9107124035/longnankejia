@@ -99,7 +99,7 @@
   }
 
   var scale = 1.0, panX = 0, panY = 0;
-  var minScale = 1.0, maxScale = 3.2;
+  var minScale = 1.0, maxScale = 8.0;
 
   function updateTransform(anim) {
     if (!mapEl) return;
