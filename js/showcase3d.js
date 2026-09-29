@@ -40,8 +40,8 @@
       desc: '世界客家非遗展示馆藏品。以纸搓捻塑形的仿真梅花盆景：褐色纸塑主干苍劲盘曲，枝条横斜伸展，满缀数十朵粉橙色纸折梅花与嫩绿花苞。底部为深绿色六角形古典花盆，盆面浮雕花鸟纹样。' },
     { id: 'zhiji', name: '客家织机', subtitle: '传统手工织布机', icon: '\u{2699}', zoom: 5.5,
       desc: '龙南博物馆实物展陈的传统客家手工织布机。原木框架结构，前低后高，后端弯弓形张力架撑起蓝白色经线，经线穿过分绞棒与综框向前伸展，前端已织出一段蓝色条纹布匹。整机木质温润，绳索穿连。' },
-    { id: 'yuwenshubi', name: '鱼纹梳篦', subtitle: '客家妇女发饰', icon: '\u{1F451}', zoom: 2.8,
-      desc: '客家妇女传统金银发饰。一对鎏金发簪并排展示：左簪顶端为"吉"字镂空雕花，配如意卷草纹与翠绿宝石点缀；右簪顶端为立体花卉镂雕，嵌绿色宝石。簪身细长，中段有螺旋绕丝装饰。' }
+    { id: 'yuwenshubi', name: '鱼纹梳篦', subtitle: '发簪与精雕木梳', icon: '\u{1F451}', zoom: 2.8,
+      desc: '客家妇女传统金银与梳篦发饰。展台中央前置精雕鱼纹半月木梳篦，梳脊浮雕"吉庆有余"嵌金双鱼，下缀密排细梳齿；后侧并排展示一对鎏金发簪：左簪顶端为"吉"字镂空雕花与如意卷草纹，右簪顶端为立体花卉镂雕，均嵌有翠绿宝石与螺旋绕丝。' }
   ];
 
   function loadThree() {
@@ -2206,6 +2206,80 @@
     rightGroup.add(jade4);
 
     g.add(rightGroup);
+
+    // ============ 中央前置：精雕鱼纹木梳篦 ============
+    var combGroup = new THREE.Group();
+    combGroup.position.set(0, -0.22, 0.08);
+    combGroup.rotation.x = -0.32; // 优雅倾斜展示在深紫丝绒展台前部
+
+    var matCombWood = new THREE.MeshStandardMaterial({ color: 0x8C381E, roughness: 0.42, metalness: 0.08 });
+    var matCombTeeth = new THREE.MeshStandardMaterial({ color: 0x542312, roughness: 0.58 });
+    var matFishRelief = new THREE.MeshStandardMaterial({ color: 0xE5B83B, roughness: 0.22, metalness: 0.88 });
+
+    // 拱形半月梳脊（弧形主梁）
+    var spineCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.16, -0.015, 0),
+      new THREE.Vector3(-0.11, 0.048, 0),
+      new THREE.Vector3(0, 0.072, 0),
+      new THREE.Vector3(0.11, 0.048, 0),
+      new THREE.Vector3(0.16, -0.015, 0)
+    ]);
+    var combSpine = new THREE.Mesh(new THREE.TubeGeometry(spineCurve, 28, 0.013, 8, false), matCombWood);
+    combSpine.scale.set(1, 1, 0.55);
+    combGroup.add(combSpine);
+
+    // 梳脊中心实木腹板（浮雕底板）
+    var plateGeo = new THREE.BoxGeometry(0.24, 0.045, 0.008);
+    var plate = new THREE.Mesh(plateGeo, matCombWood);
+    plate.position.set(0, 0.032, 0);
+    combGroup.add(plate);
+
+    // 梳背镶嵌/浮雕双鱼戏水纹样（吉庆有余）
+    [-1, 1].forEach(function (side) {
+      // 鱼身弧线
+      var fishPts = [
+        new THREE.Vector3(side * 0.09, 0.026, 0.006),
+        new THREE.Vector3(side * 0.055, 0.042, 0.007),
+        new THREE.Vector3(side * 0.018, 0.035, 0.006)
+      ];
+      var fishCurve = new THREE.CatmullRomCurve3(fishPts);
+      var fishBody = new THREE.Mesh(new THREE.TubeGeometry(fishCurve, 12, 0.0045, 6, false), matFishRelief);
+      combGroup.add(fishBody);
+
+      // 分叉鱼尾
+      var tailUpper = new THREE.Mesh(new THREE.ConeGeometry(0.004, 0.014, 4), matFishRelief);
+      tailUpper.position.set(side * 0.095, 0.030, 0.006);
+      tailUpper.rotation.z = side * 1.1;
+      combGroup.add(tailUpper);
+      var tailLower = new THREE.Mesh(new THREE.ConeGeometry(0.0035, 0.012, 4), matFishRelief);
+      tailLower.position.set(side * 0.095, 0.022, 0.006);
+      tailLower.rotation.z = side * 1.8;
+      combGroup.add(tailLower);
+
+      // 鱼眼（微小金珠）
+      var eye = new THREE.Mesh(new THREE.SphereGeometry(0.0025, 6, 4), matFishRelief);
+      eye.position.set(side * 0.022, 0.037, 0.008);
+      combGroup.add(eye);
+    });
+
+    // 梳脊与梳齿连接横梁（金线嵌边）
+    var combBar = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.010, 0.009), matCombWood);
+    combBar.position.set(0, 0.008, 0);
+    combGroup.add(combBar);
+    var combGoldWire = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.002, 0.010), matFishRelief);
+    combGoldWire.position.set(0, 0.013, 0);
+    combGroup.add(combGoldWire);
+
+    // 密排细梳齿（32根细齿，中央长两端短弧线过渡）
+    var toothCount = 32;
+    for (var ti = 0; ti < toothCount; ti++) {
+      var tx = -0.13 + ti * (0.26 / (toothCount - 1));
+      var toothH = 0.078 - Math.abs(tx) * 0.16;
+      var tooth = new THREE.Mesh(new THREE.BoxGeometry(0.0035, toothH, 0.005), matCombTeeth);
+      tooth.position.set(tx, -toothH / 2 + 0.008, 0);
+      combGroup.add(tooth);
+    }
+    g.add(combGroup);
 
     g.position.y = -0.05;
     return g;
