@@ -14,8 +14,8 @@ v2 专项验收：`node tests/v2_knowledge.test.mjs`；启动本地 8787 服务�
 ## 本地运行
 
 ```
-双击 qidong.bat          # 起本地服务，并告诉你是哪个分支、线上三个地址各是什么
-双击 地址.html           # 三个分支的入口页，点开即用（也能直接收藏到浏览器）
+双击 qidong.bat          # 起本地服务，并告诉你是哪个分支、线上四个地址各是什么
+双击 地址.html           # 四个分支的入口页，点开即用（也能直接收藏到浏览器）
 双击 zhanting.bat        # 停止服务
 ```
 
@@ -27,18 +27,19 @@ v2 专项验收：`node tests/v2_knowledge.test.mjs`；启动本地 8787 服务�
 
 ## 各分支的线上地址（手机也能直接开，不必启动任何东西）
 
-双击仓库根目录的 **`地址.html`** 就是这一页的可视化版本，三条地址做成大卡片，点一下就开。
+双击仓库根目录的 **`地址.html`** 就是这一页的可视化版本，四条地址做成大卡片，点一下就开。
 
 | 分支 | 地址 | 谁在用 |
 | --- | --- | --- |
 | `main` | https://longnankejia.pages.dev/ | 正式入口，展板上印的就是它 |
 | `qcode` | https://qcode.longnankejia-dev.pages.dev/ | 本次改动验收分支 |
-| `dev` | https://longnankejia-dev.pages.dev/ | 豆包的工作分支 |
+| `doubao` | https://longnankejia-dev.pages.dev/ | 豆包的工作分支（原 `dev`） |
+| `codex` | https://codex.longnankejia-dev.pages.dev/ | v2 工作与预览分支 |
 
-三条都是 Cloudflare Pages 的固定地址，不会每次部署换域名；带 `*.pages.dev` 的那两条
+四条都是 Cloudflare Pages 的固定地址，不会每次部署换域名；带 `*.pages.dev` 的那三条
 属于同一个项目 `longnankejia-dev`，分支名就是子域名。想比较两个版本，开两个浏览器
-窗口分别访问即可。`main` 与 `qcode` 部署时注入 API Key（大模型问答、语音输入可用），
-`dev` 没有，那两项会如实提示未配置。
+窗口分别访问即可。四个分支的大模型与语音 API 参数一致，密钥由服务端代理读取，不会写进
+浏览器静态资源；分支到项目/环境的映射见[API 配置说明](docs/API配置与分支部署.md)。
 
 ## 目录结构
 
@@ -64,7 +65,7 @@ js/
   textures.js           程序化贴图生成器（canvas 现画，无外部图片）
   config.js             全局配置（AI 模式、模型参数、公网地址）
   qr.js                 入口二维码（把站点地址画成可扫的码）
-  secrets.js            API 密钥，已在 .gitignore 中，不入库
+  secrets.js            本地直连 API 密钥（可选），已在 .gitignore 中，不入库
   vendor/three.min.js   Three.js r128
   vendor/qrcode.js      qrcode-generator 2.0.4（MIT，Kazuhiko Arase）—— 二维码编码器
 
@@ -115,7 +116,7 @@ python scripts/scan_history_secrets.py  # 扫全部历史 blob 找 sk- 形态密
 
 ```
 node scripts/check_live_qr.mjs            # 抓生产站入口码 → .cache/live-entry-qr.png
-node scripts/check_live_qr.mjs https://longnankejia-dev.pages.dev/   # 抓 dev 预览那份
+node scripts/check_live_qr.mjs https://longnankejia-dev.pages.dev/   # 抓 doubao 预览那份
 QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应等于被核验的那个网址
 ```
 
@@ -211,7 +212,7 @@ node   scripts/qr_matrix.mjs <文本>     # 用页面上同一个编码器把文
 `js/config.js` 里 `ai.mode` 决定走哪条路：
 
 - `'rules'`：本地知识库，离线可用，演示时最稳。
-- `'api'`：调用硅基流动 OpenAI 兼容接口，密钥从 `js/secrets.js` 读取；请求失败会自动回落本地库。
+- `'api'`：调用硅基流动 OpenAI 兼容接口；线上通过 Pages Functions 代理，密钥保存在 Cloudflare secret binding；请求失败会自动回落本地库。
 
 页面底部的「⚙ 管理入口」可在运行时切换（存 localStorage，不改源码）。
 
@@ -270,8 +271,7 @@ python scripts/audit_video_pages.py    # 三份材料互相核对
 （剥掉注释后，模块代码里不许再出现 `SpeechRecognition`）。
 
 每条失败路径都要说清楚原因，不许静默：麦克风被拒、设备没有麦克风、等太久、连不上、
-服务报错、没配密钥。前五种各有一条断言，没配密钥时按钮置灰并说明（密钥只随部署注入
-`js/secrets.js`，管理面板里没有填密钥的地方，提示语也不许指错路）。
+服务报错、代理未配置。每条失败路径都说明原因；浏览器不保存或接收服务端密钥，管理面板也不提供线上密钥输入框。
 
 等待上限不是拍脑袋定的。同一句 3.5 秒的普通话（离线合成，原文是
 「客家蓝染的原料是板蓝根，染布要先浸泡制靛，再氧化显色。」）实测：
@@ -305,8 +305,9 @@ python scripts/audit_video_pages.py    # 三份材料互相核对
 
 生产站：**https://longnankejia.pages.dev/**（`main`，Cloudflare Pages）
 验收分支：**https://qcode.longnankejia-dev.pages.dev/**（`qcode`）
-开发预览：**https://longnankejia-dev.pages.dev/**（`dev`，豆包的工作分支）
-镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/dev/（GitHub Pages）
+豆包预览：**https://longnankejia-dev.pages.dev/**（`doubao`，原 `dev`）
+v2 预览：**https://codex.longnankejia-dev.pages.dev/**（`codex`）
+镜像：https://lwy9107124035.github.io/longnankejia/ 与 …/doubao/（GitHub Pages）
 备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）
 
 两条自动通道（`cf-pages.yml` 与 `pages.yml`）都只做一件事：**按白名单**把页面真正加载的
@@ -318,17 +319,15 @@ python scripts/audit_video_pages.py    # 三份材料互相核对
 
 三点约定，都有守卫且跑过反向用例：
 
-- **只有 main 与 qcode 注入 API Key**，其余分支（含 dev 预览）写空 key，页面按设计提示
-  「这个地址没有配置语音识别服务」并回落到本地知识库引擎。qcode 是验收分支，要在预览地址上
-  当场试大模型问答和语音输入，所以带 key；代价是那个 `*.pages.dev` 域名公开可访问，拿到链接
-  的人能借用该账号额度——这与 main 的暴露面相同（密钥本来就是明文下发到浏览器里的）。
+- **四个分支都通过服务端代理使用同一 API 配置。** `cf-pages.yml` 将 GitHub Actions
+  secret 同步到对应的 Cloudflare production/preview secret binding；静态 JS 不含密钥。
+  GitHub Pages 和手动 Netlify 镜像也只发布空的 `js/secrets.js`。
 - **CI 用的 Cloudflare 令牌只有一项权限**：`Account → Cloudflare Pages → Edit`。
   官方 "Edit Cloudflare Workers" 模板会连带 13 项（Workers KV/R2/Scripts、Memberships、
   Account Settings…），对只推静态站的 CI 太宽，所以走 Custom Token。
-- **工作流文件只存在于 `main`**，靠显式 `ref: dev` 取开发分支内容（`pages.yml`）。GitHub 读的是
-  「被 push 那个 ref」里的工作流，而 `dev` 是豆包的专属分支（见 dev 上的 `AI_OWNER.md`），
-  不该由我提交——所以 **dev 的 CF/GitHub Pages 更新要等 dev 同步过 main 才会自动跑**，
-  在那之前靠 `main` 的推送与每小时 `:17` 定时（仅 `pages.yml`）。
+- **GitHub Pages 镜像工作流只存在于 `main`**，显式 checkout `main` 与 `doubao`，每小时 `:17`
+  定时或 main 推送时更新主站与 `/doubao/` 镜像。豆包原工作分支 `dev` 已改名为 `doubao`。
+- **v2 页面与 3D 模型只改 `codex`。** API 配置、代理或部署规则需要同步时，再逐一核验四个分支。
 
 GitHub Pages 那条通道需要仓库 Settings → Pages 的 Source 选 **GitHub Actions**（已设好）。
 
@@ -340,7 +339,7 @@ Netlify 2025 年起按 credits 计费。这个账号的免费额度用完且未�
 并停在上一次成功的部署上。额度周期从每月 14 日起算。
 
 `deploy.yml` 因此改成**只手动触发**，留作额度恢复后的备用通道；它现在还挡住了非 main 分支，
-避免重演 `dev--…` 那种永不更新的别名站（那个站已按 `branch == "dev"` 精确删掉 19 条 deploy）。
+避免重演旧 `dev--…` 那种永不更新的别名站（那个站已按精确分支 `dev` 清理部署）。
 
 ### 入口二维码与地址
 

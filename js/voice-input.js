@@ -26,6 +26,7 @@
     var a = aiCfg().asr || {};
     return {
       url: a.url || 'https://api.siliconflow.cn/v1/audio/transcriptions',
+      proxyUrl: a.proxyUrl || '',
       model: a.model || 'FunAudioLLM/SenseVoiceSmall',
       language: a.language || 'zh',
       maxMs: a.maxMs || 20000,
@@ -33,6 +34,7 @@
     };
   }
   function apiKey() { return (aiCfg().api || {}).apiKey || ''; }
+  function apiAvailable() { return !!(apiKey() || cfg().proxyUrl); }
 
   /** 不可用的原因要说得具体，"不支持"三个字等于没说。 */
   function unavailable() {
@@ -43,7 +45,7 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
       return '这个浏览器没有录音接口，请用文字输入';
     }
-    if (!apiKey()) return '这个地址没有配置语音识别服务';
+    if (!apiAvailable()) return '这个地址没有配置语音识别服务';
     return '';
   }
 
@@ -128,9 +130,13 @@
       clearTimeout(to);
       if (tick) { clearInterval(tick); tick = null; }
     }
-    fetch(cfg().url, {
+    var settings = cfg();
+    var headers = {};
+    var key = apiKey();
+    if (key) headers.Authorization = 'Bearer ' + key;
+    fetch(key ? settings.url : settings.proxyUrl, {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + apiKey() },
+      headers: headers,
       body: form,
       signal: ctl.signal
     }).then(function (r) {
