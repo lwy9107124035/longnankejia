@@ -720,21 +720,32 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   async function sectionCloth() {
     await page.evaluate(`document.querySelector('[data-panel="panel3d"]').click()`);
     if (!await until(page, `window.Showcase3D.booted()`, 25000)) {
-      check('蓝染布只挂一块布', false, '3D 引擎没起来，数不了布面');
+      check('蓝染布垂幅数 1~4、每幅有面积、互不重叠', false, '3D 引擎没起来，数不了布面');
       return;
     }
     const n = await page.evaluate(`(() => {
       window.Showcase3D.show('landye');
-      let cloths = 0;
+      const cloths = [];
       const m = window.Showcase3D.debugModel();
-      // 板蓝根的叶子也是 PlaneGeometry，用幅宽把布和叶子分开
       if (m) m.traverse(function (o) {
-        const p = o.isMesh && o.geometry && o.geometry.type === 'PlaneGeometry' ? o.geometry.parameters : null;
-        if (p && p.width > 0.5) cloths++;
+        if (!o.isMesh || !o.name) return;
+        if (!/^(hanging_indigo_cloth|fresh_out_of_vat_green_cloth)/.test(o.name)) return;
+        const pos = o.geometry.attributes.position;
+        const tris = Math.round((o.geometry.index ? o.geometry.index.count : pos.count) / 3);
+        const bb = new THREE.Box3().setFromObject(o);
+        cloths.push({ name: o.name, tris: tris, x: Math.round((bb.min.x + bb.max.x) / 2 * 100) / 100 });
       });
       return cloths;
     })()`);
-    check('蓝染布只挂一块布', n === 1, n + ' 块布面');
+    // 从前这里数 PlaneGeometry，因为出过"挂了两块完全重叠的布、正面看是重影"的事故。
+    // 现在按资料挂三幅（两幅靛蓝 + 一幅刚出缸偏绿），布面也不再是 PlaneGeometry，
+    // 所以保护改成更贴近原意的一条：幅数 1~4、每幅都有真实面积、任意两幅的中心 x 不许贴近（贴近即重影）。
+    let overlap = '';
+    for (let a = 0; a < n.length; a++) for (let b = a + 1; b < n.length; b++)
+      if (Math.abs(n[a].x - n[b].x) < 0.25) overlap = n[a].name + ' 与 ' + n[b].name;
+    check('蓝染布垂幅数 1~4、每幅有面积、互不重叠',
+      n.length >= 1 && n.length <= 4 && n.every((c) => c.tris > 500) && !overlap,
+      JSON.stringify(n) + (overlap ? ' 重叠: ' + overlap : ''));
   }
   await sectionCloth();
   // 取景：投影每个网格自身的最高点（取其水平中心），并在自动旋转中采样最坏角度。

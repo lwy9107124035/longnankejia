@@ -20,7 +20,7 @@
   // 各件自定的 position.y 是历史遗留：簸箕 +0.12 让它悬空 1.15，虎头帽悬空 1.05，
   // 凉帽 0.95，米酒坛 0.57，蓝染的染缸几乎埋进地里。模型不再整体前倾之后这些全暴露出来。
   // 焦点同步下移同样的量，取景关系与逐项调好的距离保持不变。
-  var SEAT_ADJUST = {hutoumao: -1.047, weiwu: 0, landye: -0.150, liangmao: -0.952, boji: -1.150, zhidai: -0.319, mijiutan: -0.570};
+  var SEAT_ADJUST = {hutoumao: -1.047, weiwu: 0, landye: -1.146, liangmao: -0.919, boji: -1.150, zhidai: -0.319, mijiutan: -0.537};
   var FOCUS_BASE = {weiwu: -0.10, zhidai: -0.17};
   // 引擎 603KB + 贴图约 13MB 只在观众真的点开 3D 时才拉，见 init()/boot() 的分工
   var booted = false, booting = null, pendingShow = null;
@@ -605,93 +605,176 @@
      ================================================================ */
   function buildLandye() {
     var g = new THREE.Group();
+    var rodY = 1.42, postX = 1.02;
+    var wood = new THREE.MeshStandardMaterial({ color: 0x6E563C, roughness: 0.82 });
+    var woodDark = new THREE.MeshStandardMaterial({ color: 0x4A382A, roughness: 0.86 });
 
-    // ---- 挂杆 ----
-    var rodY = 1.35;
-    var rod = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 12),
-      new THREE.MeshStandardMaterial({ color: 0x7A6550, roughness: 0.75 }));
+    // 晾染架：两根立柱 + 顶梁 + 斜撑。原来只有一根悬空的横杆。
+    [-1, 1].forEach(function (s) {
+      var post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, rodY + 0.06, 10), wood);
+      post.position.set(s * postX, (rodY + 0.06) / 2, 0);
+      post.castShadow = true;
+      g.add(post);
+      var foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.16), woodDark);
+      foot.position.set(s * postX, 0.02, 0);
+      g.add(foot);
+      var brace = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.42, 8), wood);
+      brace.position.set(s * (postX - 0.16), 0.24, 0.12);
+      brace.rotation.set(0.55, 0, s * 0.62);
+      g.add(brace);
+    });
+    var rod = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, postX * 2 + 0.16, 12), wood);
     rod.rotation.z = Math.PI / 2;
     rod.position.y = rodY;
     rod.castShadow = true;
     g.add(rod);
 
-    // ---- 主布料（褶皱 + 垂坠） ----
-    var clothW = 1.7, clothH = 1.65;
-    var clothGeo = new THREE.PlaneGeometry(clothW, clothH, 32, 32);
-    var cp = clothGeo.attributes.position;
-    for (var i = 0; i < cp.count; i++) {
-      var x = cp.getX(i), y = cp.getY(i);
-      // 多层褶皱：大波浪 + 细褶 + 底部收拢
-      var wave1 = Math.sin(x * 4 + 0.3) * 0.06;
-      var wave2 = Math.sin(x * 9 + y * 2) * 0.025;
-      var wave3 = Math.cos(y * 3 + x) * 0.03;
-      var sag = -Math.abs(x) * 0.02 * (1 - (y + clothH / 2) / clothH);
-      cp.setZ(i, wave1 + wave2 + wave3 + sag);
-    }
-    clothGeo.computeVertexNormals();
-
     var clothMat;
     if (textures.landyeFinal) {
       var lt = textures.landyeFinal.clone();
-      lt.repeat.set(1.3, 1.3);
+      lt.repeat.set(1.35, 1.15);
       lt.needsUpdate = true;
-      clothMat = new THREE.MeshStandardMaterial({ map: lt, roughness: 0.88, side: THREE.DoubleSide });
+      clothMat = new THREE.MeshStandardMaterial({ map: lt, roughness: 0.86, side: THREE.DoubleSide });
     } else {
-      clothMat = new THREE.MeshStandardMaterial({ color: 0x1A3A5C, roughness: 0.88, side: THREE.DoubleSide });
+      clothMat = new THREE.MeshStandardMaterial({ color: 0x1A3A5C, roughness: 0.86, side: THREE.DoubleSide });
     }
-    var cloth = new THREE.Mesh(clothGeo, clothMat);
-    cloth.position.set(0, rodY - clothH / 2, 0);
-    cloth.castShadow = true;
-    cloth.receiveShadow = true;
-    g.add(cloth);
+    // 刚出缸偏绿、氧化后才转蓝：资料记的就是这个次序，晾架上两色并置
+    var freshGreen = new THREE.MeshStandardMaterial({ color: 0x3C5C46, roughness: 0.9, side: THREE.DoubleSide });
 
-    // ---- 挂钩 ----
-    [-0.55, -0.2, 0.2, 0.55].forEach(function (hx) {
-      var hook = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.007, 6, 12),
-        new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }));
-      hook.position.set(hx, rodY - 0.035, 0);
-      hook.rotation.x = Math.PI / 2;
-      g.add(hook);
+    // 三幅不同长度的垂布，顶上一段绕着横梁翻过去，布与杆之间不留缝
+    function drape(name, cx, width, len, phase, amp, mat, z0) {
+      var cols = 26, rows = 34, pos = [], uv = [], idx = [];
+      for (var j = 0; j <= rows; j++) {
+        var t = j / rows;
+        for (var i = 0; i <= cols; i++) {
+          var u = i / cols - 0.5;
+          var x = cx + u * width, y, z;
+          if (t < 0.10) {
+            var a = (t / 0.10) * Math.PI * 0.92 - Math.PI * 0.46;
+            y = rodY + Math.cos(a) * 0.055;
+            z = z0 + Math.sin(a) * 0.055;
+          } else {
+            var s2 = (t - 0.10) / 0.90;
+            y = rodY - 0.055 - s2 * len * (1 - 0.05 * Math.cos(u * Math.PI * 3));
+            z = z0 + Math.sin(u * Math.PI * 5.5 + phase) * amp * (0.30 + 0.70 * s2)
+                     + Math.sin(u * Math.PI * 13 + phase * 2) * amp * 0.22 * s2;
+          }
+          pos.push(x, y, z);
+          uv.push(i / cols, t);
+        }
+      }
+      for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
+        var a0 = r * (cols + 1) + c, b0 = a0 + cols + 1;
+        idx.push(a0, b0, a0 + 1, b0, b0 + 1, a0 + 1);
+      }
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      var m = new THREE.Mesh(geo, mat);
+      m.name = name; m.castShadow = true; m.receiveShadow = true;
+      g.add(m);
+    }
+    drape('hanging_indigo_cloth_main', -0.42, 0.62, 1.24, 0.4, 0.075, clothMat, 0.02);
+    drape('hanging_indigo_cloth_second', 0.30, 0.52, 1.02, 1.9, 0.062, clothMat, -0.05);
+    drape('fresh_out_of_vat_green_cloth', 0.78, 0.30, 0.52, 3.1, 0.05, freshGreen, 0.06);
+    [-0.72, -0.12, 0.06, 0.54].forEach(function (hx, n) {
+      var clip = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.14, 0.05), wood);
+      clip.position.set(hx, rodY - 0.02, n % 2 ? 0.06 : -0.06);
+      clip.rotation.z = 0.12 * (n % 2 ? 1 : -1);
+      clip.name = 'cloth_clip_' + n;
+      g.add(clip);
     });
 
-    // ---- 染缸 ----
-    var vatY = -0.65;
-    var vatMat = new THREE.MeshStandardMaterial({ color: 0x4A3528, roughness: 0.9 });
-    var vat = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.32, 0.5, 16), vatMat);
-    vat.position.set(0, vatY, -0.4);
+    // 染缸：陶缸旋转成型，配靛泥液面、发酵泡沫圈与染杵
+    var vatMat = new THREE.MeshStandardMaterial({ color: 0x53412F, roughness: 0.88 });
+    var vatProfile = [
+      [0.00, 0.00], [0.26, 0.00], [0.30, 0.05], [0.37, 0.18],
+      [0.40, 0.34], [0.38, 0.50], [0.33, 0.58], [0.335, 0.62], [0.30, 0.63]
+    ].map(function (v) { return new THREE.Vector2(v[0], v[1]); });
+    var vat = new THREE.Mesh(new THREE.LatheGeometry(vatProfile, 26), vatMat);
+    vat.position.set(-0.86, 0, -0.34);
     vat.castShadow = true;
+    vat.name = 'indigo_vat';
     g.add(vat);
-    var vatRim = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.022, 8, 16), vatMat);
-    vatRim.rotation.x = Math.PI / 2;
-    vatRim.position.set(0, vatY + 0.25, -0.4);
-    g.add(vatRim);
-    // 染液（深靛蓝）
-    var liq = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.03, 16),
-      new THREE.MeshStandardMaterial({ color: 0x0A1E30, roughness: 0.1, metalness: 0.05 }));
-    liq.position.set(0, vatY + 0.18, -0.4);
+    var liq = new THREE.Mesh(new THREE.CylinderGeometry(0.295, 0.295, 0.02, 24),
+      new THREE.MeshStandardMaterial({ color: 0x0B2135, roughness: 0.22, metalness: 0.08 }));
+    liq.position.set(-0.86, 0.52, -0.34);
+    liq.name = 'indigo_liquid_surface';
     g.add(liq);
+    var foam = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.022, 7, 22),
+      new THREE.MeshStandardMaterial({ color: 0x4F6B4A, roughness: 0.6 }));
+    foam.rotation.x = Math.PI / 2;
+    foam.position.set(-0.86, 0.535, -0.34);
+    foam.name = 'vat_fermentation_scum';
+    g.add(foam);
+    var pestle = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.86, 8), woodDark);
+    pestle.position.set(-0.74, 0.62, -0.28);
+    pestle.rotation.set(0.30, 0, -0.34);
+    pestle.name = 'dipping_pestle';
+    g.add(pestle);
 
-    // ---- 板蓝根植物 ----
-    var groundY = -1.0;
-    var stemMat = new THREE.MeshStandardMaterial({ color: 0x3D6B2E, roughness: 0.7 });
-    var leafMat = new THREE.MeshStandardMaterial({ color: 0x2D5A22, roughness: 0.65, side: THREE.DoubleSide });
-    var px = 0.9, pz = 0.25;
-    var stemH = 0.5;
-    var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, stemH, 6), stemMat);
-    stem.position.set(px, groundY + stemH / 2, pz);
-    g.add(stem);
-    for (var li = 0; li < 5; li++) {
-      var leaf = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.065), leafMat);
-      var la = (li / 5) * Math.PI * 2;
-      leaf.position.set(
-        px + Math.cos(la) * 0.06,
-        groundY + stemH * 0.35 + li * 0.07,
-        pz + Math.sin(la) * 0.06
-      );
-      leaf.rotation.y = la;
-      leaf.rotation.x = -0.35;
-      g.add(leaf);
+    // 蜡染模板：李洁春在古法之外加的一步，刻好花纹的木板
+    var board = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.44, 0.022), woodDark);
+    board.position.set(1.02, 0.24, -0.44);
+    board.rotation.set(-0.26, 0.34, 0.10);
+    board.name = 'wax_resist_template';
+    g.add(board);
+    var tmplMat = new THREE.MeshStandardMaterial({ color: 0xD9CFB6, roughness: 0.7 });
+    [[0, 0.14], [0, -0.12], [-0.10, 0.02], [0.10, 0.02]].forEach(function (o, n) {
+      var cut = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.008, 6, 14), tmplMat);
+      cut.position.set(1.02 + o[0] * 0.92, 0.24 + o[1], -0.44 + 0.016);
+      cut.rotation.set(-0.26, 0.34, 0.10);
+      cut.name = 'template_cutout_' + n;
+      g.add(cut);
+    });
+
+    // 板蓝根：一丛带叶的蓝草（叶子实例化）+ 缸边扎好的一捆
+    var stemMat = new THREE.MeshStandardMaterial({ color: 0x416B32, roughness: 0.75 });
+    var leafMat = new THREE.MeshStandardMaterial({ color: 0x2F5A26, roughness: 0.68, side: THREE.DoubleSide });
+    var bx = 0.34, bz = 0.62, leafM = [];
+    for (var st = 0; st < 5; st++) {
+      var sa = (st / 5) * Math.PI * 2 + 0.4, sr = 0.06 + (st % 2) * 0.05;
+      var sh = 0.52 + (st % 3) * 0.16;
+      var sx = bx + Math.cos(sa) * sr, sz = bz + Math.sin(sa) * sr;
+      var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.016, sh, 6), stemMat);
+      stem.position.set(sx, sh / 2, sz);
+      stem.rotation.set(Math.sin(sa) * 0.14, 0, -Math.cos(sa) * 0.14);
+      stem.name = 'indigo_plant_stem_' + st;
+      g.add(stem);
+      for (var lf = 0; lf < 6; lf++) {
+        var la = sa + lf * 1.15, ly = 0.14 + lf * (sh - 0.2) / 5;
+        leafM.push([sx + Math.cos(la) * 0.075, ly, sz + Math.sin(la) * 0.075, -0.42, la, (lf % 2 ? 0.2 : -0.2)]);
+      }
     }
+    var leafGeo = new THREE.CircleGeometry(0.055, 8);
+    leafGeo.scale(1, 0.42, 1);
+    var leaves = new THREE.InstancedMesh(leafGeo, leafMat, leafM.length);
+    leaves.name = 'indigo_leaves';
+    var lo = new THREE.Object3D();
+    leafM.forEach(function (m, n) {
+      lo.position.set(m[0], m[1], m[2]);
+      lo.rotation.set(m[3], m[4], m[5]);
+      lo.updateMatrix();
+      leaves.setMatrixAt(n, lo.matrix);
+    });
+    leaves.instanceMatrix.needsUpdate = true;
+    leaves.castShadow = true;
+    g.add(leaves);
+    var bundle = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.56, 10), stemMat);
+    bundle.position.set(-0.26, 0.085, 0.34);
+    bundle.rotation.z = Math.PI / 2;
+    bundle.name = 'harvested_indigo_bundle';
+    g.add(bundle);
+    [0.16, -0.16].forEach(function (o, n) {
+      var tie = new THREE.Mesh(new THREE.TorusGeometry(0.082, 0.009, 6, 14),
+        new THREE.MeshStandardMaterial({ color: 0x8A7A4E, roughness: 0.85 }));
+      tie.position.set(-0.26 + o, 0.085, 0.34);
+      tie.rotation.y = Math.PI / 2;
+      tie.name = 'bundle_tie_' + n;
+      g.add(tie);
+    });
 
     return g;
   }
@@ -719,62 +802,128 @@
     var g = new THREE.Group();
     var weave = canvasTex('bambooWeave', 3, 3);
     var cloth = canvasTex('hatCloth', 4, 1);
-
     var R = 0.95;
-    var crown = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.34, 0.38, 0.20, 28),
-      new THREE.MeshStandardMaterial({ map: weave, color: 0xD8B57E, roughness: 0.85 })
-    );
+    var bamboo = new THREE.MeshStandardMaterial({ map: weave, color: 0xD8B57E, roughness: 0.85 });
+    var bambooDark = new THREE.MeshStandardMaterial({ color: 0x9C7138, roughness: 0.8 });
+    // 色偏近白、只留一点蓝味：hatCloth 本身就深，再乘一个中等蓝就成了黑布
+    var blue = new THREE.MeshStandardMaterial({ map: cloth, color: 0xDCEAF2, roughness: 0.9, side: THREE.DoubleSide });
+
+    var crown = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.38, 0.20, 28), bamboo);
     crown.position.y = 0.34;
     crown.castShadow = true;
     g.add(crown);
 
+    // 顶覆蓝布：资料说宁龙片凉帽是竹篾檐、顶覆蓝布，不是整顶竹的
+    var cover = new THREE.Mesh(new THREE.SphereGeometry(0.365, 26, 12, 0, Math.PI * 2, 0, Math.PI * 0.44), blue);
+    cover.position.y = 0.245;
+    cover.castShadow = true;
+    cover.name = 'blue_cloth_crown_cover';
+    g.add(cover);
+    var coverEdge = new THREE.Mesh(new THREE.TorusGeometry(0.352, 0.016, 7, 30), bambooDark);
+    coverEdge.rotation.x = Math.PI / 2;
+    coverEdge.position.y = 0.44;
+    coverEdge.name = 'crown_cover_binding';
+    g.add(coverEdge);
+
     // 帽檐：扁平竹篾编的圆盘
-    var brim = new THREE.Mesh(
-      new THREE.CylinderGeometry(R, R, 0.035, 48),
-      new THREE.MeshStandardMaterial({ map: weave, color: 0xD8B57E, roughness: 0.85, side: THREE.DoubleSide })
-    );
+    var brim = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.035, 48),
+      new THREE.MeshStandardMaterial({ map: weave, color: 0xD8B57E, roughness: 0.85, side: THREE.DoubleSide }));
     brim.position.y = 0.22;
     brim.castShadow = true;
     g.add(brim);
 
-    // 垂布：绕帽檐一圈，带褶
-    var skirtH = 0.52;
-    var skirtGeo = new THREE.CylinderGeometry(R * 1.01, R * 1.06, skirtH, 64, 6, true);
+    // 放射状竹篾：从帽顶向外一根根铺，扁平檐才读得出是编的而不是一张片
+    var ribM = [];
+    for (var rb = 0; rb < 24; rb++) {
+      var ra2 = (rb / 24) * Math.PI * 2;
+      ribM.push([Math.cos(ra2) * (R * 0.52), 0.243, Math.sin(ra2) * (R * 0.52), 0, -ra2, 0, 1, 1, 1]);
+    }
+    var ribGeo = new THREE.BoxGeometry(R * 0.9, 0.008, 0.026);
+    var ribs = new THREE.InstancedMesh(ribGeo, bambooDark, ribM.length);
+    ribs.name = 'radiating_bamboo_ribs';
+    var ro = new THREE.Object3D();
+    ribM.forEach(function (m, n) {
+      ro.position.set(m[0], m[1], m[2]);
+      ro.rotation.set(0, m[4], 0);
+      ro.updateMatrix();
+      ribs.setMatrixAt(n, ro.matrix);
+    });
+    ribs.instanceMatrix.needsUpdate = true;
+    g.add(ribs);
+
+    // 檐缘包边：竹皮一圈缠住断口
+    var brimEdge = new THREE.Mesh(new THREE.TorusGeometry(R, 0.026, 9, 56), bambooDark);
+    brimEdge.rotation.x = Math.PI / 2;
+    brimEdge.position.y = 0.222;
+    brimEdge.name = 'brim_wrapped_edge';
+    brimEdge.castShadow = true;
+    g.add(brimEdge);
+    // 内圈汗带
+    var sweat = new THREE.Mesh(new THREE.TorusGeometry(0.335, 0.028, 8, 26),
+      new THREE.MeshStandardMaterial({ color: 0x6B4A2A, roughness: 0.9 }));
+    sweat.rotation.x = Math.PI / 2;
+    sweat.position.y = 0.245;
+    sweat.name = 'inner_sweat_band';
+    g.add(sweat);
+
+    // 垂布：绕帽檐一圈带褶，前低后高——遮面是它的功能
+    var skirtH = 0.60;
+    var skirtGeo = new THREE.CylinderGeometry(R * 1.01, R * 1.07, skirtH, 72, 8, true);
     var sp = skirtGeo.attributes.position;
     for (var i = 0; i < sp.count; i++) {
       var x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i);
       var ang = Math.atan2(z, x);
-      // 褶量随高度增大，下摆更松散
       var t = (y + skirtH / 2) / skirtH;
-      var pleat = Math.sin(ang * 18) * 0.022 * (1.15 - t);
+      var pleat = (Math.sin(ang * 24) * 0.030 + Math.sin(ang * 37 + 1.2) * 0.010) * (1.15 - t);
       var rr = Math.sqrt(x * x + z * z) + pleat;
+      // 前侧（+z）多垂一段，后侧收短
+      var front = Math.max(0, Math.sin(ang)) * 0 + Math.max(0, z / R);
       sp.setX(i, Math.cos(ang) * rr);
       sp.setZ(i, Math.sin(ang) * rr);
-      sp.setY(i, y - Math.abs(pleat) * 0.4);
+      sp.setY(i, y - front * 0.16 - Math.abs(pleat) * 0.4);
     }
     skirtGeo.computeVertexNormals();
-    var skirt = new THREE.Mesh(skirtGeo, new THREE.MeshStandardMaterial({
-      map: cloth, color: 0x8FB3C4, roughness: 0.92, side: THREE.DoubleSide
-    }));
+    var skirt = new THREE.Mesh(skirtGeo, blue);
     skirt.position.y = 0.22 - skirtH / 2 + 0.02;
     skirt.castShadow = true;
+    skirt.name = 'indigo_pleated_face_veil';
     g.add(skirt);
+    // 褶圈下沿的布边
+    var veilEdge = new THREE.Mesh(new THREE.TorusGeometry(R * 1.07, 0.014, 6, 56),
+      new THREE.MeshStandardMaterial({ color: 0x3F5F72, roughness: 0.9 }));
+    veilEdge.rotation.x = Math.PI / 2;
+    veilEdge.position.y = 0.22 - skirtH + 0.02;
+    veilEdge.name = 'veil_lower_hem';
+    g.add(veilEdge);
 
-    // 帽顶红布结与系带
-    var knot = new THREE.Mesh(
-      new THREE.SphereGeometry(0.075, 16, 12),
-      new THREE.MeshStandardMaterial({ color: 0xB03A28, roughness: 0.7 })
-    );
-    knot.position.y = 0.47;
+    // 帽顶红布结：缠布的圆钮，不是一颗光球
+    var knot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12),
+      new THREE.MeshStandardMaterial({ color: 0xB03A28, roughness: 0.72 }));
+    knot.position.y = 0.50;
+    knot.castShadow = true;
     g.add(knot);
+    [0, Math.PI / 2].forEach(function (ta, n) {
+      var wrap = new THREE.Mesh(new THREE.TorusGeometry(0.071, 0.009, 6, 18),
+        new THREE.MeshStandardMaterial({ color: 0x8A2A1E, roughness: 0.75 }));
+      wrap.position.y = 0.50;
+      wrap.rotation.set(Math.PI / 2, 0, ta);
+      wrap.name = 'button_wrap_' + n;
+      g.add(wrap);
+    });
 
+    // 系带与带结
     var strapMat = new THREE.MeshStandardMaterial({ color: 0xC9C2B0, roughness: 0.9 });
     [-1, 1].forEach(function (s) {
       var strap = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.55, 8), strapMat);
       strap.position.set(s * 0.30, -0.28, 0.16);
       strap.rotation.z = s * 0.28;
+      strap.name = 'chin_strap_' + (s < 0 ? 'L' : 'R');
       g.add(strap);
+      var bow = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.010, 6, 14), strapMat);
+      bow.position.set(s * 0.36, -0.54, 0.16);
+      bow.rotation.y = Math.PI / 2;
+      bow.name = 'strap_knot_' + (s < 0 ? 'L' : 'R');
+      g.add(bow);
     });
 
     g.position.y = 0.35;
@@ -786,27 +935,35 @@
      ================================================================ */
   function buildBoji() {
     var g = new THREE.Group();
-    var weave = canvasTex('bambooWeave', 4, 2);
+    var weave = canvasTex('bambooWeave', 6, 3);
     var mat = new THREE.MeshStandardMaterial({
       map: weave, color: 0xD9B77E, roughness: 0.86, side: THREE.DoubleSide
     });
-
     var R = 1.0;
-    // 底面略微下凹的圆盘
-    var base = new THREE.Mesh(new THREE.CircleGeometry(R * 0.96, 48), mat);
-    base.rotation.x = -Math.PI / 2;
+
+    // 底面：浅碟形下凹，不再是与侧壁脱节的平盘
+    var baseGeo = new THREE.CircleGeometry(R * 0.965, 64, 0, Math.PI * 2);
+    baseGeo.rotateX(-Math.PI / 2);
+    var bp = baseGeo.attributes.position;
+    for (var bi = 0; bi < bp.count; bi++) {
+      var bxr = Math.hypot(bp.getX(bi), bp.getZ(bi)) / (R * 0.965);
+      bp.setY(bi, -0.055 * (1 - bxr * bxr));
+    }
+    baseGeo.computeVertexNormals();
+    var base = new THREE.Mesh(baseGeo, mat);
     base.receiveShadow = true;
+    base.name = 'basket_woven_floor';
     g.add(base);
 
-    // 侧壁：向外敞开的浅口
-    var wallGeo = new THREE.CylinderGeometry(R * 0.96, R, 0.20, 48, 3, true);
+    // 侧壁：向外敞开的浅口，带一挑一压的边口起伏
+    var wallGeo = new THREE.CylinderGeometry(R * 0.965, R, 0.22, 64, 4, true);
     var wp = wallGeo.attributes.position;
     for (var i = 0; i < wp.count; i++) {
       var y = wp.getY(i);
-      var t = (y + 0.10) / 0.20;
+      var t = (y + 0.11) / 0.22;
       var ang = Math.atan2(wp.getZ(i), wp.getX(i));
       var rr = Math.sqrt(wp.getX(i) * wp.getX(i) + wp.getZ(i) * wp.getZ(i));
-      rr += Math.sin(ang * 26) * 0.006 * t;   // 边沿的细密编痕
+      rr += Math.sin(ang * 26) * 0.007 * t + Math.sin(ang * 13) * 0.004 * t;
       wp.setX(i, Math.cos(ang) * rr);
       wp.setZ(i, Math.sin(ang) * rr);
     }
@@ -814,40 +971,126 @@
     var wall = new THREE.Mesh(wallGeo, mat);
     wall.position.y = 0.10;
     wall.castShadow = true;
+    wall.name = 'basket_woven_wall';
     g.add(wall);
 
-    // 缠竹皮的圈口
-    var rim = new THREE.Mesh(
-      new THREE.TorusGeometry(R, 0.028, 10, 56),
-      new THREE.MeshStandardMaterial({ color: 0x9C6B33, roughness: 0.72 })
-    );
+    // 纬篾凸痕：一圈圈压过经篾的纬条，编法在近景读得出来
+    var weft = [], o3 = new THREE.Object3D();
+    for (var wf = 0; wf < 4; wf++) {
+      var wy = 0.045 + wf * 0.048;
+      // 贴着侧壁的敞口走：壁是下窄上宽的锥面，固定半径会让纬篾在上沿支出来
+      var wr = R * (1 - 0.035 * ((wy + 0.01) / 0.22)) + 0.004;
+      for (var wn = 0; wn < 46; wn++) {
+        var wa = (wn / 46) * Math.PI * 2;
+        weft.push([Math.cos(wa) * wr, wy, Math.sin(wa) * wr, 0, -wa, 0.34 * (wf % 2 ? 1 : -1)]);
+      }
+    }
+    var weftMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.055, 0.014, 0.008),
+      new THREE.MeshStandardMaterial({ color: 0xC79A5E, roughness: 0.84 }), weft.length);
+    weftMesh.name = 'weft_bamboo_over_under';
+    weft.forEach(function (m, n) {
+      o3.position.set(m[0], m[1], m[2]);
+      o3.rotation.set(m[3], m[4], m[5]);
+      o3.updateMatrix();
+      weftMesh.setMatrixAt(n, o3.matrix);
+    });
+    weftMesh.instanceMatrix.needsUpdate = true;
+    g.add(weftMesh);
+
+    // 圈口：主篾 + 缠竹皮（斜着一圈圈裹住断口）+ 内穿骨架
+    var rimMat = new THREE.MeshStandardMaterial({ color: 0x9C6B33, roughness: 0.72 });
+    var rim = new THREE.Mesh(new THREE.TorusGeometry(R, 0.028, 10, 56), rimMat);
     rim.rotation.x = Math.PI / 2;
-    rim.position.y = 0.20;
+    rim.position.y = 0.21;
     rim.castShadow = true;
+    rim.name = 'basket_rim_core';
     g.add(rim);
+    var wrapM = [];
+    for (var wk = 0; wk < 40; wk++) {
+      var wka = (wk / 40) * Math.PI * 2;
+      wrapM.push([Math.cos(wka) * R, 0.21, Math.sin(wka) * R, Math.PI / 2, wka, 0.55]);
+    }
+    var wrapMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.062, 0.016, 0.012),
+      new THREE.MeshStandardMaterial({ color: 0xB07C3C, roughness: 0.78 }), wrapM.length);
+    wrapMesh.name = 'rim_binding_wrapped_peel';
+    wrapM.forEach(function (m, n) {
+      o3.position.set(m[0], m[1], m[2]);
+      o3.rotation.set(m[3], m[4], m[5]);
+      o3.updateMatrix();
+      wrapMesh.setMatrixAt(n, o3.matrix);
+    });
+    wrapMesh.instanceMatrix.needsUpdate = true;
+    g.add(wrapMesh);
+    var stay = new THREE.Mesh(new THREE.TorusGeometry(R * 0.86, 0.014, 6, 44), rimMat);
+    stay.rotation.x = Math.PI / 2;
+    stay.position.y = 0.055;
+    stay.name = 'inner_stay_ring';
+    g.add(stay);
 
     // 三足
     var footMat = new THREE.MeshStandardMaterial({ color: 0x7A5228, roughness: 0.8 });
     for (var f = 0; f < 3; f++) {
-      var a = (f / 3) * Math.PI * 2 + 0.4;
+      var fa = (f / 3) * Math.PI * 2 + 0.4;
       var foot = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 0.12, 10), footMat);
-      foot.position.set(Math.cos(a) * R * 0.62, -0.06, Math.sin(a) * R * 0.62);
+      foot.position.set(Math.cos(fa) * R * 0.62, -0.06, Math.sin(fa) * R * 0.62);
+      foot.name = 'basket_foot_' + f;
       g.add(foot);
     }
 
-    // 簸箕里摊一点谷粒，说明用途
-    var grainMat = new THREE.MeshStandardMaterial({ color: 0xC8A24A, roughness: 0.65 });
-    var grain = new THREE.InstancedMesh(new THREE.SphereGeometry(0.022, 6, 5), grainMat, 90);
-    var m4 = new THREE.Matrix4();
-    for (var k = 0; k < 90; k++) {
-      var ra = Math.sqrt(Math.random()) * R * 0.72;
-      var ta = Math.random() * Math.PI * 2;
-      m4.makeScale(1, 0.6, 1);
-      m4.setPosition(Math.cos(ta) * ra, 0.02, Math.sin(ta) * ra);
-      grain.setMatrixAt(k, m4);
+    // 摊着的稻谷：带芒的细长粒，中间厚、边缘稀；再撒一点糠秕
+    var grainM = [];
+    for (var k = 0; k < 150; k++) {
+      var gr = Math.pow(Math.random(), 0.62) * R * 0.70;
+      var ga = Math.random() * Math.PI * 2;
+      var gy = -0.055 * (1 - Math.pow(gr / (R * 0.965), 2)) + 0.012;
+      grainM.push([Math.cos(ga) * gr, gy, Math.sin(ga) * gr,
+                   (Math.random() - 0.5) * 0.5, Math.random() * Math.PI * 2, 0]);
     }
+    var grainGeo = new THREE.SphereGeometry(0.021, 7, 6);
+    grainGeo.scale(1, 0.52, 2.05);
+    var grain = new THREE.InstancedMesh(grainGeo,
+      new THREE.MeshStandardMaterial({ color: 0xC8A24A, roughness: 0.65 }), grainM.length);
+    grain.name = 'rice_grains_with_awns';
+    grainM.forEach(function (m, n) {
+      o3.position.set(m[0], m[1], m[2]);
+      o3.rotation.set(m[3], m[4], m[5]);
+      o3.updateMatrix();
+      grain.setMatrixAt(n, o3.matrix);
+    });
     grain.instanceMatrix.needsUpdate = true;
+    grain.castShadow = true;
     g.add(grain);
+    var awnM = [];
+    for (var an = 0; an < 60; an++) {
+      var ar = Math.pow(Math.random(), 0.6) * R * 0.66, aa = Math.random() * Math.PI * 2;
+      awnM.push([Math.cos(aa) * ar, -0.055 * (1 - Math.pow(ar / (R * 0.965), 2)) + 0.026, Math.sin(aa) * ar,
+                 (Math.random() - 0.5) * 0.9, Math.random() * Math.PI * 2, 0]);
+    }
+    var awnGeo = new THREE.CylinderGeometry(0.0016, 0.0016, 0.05, 4);
+    awnGeo.rotateZ(Math.PI / 2);
+    var awns = new THREE.InstancedMesh(awnGeo,
+      new THREE.MeshStandardMaterial({ color: 0xD8C48E, roughness: 0.8 }), awnM.length);
+    awns.name = 'rice_awns';
+    awnM.forEach(function (m, n) {
+      o3.position.set(m[0], m[1], m[2]);
+      o3.rotation.set(m[3], m[4], m[5]);
+      o3.updateMatrix();
+      awns.setMatrixAt(n, o3.matrix);
+    });
+    awns.instanceMatrix.needsUpdate = true;
+    g.add(awns);
+    var chaff = new THREE.InstancedMesh(new THREE.BoxGeometry(0.016, 0.003, 0.011),
+      new THREE.MeshStandardMaterial({ color: 0x8E7343, roughness: 0.9 }), 70);
+    chaff.name = 'chaff_flecks';
+    for (var cf = 0; cf < 70; cf++) {
+      var cr = Math.random() * R * 0.8, ca = Math.random() * Math.PI * 2;
+      o3.position.set(Math.cos(ca) * cr, -0.055 * (1 - Math.pow(cr / (R * 0.965), 2)) + 0.006, Math.sin(ca) * cr);
+      o3.rotation.set(0, Math.random() * Math.PI, 0);
+      o3.updateMatrix();
+      chaff.setMatrixAt(cf, o3.matrix);
+    }
+    chaff.instanceMatrix.needsUpdate = true;
+    g.add(chaff);
 
     g.position.y = 0.12;
     return g;
@@ -967,6 +1210,7 @@
   function buildMijiutan() {
     var g = new THREE.Group();
     var glaze = canvasTex('glazeJar', 2, 1);
+    var jarMat = new THREE.MeshStandardMaterial({ map: glaze, color: 0xC98A52, roughness: 0.42, metalness: 0.06 });
 
     // 坛身：一条轮廓线旋转成型
     var profile = [
@@ -974,59 +1218,130 @@
       [0.50, 0.34], [0.53, 0.52], [0.50, 0.70], [0.42, 0.86],
       [0.32, 0.96], [0.27, 1.02], [0.28, 1.08], [0.31, 1.12], [0.29, 1.15]
     ].map(function (v) { return new THREE.Vector2(v[0], v[1]); });
-
-    var body = new THREE.Mesh(
-      new THREE.LatheGeometry(profile, 48),
-      new THREE.MeshStandardMaterial({ map: glaze, color: 0xC98A52, roughness: 0.42, metalness: 0.06 })
-    );
+    var body = new THREE.Mesh(new THREE.LatheGeometry(profile, 48), jarMat);
     body.castShadow = true;
     body.receiveShadow = true;
+    body.name = 'wine_jar_body';
     g.add(body);
 
-    // 肩部的弦纹
-    [0.62, 0.70].forEach(function (y) {
-      var ring = new THREE.Mesh(
-        new THREE.TorusGeometry(0.50, 0.010, 6, 40),
-        new THREE.MeshStandardMaterial({ color: 0x3B2213, roughness: 0.6 })
-      );
+    // 底部露胎：釉不到底，酱釉坛的烧制特征
+    var raw = new THREE.Mesh(new THREE.CylinderGeometry(0.315, 0.30, 0.055, 34),
+      new THREE.MeshStandardMaterial({ color: 0x8A6244, roughness: 0.95 }));
+    raw.position.y = 0.026;
+    raw.name = 'unglazed_foot_ring';
+    g.add(raw);
+
+    // 肩部弦纹与指压纹：资料记"肩部弦纹"
+    var cordMat = new THREE.MeshStandardMaterial({ color: 0x3B2213, roughness: 0.6 });
+    [0.60, 0.665, 0.73].forEach(function (y, n) {
+      var ring = new THREE.Mesh(new THREE.TorusGeometry(0.505 - n * 0.006, 0.010, 6, 40), cordMat);
       ring.rotation.x = Math.PI / 2;
       ring.position.y = y;
+      ring.name = 'shoulder_cord_' + n;
       g.add(ring);
     });
+    var pressM = [], po = new THREE.Object3D();
+    for (var pn = 0; pn < 26; pn++) {
+      var pa = (pn / 26) * Math.PI * 2;
+      pressM.push([Math.cos(pa) * 0.455, 0.80, Math.sin(pa) * 0.455, Math.PI / 2, -pa, 0]);
+    }
+    var press = new THREE.InstancedMesh(new THREE.SphereGeometry(0.026, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xB07E4C, roughness: 0.55 }), pressM.length);
+    press.name = 'shoulder_finger_impressions';
+    pressM.forEach(function (m, n) {
+      po.position.set(m[0], m[1], m[2]);
+      po.rotation.set(m[3], m[4], m[5]);
+      po.scale.set(1, 1, 0.45);
+      po.updateMatrix();
+      press.setMatrixAt(n, po.matrix);
+    });
+    press.instanceMatrix.needsUpdate = true;
+    g.add(press);
 
-    // 红纸封口 + 扎绳
-    var cap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.34, 0.30, 0.07, 28),
-      new THREE.MeshStandardMaterial({ color: 0xB2352A, roughness: 0.78 })
-    );
+    // 红纸封口：纸面有褶皱，不是光滑圆柱
+    var paperMat = new THREE.MeshStandardMaterial({ color: 0xB2352A, roughness: 0.78, side: THREE.DoubleSide });
+    var capGeo = new THREE.CylinderGeometry(0.34, 0.30, 0.07, 30, 3, false);
+    var cp = capGeo.attributes.position;
+    for (var ci = 0; ci < cp.count; ci++) {
+      var cx = cp.getX(ci), cy = cp.getY(ci), cz = cp.getZ(ci);
+      var ca = Math.atan2(cz, cx), cr = Math.hypot(cx, cz);
+      var crinkle = Math.sin(ca * 9 + cy * 12) * 0.008 + Math.sin(ca * 21) * 0.004;
+      cp.setX(ci, Math.cos(ca) * (cr + crinkle));
+      cp.setZ(ci, Math.sin(ca) * (cr + crinkle));
+    }
+    capGeo.computeVertexNormals();
+    var cap = new THREE.Mesh(capGeo, paperMat);
     cap.position.y = 1.18;
     cap.castShadow = true;
+    cap.name = 'red_paper_seal_skirt';
     g.add(cap);
-    var dome = new THREE.Mesh(
-      new THREE.SphereGeometry(0.33, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.4),
-      new THREE.MeshStandardMaterial({ color: 0x9E2C22, roughness: 0.8 })
-    );
+    var domeGeo = new THREE.SphereGeometry(0.33, 30, 14, 0, Math.PI * 2, 0, Math.PI / 2.4);
+    var dp = domeGeo.attributes.position;
+    for (var di = 0; di < dp.count; di++) {
+      var dx = dp.getX(di), dy = dp.getY(di), dz = dp.getZ(di);
+      var da = Math.atan2(dz, dx);
+      var bulge = 1 + Math.sin(da * 8) * 0.035 + Math.sin(da * 19) * 0.015;
+      dp.setX(di, dx * bulge);
+      dp.setZ(di, dz * bulge);
+    }
+    domeGeo.computeVertexNormals();
+    var dome = new THREE.Mesh(domeGeo, new THREE.MeshStandardMaterial({ color: 0x9E2C22, roughness: 0.8, side: THREE.DoubleSide }));
     dome.position.y = 1.21;
+    dome.name = 'red_paper_seal_dome';
     g.add(dome);
-    var cord = new THREE.Mesh(
-      new THREE.TorusGeometry(0.315, 0.014, 6, 30),
-      new THREE.MeshStandardMaterial({ color: 0x4A3A22, roughness: 0.9 })
-    );
-    cord.rotation.x = Math.PI / 2;
-    cord.position.y = 1.155;
-    g.add(cord);
+    // 两道扎绳与绳结
+    [1.155, 1.128].forEach(function (y, n) {
+      var cord = new THREE.Mesh(new THREE.TorusGeometry(0.318 - n * 0.006, 0.013, 6, 30),
+        new THREE.MeshStandardMaterial({ color: 0x4A3A22, roughness: 0.9 }));
+      cord.rotation.x = Math.PI / 2;
+      cord.position.y = y;
+      cord.name = 'seal_cord_' + n;
+      g.add(cord);
+    });
+    [[0.30, 0.06], [-0.22, -0.20]].forEach(function (o, n) {
+      var knotA = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.010, 6, 14),
+        new THREE.MeshStandardMaterial({ color: 0x4A3A22, roughness: 0.9 }));
+      knotA.position.set(o[0], 1.145, o[1]);
+      knotA.rotation.set(1.2, 0.5 * (n ? -1 : 1), 0.3);
+      knotA.name = 'cord_loop_' + n;
+      g.add(knotA);
+      var tail = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.006, 0.12, 6),
+        new THREE.MeshStandardMaterial({ color: 0x54401F, roughness: 0.9 }));
+      tail.position.set(o[0] * 1.06, 1.085, o[1] * 1.06);
+      tail.rotation.z = 0.34 * (n ? -1 : 1);
+      tail.name = 'cord_tail_' + n;
+      g.add(tail);
+    });
 
-    // 坛前一只酒盏
+    // 坛前一只酒盏与一把竹酒提
     var cupProfile = [
       [0.00, 0.00], [0.10, 0.00], [0.12, 0.02], [0.14, 0.07], [0.13, 0.08], [0.10, 0.05]
     ].map(function (v) { return new THREE.Vector2(v[0], v[1]); });
-    var cup = new THREE.Mesh(
-      new THREE.LatheGeometry(cupProfile, 24),
-      new THREE.MeshStandardMaterial({ color: 0xE8E0CC, roughness: 0.5, side: THREE.DoubleSide })
-    );
+    var cup = new THREE.Mesh(new THREE.LatheGeometry(cupProfile, 24),
+      new THREE.MeshStandardMaterial({ color: 0xE8E0CC, roughness: 0.5, side: THREE.DoubleSide }));
     cup.position.set(0.62, 0.0, 0.42);
     cup.castShadow = true;
+    cup.name = 'wine_cup';
     g.add(cup);
+    var ladleHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.52, 8),
+      new THREE.MeshStandardMaterial({ color: 0xB08C50, roughness: 0.8 }));
+    ladleHandle.position.set(-0.52, 0.16, 0.40);
+    ladleHandle.rotation.set(0.20, 0, 1.16);
+    ladleHandle.name = 'bamboo_ladle_handle';
+    g.add(ladleHandle);
+    var ladleCup = new THREE.Mesh(new THREE.SphereGeometry(0.062, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      new THREE.MeshStandardMaterial({ color: 0xA67E46, roughness: 0.8, side: THREE.DoubleSide }));
+    ladleCup.position.set(-0.29, 0.05, 0.44);
+    ladleCup.rotation.x = 0.32;
+    ladleCup.name = 'bamboo_ladle_cup';
+    g.add(ladleCup);
+    // 坛下的草垫：酒坛不直接落地，防潮也防滑
+    var straw = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.045, 8, 30),
+      new THREE.MeshStandardMaterial({ color: 0x9E8A57, roughness: 0.95 }));
+    straw.rotation.x = Math.PI / 2;
+    straw.position.y = 0.012;
+    straw.name = 'straw_mat_ring';
+    g.add(straw);
 
     // 坛子连封口高约 1.28，压低才不会把红纸坛帽裁掉
     g.position.y = -0.58;
