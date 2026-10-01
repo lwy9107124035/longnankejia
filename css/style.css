@@ -401,6 +401,22 @@ input { font-family: inherit; }
 .c3d-info-name { font-size: 13px; font-weight: 700; color: var(--primary-deep); margin-bottom: 3px; }
 .c3d-info-desc { font-size: 12px; color: var(--ink-soft); line-height: 1.6; }
 .c3d-hint { text-align: center; font-size: 10px; color: var(--muted); margin-top: 5px; }
+.c3d-toolbar, .c3d-patterns { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.c3d-toolbar button, .c3d-patterns button, .c3d-dialog-head button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); color: var(--primary-deep); font-size: 12px; }
+.c3d-patterns[hidden] { display: none; }
+.c3d-patterns button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-faint); }
+.c3d-references { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.c3d-references summary { cursor: pointer; font-size: 12px; color: var(--primary-deep); }
+.c3d-reference-list { display: grid; grid-template-columns: repeat(auto-fill,minmax(104px,1fr)); gap: 8px; margin-top: 10px; }
+.c3d-reference { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); padding: 0; text-align: left; }
+.c3d-reference img { display: block; width: 100%; height: 112px; object-fit: contain; background: #ede8dc; }
+.c3d-reference span { display: block; font-size: 10px; padding: 6px; color: var(--ink-soft); }
+.c3d-reference .c3d-video-icon { height: 112px; display: grid; place-items: center; font-size: 30px; background: var(--primary-faint); }
+.c3d-source-link { grid-column: 1 / -1; font-size: 12px; color: var(--primary); }
+.c3d-reference-dialog { width: min(94vw,900px); max-height: 92vh; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.c3d-reference-dialog::backdrop { background: rgba(0,0,0,.65); }
+.c3d-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 13px; color: var(--ink); }
+#c3dReferenceBody img, #c3dReferenceBody video { display: block; max-width: 100%; max-height: 77vh; margin: auto; object-fit: contain; }
 
 .msg-sources { margin-top: 10px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.6; }
 .msg-sources summary { padding: 7px 0; color: var(--primary-deep); cursor: pointer; }

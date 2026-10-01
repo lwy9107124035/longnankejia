@@ -1,22 +1,10 @@
 # 龙南客家非遗数字助手 · 阿蓝
 
-当前 codex 工作版本为 **v2**，从完整 main 基线 `eab8f30` 开始修改（标签 `v2-base`）。本轮根据甲方意见细化关西新围与冬头帕织带模型，加入地图缩放、平移、触控点选、地点筛选，并补充资料和区分蓝染比较问题的意图。回答的资料出处可展开查看，带网页来源的可直接打开。
+当前工作版继续落实针对 v2 的修改意见：3D 展示扩为 12 件，提供逐件原图/原视频对照画廊；关西新围、织带和蓝染样布按可见参考细节补充；家乡地图加入缩放、平移和地点筛选；知识库补充非遗资料并区分蓝染“相似处”和“差异”问法。
 
-七件 3D 模型都已按现有图文证据调整外观和表达，但证据强度不同。程序化细节让模型在屏幕上更清楚，**不等于照片级或测绘级复原**：没有使用摄影测量、扫描网格或文物施工图；资料未能确认的细节一律按概念/示意处理。
+模型按照片与公开资料制作，**不是扫描或测绘复原**。关西新围展示方形围合、低墙、四角炮楼和中央祠堂的总体关系，具体尺寸和内部结构不作实测断言。模型来源与表达范围见[12 件模型说明](docs/v2-model-notes.md)，实际意见和实施证据见[逐条需求审计](docs/v3-requirements-audit.md)。
 
-| 模型 | 本版可见内容 | 证据与限制 |
-| --- | --- | --- |
-| 虎头帽 | 黑布帽体、护耳、抽象彩线绣片 | 展柜照片展示多种红、粉、黑色款式，但没有单件近照；不代表某一顶帽子的精确结构或刺绣 |
-| 关西新围 | 方形“回”字围合、中央厅堂、四角炮楼、天井空间 | 依据[赣州市政府介绍](https://www.ganzhou.gov.cn/zfxxgk/c144214/202211/8dcc8823a68742bf8fb3c4f5afff641a.shtml)的总体布局概括；不是测绘复原，构件尺寸和细部仍是示意 |
-| 蓝染布 | 靛蓝底色、圆形放射与几何留白、布褶和染缸情境 | 参考博物馆蓝染样布外观；纹样由程序绘制，不复制某件实物，也不推断染料配方 |
-| 客家凉帽 | 竹编质感冠部、宽檐、垂布 | 本批没有可确认的凉帽近照，帽形、纹理和比例均为概念表达 |
-| 竹编浅圆器（页面称簸箕） | 横竖交织底面、浅边、包边圈口 | 照片支持浅圆竹器及编织外观，但器物名称、具体用途和尺寸未确认 |
-| 冬头帕织带 | 蓝紫红色带、白色抽象几何纹、垂带和穗边 | 按照片可见色带与几何装饰概括；没有可靠可读文字，配色与佩戴结构不作实物断言 |
-| 客家米酒坛 | 开口陶坛轮廓与棕色釉感 | 本批没有可确认的米酒坛近照，属于通用陶坛概念，不代表龙南具体藏品 |
-
-模型证据、来源图片编号和逐项限制见[七件模型说明](docs/v2-model-notes.md)。实施清单见 [v2-plan.md](docs/v2-plan.md)，各模块来源与限制见 [地图说明](docs/v2-map-notes.md)、[知识库说明](docs/v2-knowledge-notes.md)。
-
-v2 专项验收：`node tests/v2_knowledge.test.mjs`；启动本地 8787 服务后运行 `node tests/v2_visual_review.mjs`，输出实际 Chrome 截图、模型绘制统计与触屏手势验收记录到 `.cache/v2-review/`。`--map-only` 只验地图。原有 `tests/run_all.py` 仍用于完整回归。
+2026-10-01 最终验证：模型与知识问答 19 项、视觉与交互 107 项、全页回归 223 项全部通过，静态检查通过。12 件模型已完成桌面与手机截图人工对照；执行记录见[逐条需求审计](docs/v3-requirements-audit.md)。甲方公众号文章正文仍待提供，尚未纳入知识库。
 
 世界客家非物质文化遗产展示馆的移动端讲解助手：问答、科普、3D 模型、文化典藏四合一。
 纯静态站点，无构建步骤，直接托管即可运行。
@@ -29,7 +17,7 @@ v2 专项验收：`node tests/v2_knowledge.test.mjs`；启动本地 8787 服务�
 双击 zhanting.bat        # 停止服务
 ```
 
-或手动：`python -m http.server 8787`，浏览器打开 `http://127.0.0.1:8787`。
+或手动：`python -m http.server 8788`，浏览器打开 `http://127.0.0.1:8788`。
 
 **本地预览看的是这个文件夹当前检出（checkout）的那一份**，跟线上不一定是同一件事：
 分支要 push 并且部署过，线上才会变。qidong.bat 会打印 `branch <名字> @ <commit>`
@@ -72,8 +60,12 @@ js/
   voice-input.js        问答框的语音输入：MediaRecorder 录音 + 国内 ASR 转写
   hometown.js           家乡地图：点真实坐标的乡镇/文保点，看书里怎么讲它
   data-hometown.js      龙南市真实县界 + 点位坐标（含来源与取数日期）
-  showcase3d.js         3D 模型（7 件，见下）
-  textures.js           程序化贴图生成器（canvas 现画，无外部图片）
+  showcase3d.js         3D 展示、旋转/缩放和原图对照画廊（12 件）
+  models-place.js       围屋与蓝染样布模型
+  models-textiles.js    花帽、织带、冬头帕、大襟衫、子孙袋、脖围模型
+  models-crafts.js      竹编、织机和纸艺模型
+  model-references.js   模型关联的原图、视频及原始路径
+  textures.js           程序化贴图生成器
   config.js             全局配置（AI 模式、模型参数、公网地址）
   qr.js                 入口二维码（把站点地址画成可扫的码）
   secrets.js            API 密钥，已在 .gitignore 中，不入库
@@ -82,7 +74,8 @@ js/
 
 assets/
   avatar/               数字人形象：alan-full.png 全身、alan-face.png 头像
-  textures/             3D 模型贴图（已去除生成平台角标）
+  model-references/     供网页画廊展示的原图/视频副本
+  model-textures/       由参考图裁切或程序生成的模型贴图
   pdf-imgs/             文化典藏逐页图 page-01..69.jpg
   source/               原始素材，不参与页面加载
 
@@ -98,19 +91,15 @@ _archive/               历史克隆副本，仅供追溯
 ```
 python tests/run_all.py            # 静态检查 + Chrome 端到端 + 二维码解码（三段）
 python tests/run_all.py --static   # 只跑静态检查，不需要 Chrome
-node tests/run_site_tests.mjs      # 只跑浏览器套件（193 项，--headed 可观看）
-node tests/run_site_tests.mjs --only=7c,7d,4e    # 只跑某几节（反向用例要反复跑，整套 4 分钟跑不起）
+node tests/run_site_tests.mjs      # 浏览器套件（可加 --headed 查看过程）
+node tests/run_site_tests.mjs --only=7c,7d,4e    # 只跑指定小节
 python tests/check_copy_tells.py     # 界面文案套话计数（守卫要求 0）
 python tests/decode_entry_qr.py    # 只解码入口二维码（需先跑浏览器套件）
 python tests/negative_checks.py    # 反向用例：逐个把逻辑改坏，要求对应断言真的报 FAIL
 python tests/check_hometown_sources.mjs 2>/dev/null || node scripts/check_hometown_sources.mjs  # 地图上每个点都要有书内出处
 ```
 
-`negative_checks.py` 是给"典藏检索 / 家乡地图 / 语音输入"这三节配的：**每条新断言都必须能失败一次**。
-跑出来的经验很直白：这一轮新写的断言里有六条在对应逻辑被改坏之后仍然通过——
-详情弹层留着上一次的内容、搜索框没清空就判定"回车生效"、数据顺序恰好和正确顺序一致、
-封顶规则挑的输入根本触不到上限、"以最后一次为准"两次的先后全看运气、以及一条把整节跑崩
-而不是判失败的空节点访问。每一条都已改成能真的失败的样子。
+`negative_checks.py` 用反向用例核对断言是否能发现对应逻辑被破坏。维护这些测试时，新增或修改断言都应配套一个能触发失败的反例。
 
 三段是有意分开的：浏览器里「屏上的码等于面板那条链接」只是自证一致，
 `decode_entry_qr.py` 用 OpenCV 把导出的 PNG 真的解回一个 URL，才算证明馆内手机扫得出来。
@@ -139,10 +128,10 @@ QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应
 - `tests/check_static.py`：引用完整性（改目录后有没有漏改路径）、典藏页码是否都有对应图片、
   JS 语法、CSS 变量是否有悬空引用、`.gitignore` 是否仍忽略密钥、贴图角标回归，
   以及"入口二维码的生成器、加载顺序、容器、渲染四处必须在位"的守卫。
-- `tests/run_site_tests.mjs`：驱动本机 Chrome，共 200 项断言，覆盖六个 Tab 切换与连点、
+- `tests/run_site_tests.mjs`：驱动本机 Chrome，覆盖六个 Tab 切换与连点、
   六条快捷提问与自由提问、本地知识库引擎与线上大模型引擎两条问答路径、接口失败时的
   知识库回落、"本地命中就不调接口 / 未命中转大模型 / 三条路径都不拒答"、
-  科普详情与「问问阿蓝」跳转、七个 3D 模型逐个渲染、自动旋转角度收敛、
+  科普详情与「问问阿蓝」跳转、12 个 3D 模型逐个渲染、原图对照画廊、自动旋转角度收敛、
   典藏翻页与详情、典藏正文检索（打分、命中句、标记、点进详情）、客家话讲解视频弹层、
   家乡地图（真实县界顶点数、点位是否落在县界内、标签是否压字、引文是否逐字出自书里、
   没录音就不给播放键）、语音输入（录音到转写的状态机、六条失败路径的提示、等待秒数如实报、
@@ -154,21 +143,11 @@ QR_PNG=.cache/live-entry-qr.png python tests/decode_entry_qr.py   # 解码，应
 
 ## 3D 模型
 
-共 7 件，全部用 Three.js 手工建模，贴图一律由 `js/textures.js` 在 canvas 上现画
-（竹篾经纬、织带菱形纹、酱釉垂流与开片、靛蓝棉麻），**不引入任何外部图片**，
-因此不存在生成平台角标，也不涉及 AI 内容标识义务。
+当前 12 件模型由 Three.js 几何、Canvas 材质和参考图纹理组合而成：花帽、关西新围、客家织带、冬头帕、大襟衫、子孙袋、脖围、蓝染样布、竹编圆筛、竹编斗笠、传统织机、客家纸艺。模型 ID、原图来源和表达边界见[模型说明](docs/v2-model-notes.md)。
 
-| id | 物件 | 贴图 |
-|---|---|---|
-| hutoumao | 虎头帽 | 典藏刺绣照片（已去角标） |
-| weiwu | 客家围屋 | 夯土墙 / 瓦顶 / 条石（已去角标） |
-| landye | 蓝染布 | 蓝染纹样（已去角标） |
-| liangmao | 客家凉帽 | canvas 竹编 + 靛蓝垂布 |
-| boji | 竹编簸箕 | canvas 竹编 |
-| zhidai | 客家织带 | canvas 织带纹样 |
-| mijiutan | 客家米酒坛 | canvas 酱釉 |
+每个展品的“实物参考”栏显示与该模型关联的照片、原视频或公开资料链接；点卡片可放大图片或播放视频。蓝染样布可切换对照两类从原图提取的纹样。网页使用画廊展示副本，素材目录里的原图与源视频保持原样。
 
-`tests/run_site_tests.mjs` 会逐个渲染并断言：新增模型没有发起任何贴图图片请求。
+关西新围采用方形围合、低墙、四角炮楼和中央祠堂的总体关系。它是形制展示，不含实测建筑尺寸。鱼纹梳篦图 257 的细节不足，当前未建模；旧版米酒坛也不属于这 12 件模型。
 
 ## 已知边界
 
@@ -322,7 +301,7 @@ v2 预览：**https://codex.longnankejia-dev.pages.dev/**（`codex`）
 备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）
 
 两条自动通道（`cf-pages.yml` 与 `pages.yml`）都只做一件事：**按白名单**把页面真正加载的
-东西（`index.html`、`css/`、`js/`、`assets/{avatar,pdf-imgs,textures}`）搬进上线目录。
+东西（`index.html`、`css/`、`js/`、`assets/{avatar,pdf-imgs,textures,model-references,model-textures}`）搬进上线目录。
 不是排除表——以前 Netlify 用 `publish = "."` 把整个仓库推上公网，实测
 `tests/badge-template.npy`、`scripts/scan_history_secrets.py` 和 8MB 的 `assets/source/`
 原图都能直接下载，而 `docs/` 里是比赛通知与简历。注意 Cloudflare 对不存在的路径回的是

@@ -1,50 +1,82 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-
-const scene=fs.readFileSync(new URL('../js/showcase3d.js',import.meta.url),'utf8');
-const texture=fs.readFileSync(new URL('../js/textures.js',import.meta.url),'utf8');
-
-test('all seven 3D exhibit entries still dispatch to a builder',()=>{
-  const ids=[...scene.matchAll(/\{ id: '([^']+)'/g)].map(x=>x[1]).slice(0,7);
-  assert.deepEqual(ids,['hutoumao','weiwu','landye','liangmao','boji','zhidai','mijiutan']);
-  for(const id of ids) assert.match(scene,new RegExp("case ['\\\"]"+id+"['\\\"]:"));
+import vm from 'node:vm';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const context={window:{},console};vm.createContext(context);
+for(const file of ['vendor/three.min.js','models-textiles.js','models-crafts.js','models-place.js','model-references.js'])
+  vm.runInContext(fs.readFileSync(path.join(root,'js',file),'utf8'),context);
+const T=context.THREE,W=context.window;
+const ids=['hutoumao','weiwu','zhidai','dongtoupa','dajinshan','zisundai','bowei','landye','boji','liangmao','zhiji','zhiyi'];
+const textures=Object.fromEntries(Object.keys({...W.TextileModels.textures,...W.CraftModels.textures,...W.PlaceModels.textures}).map(key=>[key,new T.Texture()]));
+textures.stonePaving=new T.Texture();
+function build(id){return W.TextileModels.build(id,T,textures)||W.CraftModels.build(id,T,textures)||W.PlaceModels.build(id,T,textures,()=>new T.Texture());}
+for(const id of ids)test(id+' has valid geometry, bounded rendering work and a traceable reference',()=>{
+  const group=build(id);assert.ok(group);group.updateMatrixWorld(true);
+  let meshes=0,triangles=0,instances=0;const point=new T.Vector3(),matrix=new T.Matrix4();
+  group.traverse(object=>{
+    if(!object.isMesh)return;meshes++;
+    const geometry=object.geometry,count=object.isInstancedMesh?object.count:1;
+    triangles+=(geometry.index?geometry.index.count:geometry.attributes.position.count)/3*count;instances+=count;
+    for(let k=0;k<count;k++){
+      if(object.isInstancedMesh){object.getMatrixAt(k,matrix);matrix.premultiply(object.matrixWorld);}else matrix.copy(object.matrixWorld);
+      for(let v=0;v<geometry.attributes.position.count;v++){
+        point.fromBufferAttribute(geometry.attributes.position,v).applyMatrix4(matrix);
+        assert.ok(Number.isFinite(point.x)&&Number.isFinite(point.y)&&Number.isFinite(point.z),'nonfinite transformed vertex');
+      }
+    }
+  });
+  assert.ok(meshes>=2&&meshes<300,meshes+' mesh draw units');assert.ok(triangles>100&&triangles<200000,triangles+' triangles');
+  assert.ok(group.userData.referenceMode);assert.ok(W.ModelReferences[id]?.length);
+  for(const ref of W.ModelReferences[id])if(ref.src)assert.ok(fs.existsSync(path.join(root,ref.src)),ref.src);
 });
-
-test('Guanxi model keeps rectangular Hakka structure and ground contact',()=>{
-  const start=scene.indexOf('function buildGuanxiWeiwu()');
-  const end=scene.indexOf('function buildLandye()',start);
-  const model=scene.slice(start,end);
-  for(const feature of ['pebble_rubble_foundation','two_gates','watchtower_','three_courts','ancestral_hall','defensive_slit_windows','overlapping_qingwa_courses']) assert.ok(model.includes(feature),feature);
-  // 这一轮按实地形制补的构件：收分墙、墙顶垛口与走马廊、角楼两层歇山、檐廊列柱
-  for(const feature of ['parapet_crenellations','wall_walk_paving','lower_hip_skirt','covered_corridor_columns','gate_door_studs','gate_drum_piers']) assert.ok(model.includes(feature),feature);
-  assert.match(model,/g\.position\.y\s*=\s*-1\.15/);
-  assert.match(scene,/ground\.position\.y\s*=\s*-1\.15/);
-  assert.match(model,/new THREE\.InstancedMesh/);
-  assert.match(model,/qingBrick/);
-  // 瓦与夯土走程序化贴图：那两张 PNG 偏黑，直接乘色会把屋顶糊成炭黑
-  assert.match(model,/canvasTex\('qingwaRoof',/);
-  assert.match(model,/canvasTex\('rammedLoam',/);
+test('all photograph texture files exist and have usable dimensions',()=>{
+  for(const filename of Object.values({...W.TextileModels.textures,...W.CraftModels.textures,...W.PlaceModels.textures}))assert.ok(fs.statSync(path.join(root,filename)).size>1000,filename);
 });
-
-test('Dongtoupa belt carries white core, colored selvedges, drape and tied fringe',()=>{
-  const start=scene.indexOf('function buildDongtoupaBelt()');
-  const end=scene.indexOf('function buildMijiutan()',start);
-  const model=scene.slice(start,end);
-  for(const feature of ['left_woven_ribbon','right_woven_ribbon','continuous_silk_warp_fibres','black_selvedge','hand_tied_knot','silk_fringe_threads','left_yada_plain_twist','black_cotton_headband']) assert.ok(model.includes(feature),feature);
-  assert.match(model,/g\.position\.y\s*=\s*-1\.15/);
-  // 架线顺序照资料：黑2 绿2 蓝2 红5，白 11 居中，再镜像回去。顺序或根数被改动就得重新对资料。
-  const warpSeq=[...texture.matchAll(/\['(#[0-9a-f]{6})',(\d+)\]/g)].map(m=>m[1]+':'+m[2]).slice(0,9);
-  assert.deepEqual(warpSeq,['#151619:2','#2c6d4a:2','#2a5f96:2','#b5272c:5','#f0e8d7:11','#b5272c:5','#2a5f96:2','#2c6d4a:2','#151619:2'],'织带架线顺序与资料不符');
-  assert.match(texture,/function wovenBelt\(\)/);
-  // 经线细丝与贴图共用同一份架线顺序，改一处漏另一处时这里会红
-  assert.match(model,/var lanes=\[\],wq=\[\['#151619',2\],\['#2c6d4a',2\],\['#2a5f96',2\],\['#b5272c',5\],\['#f0e8d7',11\]/);
+test('dongtoupa front fabric is the first surface hit across its interior',()=>{
+  const g=build('dongtoupa');g.updateMatrixWorld(true);
+  const front=textures.dongtoupaFront, raycaster=new T.Raycaster();
+  for(const y of [0.22,0.80,1.38])for(const x of [-0.48,-0.20,0.20,0.48]){
+    raycaster.set(new T.Vector3(x,y,1),new T.Vector3(0,0,-1));
+    const hits=raycaster.intersectObject(g,true);
+    assert.ok(hits.length,`no front hit at x=${x}, y=${y}`);
+    assert.equal(hits[0].object.material.map,front,`front fabric was occluded at x=${x}, y=${y}`);
+  }
 });
-
-test('renderer reports current WebGL work and viewport tracks actual container height',()=>{
-  assert.match(scene,/debugRendererStats: function\s*\(\)[\s\S]*?calls:[^,]+, triangles:[^,]+,[\s\S]*?geometries:[^,]+, textures:/);
-  assert.match(scene,/container\.clientHeight\s*\|\|\s*300/);
-  assert.match(scene,/new ResizeObserver/);
-  // 画布越方水平视野越窄：默认取景按画布宽高比自动拉远，否则手机上围屋左右出框
-  assert.match(scene,/var aspect = vw \/ vh, back = 1\.28/);
+test('circular tray diagonal bamboo strips retain substantial projected width',()=>{
+  const g=build('boji');g.updateMatrixWorld(true);
+  const strips=[];g.traverse(o=>{if(o.isMesh&&o.name.startsWith('open diagonal bamboo strips'))strips.push(o);});
+  assert.equal(strips.length,2);
+  let projectedArea=0;const a=new T.Vector3(),b=new T.Vector3(),c=new T.Vector3(),matrix=new T.Matrix4();
+  for(const mesh of strips){
+    const geometry=mesh.geometry,positions=geometry.attributes.position,index=geometry.index;
+    const count=index?index.count:positions.count;matrix.copy(mesh.matrixWorld);
+    for(let i=0;i<count;i+=3){
+      const ia=index?index.getX(i):i,ib=index?index.getX(i+1):i+1,ic=index?index.getX(i+2):i+2;
+      a.fromBufferAttribute(positions,ia).applyMatrix4(matrix);
+      b.fromBufferAttribute(positions,ib).applyMatrix4(matrix);
+      c.fromBufferAttribute(positions,ic).applyMatrix4(matrix);
+      projectedArea+=Math.abs((b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x))*0.5;
+    }
+  }
+  assert.ok(projectedArea>3,`XZ projected triangle area is only ${projectedArea.toFixed(3)}`);
+});
+test('Guanxi enclosure and wall proportions match the documented low square form',()=>{
+  const g=build('weiwu');const b=new T.Box3().setFromObject(g);const s=b.getSize(new T.Vector3());
+  assert.ok(Math.abs(s.x/s.z-1)<0.05);assert.ok(g.userData.wallHeightRatio>0.08&&g.userData.wallHeightRatio<0.15);
+  assert.ok(g.getObjectByName('east_wall_side_gate')&&g.getObjectByName('west_wall_side_gate'));
+  assert.ok(g.getObjectByName('central_ancestral_hall_body'));
+});
+test('bowei keeps an open center instead of covering the hole with a photograph plane',()=>{
+  const g=build('bowei');g.updateMatrixWorld(true);
+  const ray=new T.Raycaster(new T.Vector3(0,2,0),new T.Vector3(0,-1,0));
+  assert.equal(ray.intersectObject(g,true).length,0);
+});
+test('blue dye samples switch actual photograph textures',()=>{
+  const one=build('landye').getObjectByName('photo_rectified_indigo_fabric').material.map;
+  W.PlaceModels.setIndigoPattern('rays');
+  const two=build('landye').getObjectByName('photo_rectified_indigo_fabric').material.map;
+  assert.notEqual(one,two);
 });

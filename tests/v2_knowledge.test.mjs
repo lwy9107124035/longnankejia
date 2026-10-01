@@ -44,6 +44,18 @@ assert.match(reversed.text, /相似处/);
 assert.match(reversed.text, /不代表其他地区都一样/);
 assert.notEqual(reversed.matched, '蓝染', '“相近的地方染艺”这类问法不能掉回通用蓝染条目');
 
+const reverseDifference = await ask('其他地方蓝染和客家蓝染相比有哪些不同？');
+assert.match(reverseDifference.text, /南通/);
+assert.match(reverseDifference.text, /白族/);
+assert.match(reverseDifference.text, /工艺各有路径/);
+assert.notEqual(reverseDifference.text, similar.text);
+const commonAndDifferent = await ask('客家蓝染和其他地方蓝染的相同点与不同点是什么？');
+assert.match(commonAndDifferent.text, /相似处/);
+assert.match(commonAndDifferent.text, /区别/);
+const synonymComparison = await ask('客家蓝靛染与地方蓝靛染的共同点有哪些？');
+assert.match(synonymComparison.text, /相似处/);
+assert.match(synonymComparison.text, /都以植物蓝靛染色/);
+
 const craftComparison = await ask('织带和竹编的工艺区别是什么？');
 assert.match(craftComparison.text, /绠瓠子/);
 assert.match(craftComparison.text, /破篾/);
@@ -54,6 +66,19 @@ assert.match(inheritor.text, /廖秋华、黄竹英/);
 assert.match(inheritor.text, /以公布的名录为准/);
 const process = await ask('客家蓝染的制靛工艺怎么做？');
 assert.match(process.text, /三浸三晒三发酵/);
+const bambooSummary = await ask('杨村竹编有哪些常用工具？');
+assert.match(bambooSummary.text, /度篾齿/);
+const bambooFollowup = await ask('那制作步骤呢？');
+assert.match(bambooFollowup.text, /起底/);
+const weaveEntry = window.KNOWLEDGE_BASE.find((entry) => entry.id === 'v2-zhidai');
+assert.match(weaveEntry.answer, /绠瓠子/);
+assert.match(weaveEntry.answer, /带尺/);
+assert.match(weaveEntry.answer, /冬头帕/);
+const pendingArticle = window.KNOWLEDGE_BASE.find((entry) => entry.id === 'source-pending-wechat-patterns');
+assert.match(pendingArticle.answer, /无法读取正文/);
+assert.match(pendingArticle.sources[0].url, /mp\.weixin\.qq\.com/);
+assert.doesNotMatch(pendingArticle.answer, /花鸟|几何|吉祥愿望/,
+  'the inaccessible article must not contribute unverified cultural claims');
 
 fetchCalls = 0;
 fetchImpl = async () => { throw new Error('offline'); };
@@ -94,4 +119,7 @@ assert.equal(fetchCalls, 3);
 
 const allKbText = JSON.stringify(window.KNOWLEDGE_BASE);
 assert.doesNotMatch(allKbText, /茶果/, 'the disallowed Hakka tea-fruit section must not be ingested');
-console.log('v2 knowledge checks passed: comparison intents, source links, multi-topic routing, inheritor/process answers, API route/fallback, and tea-fruit exclusion.');
+assert.doesNotMatch(weaveEntry.answer + window.KNOWLEDGE_BASE.find((entry) => entry.id === 'v2-zhubian').answer
+  + window.KNOWLEDGE_BASE.find((entry) => entry.id === 'landye').answer, /\b(?:76|78)岁\b/,
+  'unverified ages from the source text must not enter these new answers');
+console.log('v2 knowledge checks passed: distinct and combined comparisons, reversed/synonym questions, source tracking, contextual follow-ups, non-tea docx coverage, API routing, and pending article status.');

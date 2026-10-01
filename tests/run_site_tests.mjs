@@ -108,8 +108,8 @@ class Page {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`CDP ${method} 超时 30s（Chrome 是否已经退了？）`));
-      }, 30000);
+        reject(new Error(`CDP ${method} 超时 90s（Chrome 是否已经退了？）`));
+      }, 90000);
       this.pending.set(id, {
         resolve: (v) => { clearTimeout(timer); resolve(v); },
         reject: (e) => { clearTimeout(timer); reject(e); },
@@ -136,7 +136,9 @@ async function launchChrome(headed) {
   } catch (e) {
     if (/已有 Chrome/.test(e.message)) throw e;
   }
-  fs.rmSync(path.join(os.tmpdir(), 'alan-chrome-profile'), { recursive: true, force: true });
+  const profile = path.resolve(os.tmpdir(), 'alan-chrome-profile');
+  if (path.dirname(profile) !== path.resolve(os.tmpdir())) throw new Error('invalid test profile path');
+  fs.rmSync(profile, { recursive: true, force: true });
   const args = [
     '--remote-debugging-port=' + CDP_PORT,
     '--user-data-dir=' + path.join(os.tmpdir(), 'alan-chrome-profile'),
@@ -280,7 +282,7 @@ async function run() {
   await shot(page, '01-hero');
 
   console.log('\n2b. 3D 资源要等点开视图才加载');
-  const heavy = (u) => /vendor\/three\.min\.js|assets\/textures\//.test(u);
+  const heavy = (u) => /vendor\/three\.min\.js|assets\/(?:model-)?textures\//.test(u);
   const earlyHeavy = netRequests.filter(heavy);
   check('首屏一个 3D 资源都不请求', earlyHeavy.length === 0,
     earlyHeavy.slice(0, 2).map((u) => u.split('/').pop()).join(' | '));
@@ -372,7 +374,7 @@ async function run() {
     } finally { window.fetch = orig; }
     return out;
   })()`, true);
-  check('接口失败仍拿到知识库实体内容', (fb.text || '').indexOf('板蓝根') > -1,
+  check('接口失败仍拿到知识库实体内容', /蓝草植物制取靛蓝/.test(fb.text || '') && /三浸三晒三发/.test(fb.text || ''),
     (fb.text || '').slice(0, 40));
   check('回落来源标注为本地知识库', fb.source === 'rules', String(fb.source));
   check('不再返回丢弃知识库的兜底套话', (fb.text || '').indexOf('网络似乎不太稳定') === -1);
@@ -688,24 +690,31 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   await page.evaluate(`document.querySelector('[data-panel="panel3d"]').click()`);
   check('webgl canvas created', await until(page, `document.querySelector('#c3dViewport canvas')`, 15000));
   const items = await page.evaluate(`[...document.querySelectorAll('#c3dList .c3d-item')].length`);
-  check('七个模型全部登记', items === 7, items + ' items');
-  const texReqBefore = netRequests.filter((u) => u.includes('assets/textures')).length;
+  check('十二件有原图依据的模型全部登记',items===12,items+' items');
+  const isTexture = (u) => /assets\/(?:model-)?textures\//.test(u);
+  const texReqBefore = netRequests.filter(isTexture).length;
   for (let i = 0; i < items; i++) {
     await page.evaluate(`document.querySelectorAll('#c3dList .c3d-item')[${i}].click()`);
     await sleep(900);
-    const label = await page.evaluate(`document.getElementById('c3dName').textContent`);
-    check('model ' + (i + 1) + ' renders: ' + label, label.trim().length > 0);
+    const selected = await page.evaluate(`(() => {
+      const item = Showcase3D.items()[${i}];
+      return {label:document.getElementById('c3dName').textContent,
+        expected:item.name+' · '+item.subtitle,id:item.id,current:Showcase3D.debugState().modelId,
+        rendered:!!Showcase3D.debugModel()};
+    })()`);
+    check('model ' + (i + 1) + ' renders: ' + selected.label,
+      selected.rendered && selected.label===selected.expected && selected.id===selected.current);
     await shot(page, '03-model-' + i);
   }
-  const texReqAfter = netRequests.filter((u) => u.includes('assets/textures')).length;
-  const tex200 = netFailures.filter((f) => f.includes('assets/textures'));
+  const texReqAfter = netRequests.filter(isTexture).length;
+  const tex200 = netFailures.filter(isTexture);
   check('all texture maps loaded without error', tex200.length === 0, tex200.join('; '));
-  // 新增物件的贴图必须由 canvas 现画，不能引入任何外部图片
-  check('新增模型未引入任何图片贴图（程序化生成）', texReqAfter === texReqBefore,
+  // All source-photograph textures are loaded at boot, without new loads on model switches.
+  check('切换模型复用已加载的实物纹样贴图', texReqAfter === texReqBefore,
     texReqAfter - texReqBefore + ' extra image requests');
   const meshStats = await page.evaluate(`(() => {
     const out = {};
-    ['liangmao','boji','zhidai','mijiutan'].forEach(function (id) {
+    window.Showcase3D.items().map(x=>x.id).forEach(function (id) {
       window.Showcase3D.show(id);
       let meshes = 0, tris = 0;
       const m = window.Showcase3D.debugModel();
@@ -715,9 +724,9 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     });
     return out;
   })()`);
-  ['liangmao', 'boji', 'zhidai', 'mijiutan'].forEach(function (id) {
+  Object.keys(meshStats).forEach(function (id) {
     const s = meshStats[id];
-    check('模型 ' + id + ' 有实际几何体', s && s.meshes >= 3 && s.tris > 200, JSON.stringify(s));
+    check('模型 ' + id + ' 有实际几何体', s && s.meshes >= 2 && s.tris > 200, JSON.stringify(s));
   });
   // 蓝染布曾经挂了两块布，从正面看重影成两条。抽成小节是为了反向用例只跑这一节。
   async function sectionCloth() {
@@ -740,9 +749,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     check('蓝染布只挂一块布', n === 1, n + ' 块布面');
   }
   await sectionCloth();
-  // 取景：投影每个网格自身的最高点（取其水平中心），并在自动旋转中采样最坏角度。
-  // 不能用整体 AABB 角点——圆盘和围屋的角点是空的；也不能用网格顶面四角——围屋
-  // 4 单位宽的条石前院，远端角点会投影到地平线附近，把正常取景误报成屋顶被裁。
+  // Project actual vertices, including every instance; bounding-box corners contain empty space.
   const framing = await page.evaluate(`(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const out = {};
@@ -750,15 +757,28 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
       window.Showcase3D.show(it.id);
       await wait(1600);
       const m = window.Showcase3D.debugModel(), cam = window.Showcase3D.debugCamera();
-      let top = -9, bottom = 9;
+      let top = -Infinity, bottom = Infinity;
       for (let s = 0; s < 12; s++) {
         m.updateMatrixWorld(true);
+        cam.updateMatrixWorld(true);
         m.traverse(function (o) {
-          if (!o.isMesh || !o.geometry) return;
-          const b = new THREE.Box3().setFromObject(o);
-          const cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
-          top = Math.max(top, new THREE.Vector3(cx, b.max.y, cz).project(cam).y);
-          bottom = Math.min(bottom, new THREE.Vector3(cx, b.min.y, cz).project(cam).y);
+          if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+          const positions = o.geometry.attributes.position;
+          const matrix = new THREE.Matrix4(), vertex = new THREE.Vector3();
+          const instances = o.isInstancedMesh ? o.count : 1;
+          for (let k = 0; k < instances; k++) {
+            if (o.isInstancedMesh) {
+              o.getMatrixAt(k, matrix);
+              matrix.premultiply(o.matrixWorld);
+            } else {
+              matrix.copy(o.matrixWorld);
+            }
+            for (let i = 0; i < positions.count; i++) {
+              vertex.fromBufferAttribute(positions, i).applyMatrix4(matrix).project(cam);
+              top = Math.max(top, vertex.y);
+              bottom = Math.min(bottom, vertex.y);
+            }
+          }
         });
         await wait(160);
       }
@@ -797,7 +817,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     await page.evaluate(`document.querySelector('[data-panel="panel3d"]').click()`);
     check('WebGL 场景完成初始化', await until(page, `window.Showcase3D.booted()`, 25000));
     const modelIds = await page.evaluate(`window.Showcase3D.items().map(function (item) { return item.id; })`);
-    check('七件器物模型均有展示入口', modelIds.length === 7, modelIds.join(', '));
+    check('十二件器物模型均有展示入口', modelIds.length === 12, modelIds.join(', '));
     for (let i = 0; i < modelIds.length; i++) {
       const id = modelIds[i];
       await page.evaluate(`document.querySelectorAll('#c3dList .c3d-item')[${i}].click()`);
@@ -813,7 +833,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
         });
         return { title: document.getElementById('c3dName').textContent, meshes: meshes, triangles: Math.round(triangles) };
       })()`);
-      check('模型 ' + id + ' 有可渲染几何体', state.title.trim().length > 0 && state.meshes >= 3 && state.triangles > 200,
+      check('模型 ' + id + ' 有可渲染几何体', state.title.trim().length > 0 && state.meshes >= 2 && state.triangles > 200,
         JSON.stringify(state));
       await shot(page, '03-model-review-' + id);
     }

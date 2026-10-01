@@ -32,6 +32,15 @@
 .hm-place:hover .hm-hit, .hm-place:focus .hm-hit { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
 .hm-place:focus-visible .hm-dot { stroke: var(--accent); stroke-width: 2.6; }
 .hm-map-status { min-height: 1.5em; }
+.hm-graticule { stroke: var(--primary); stroke-opacity: .12; stroke-width: 1; pointer-events: none; }
+.hm-compass { fill: var(--primary-deep); pointer-events: none; }
+.hm-compass text, .hm-scale text { font-size: 16px; fill: var(--ink-soft); }
+.hm-scale { pointer-events: none; }
+.hm-scale path { fill: none; stroke: var(--ink-soft); stroke-width: 2; }
+.hm-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; color: var(--muted); font-size: 10px; }
+.hm-legend-seat::before, .hm-legend-town::before, .hm-legend-site::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; background: var(--primary); }
+.hm-legend-site::before { background: var(--accent); }
+.hm-legend-town::before { opacity: .65; }
 @media (max-width: 380px) {
   #hmMap.hm-map { padding: 7px; }
   .hm-tool-row { align-items: flex-start; flex-direction: column; }

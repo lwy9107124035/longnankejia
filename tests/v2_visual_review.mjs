@@ -1,12 +1,13 @@
-/** Real Chrome renders for v2 review. Keeps screenshots and measured evidence. */
+/** Real Chrome renders for reference-model review. Keeps screenshots and measured evidence. */
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const out=path.join(root,'.cache',process.argv.includes('--baseline')?'v2-before':'v2-review');
+const out=path.join(root,'.cache',process.argv.includes('--baseline')?'v2-before':'reference-review-final');
 fs.mkdirSync(out,{recursive:true});
 const port=9359;
+const baseUrl=process.env.REVIEW_URL||'http://127.0.0.1:8788';
 const mapOnly=process.argv.includes('--map-only');
 const chrome=spawn('C:/Program Files/Google/Chrome/Application/chrome.exe',[
   '--headless=new',`--remote-debugging-port=${port}`,'--no-first-run',
@@ -52,7 +53,7 @@ try {
   };
   await send('Page.enable');await send('Runtime.enable');await send('Network.enable');
   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
-  await send('Page.navigate',{url:'http://127.0.0.1:8787/index.html#/'+(mapOnly?'hometown':'model3d')});
+  await send('Page.navigate',{url:baseUrl+'/index.html#/'+(mapOnly?'hometown':'model3d')});
   if(!mapOnly){
     const boot=await ev(`new Promise(resolve=>{let n=0;const t=setInterval(()=>{if(window.Showcase3D&&Showcase3D.booted()){clearInterval(t);resolve({ok:true});}else if(++n>150){clearInterval(t);resolve({ok:false,hash:location.hash,readyState:document.readyState,showcase:!!window.Showcase3D,viewport:document.querySelector('#c3dViewport')?.innerText,three:!!window.THREE,resources:performance.getEntriesByType('resource').filter(r=>/three|textures/.test(r.name)).map(r=>({name:r.name,duration:r.duration,size:r.transferSize}))});}},200);})`,true);
     if(!boot.ok)throw new Error('3D boot failed: '+JSON.stringify({boot,errors,consoleLogs:consoleLogs.slice(-12),failedRequests}));
@@ -61,6 +62,7 @@ try {
   const report={models:[],errors,checks:[]};
   const check=(name,pass,detail)=>{report.checks.push({name,pass,detail});if(!pass)process.exitCode=1;};
   const ids=mapOnly?[]:await ev('Showcase3D.items().map(x=>x.id)');
+  if(!mapOnly)await ev(`document.getElementById('c3dPause').click()`);
   const selectInUi=async id=>{
     await ev(`document.querySelector('#c3dList .c3d-item[data-id="${id}"]').click()`);
     await sleep(1600);
@@ -70,7 +72,7 @@ try {
   };
   for(const id of ids){
     await selectInUi(id);
-    // 七件全截：以前只截围屋与织带，另外五件没有任何可视证据，虎头帽那块戳在帽外的方形贴片和六件浮空才拖到现在
+    // 每件模型都保留实际浏览器截图。
     // 不带 clip：带 clip 的截图路径会在 captureBeyondViewport 触发容器 resize 之后取图，
     // WebGL 画布已被 setSize 清空，七张 3D 图全成 3KB 空白；整页截图才有内容。
     await shot('desktop-'+id);
@@ -108,9 +110,9 @@ try {
     // 上一次就是这个原因，七张截图全空白而断言全绿（那一帧只画了地面圆盘的 32 个三角面）。
     check(id+' 确实提交给渲染器绘制',measurement.stats?.calls>=Math.max(2,Math.floor(measurement.meshes*0.5)),{calls:measurement.stats?.calls,meshes:measurement.meshes});
     if(id==='weiwu'){
-      // 外轮廓含角楼与檐口挑出，实地长宽比约 1.13:1；墙长被乘上收分系数时进深会冲到 5.5 以上
+      // 检查方形围合和低墙比例。
       const fp=measurement.footprint||{}, ratio=fp.x/fp.z;
-      check('weiwu 仍是长方形围合（外轮廓 1.1~1.9:1，进深 3.0~4.3）', ratio>1.1&&ratio<1.9&&fp.z>3.0&&fp.z<4.3, fp);
+      check('关西新围方形围合与长墙比例',ratio>0.95&&ratio<1.05&&measurement.metadata.wallHeightRatio<0.15,fp);
     }
   }
   for(const id of (mapOnly?[]:['weiwu','zhidai'])){
@@ -126,12 +128,33 @@ try {
   }
   await send('Emulation.setDeviceMetricsOverride',{width:360,height:800,deviceScaleFactor:1,mobile:true});
   await send('Page.reload');await sleep(3500);
-  for(const id of (mapOnly?[]:['weiwu','zhidai'])){
+  for(const id of ids){
     await selectInUi(id);await shot('mobile-'+id);
     if(!process.argv.includes('--baseline')){
       const framing=await ev(`(()=>{const g=Showcase3D.debugModel(),c=Showcase3D.debugCamera();g.updateMatrixWorld(true);let max=0;g.traverse(o=>{if(!o.isMesh)return;const m=new THREE.Matrix4(),v=new THREE.Vector3();for(let k=0;k<(o.isInstancedMesh?o.count:1);k++){if(o.isInstancedMesh){o.getMatrixAt(k,m);m.premultiply(o.matrixWorld);}else m.copy(o.matrixWorld);for(let j=0;j<o.geometry.attributes.position.count;j++){v.fromBufferAttribute(o.geometry.attributes.position,j).applyMatrix4(m).project(c);max=Math.max(max,Math.abs(v.x),Math.abs(v.y));}}});return max;})()`);
       check(id+' 手机默认视图完整',framing<0.98,framing);
     }
+  }
+  if(!mapOnly){
+    await ev(`if(!Showcase3D.debugState().paused)document.getElementById('c3dPause').click()`);await sleep(400);
+    const rotation=await ev(`Showcase3D.debugState().rotY`);await sleep(1600);
+    check('暂停旋转保持视角',Math.abs((await ev(`Showcase3D.debugState().rotY`))-rotation)<0.002);
+    const z=await ev(`Showcase3D.debugState().zoom`);
+    await ev(`document.getElementById('c3dZoomIn').click()`);await sleep(1000);
+    check('放大工具实际改变相机',await ev(`Showcase3D.debugState().zoom`)<z*0.9);
+    await ev(`document.getElementById('c3dReset').click()`);await sleep(1200);
+    check('复位恢复默认距离',await ev(`Math.abs(Showcase3D.debugState().zoom-Showcase3D.debugState().defaultZoom)<0.01`));
+    await selectInUi('landye');
+    const rings=await ev(`Showcase3D.debugModel().getObjectByName('photo_rectified_indigo_fabric').material.map.image.src`);
+    await ev(`document.querySelector('[data-indigo-pattern="rays"]').click()`);
+    check('蓝染双环与放射纹使用不同实物纹样',await ev(`Showcase3D.debugModel().getObjectByName('photo_rectified_indigo_fabric').material.map.image.src`)!==rings);
+    await ev(`document.getElementById('c3dReferences').open=true`);await sleep(400);
+    check('原图相册与当前模型对应',await ev(`document.querySelectorAll('#c3dReferenceList .c3d-reference').length===ModelReferences.landye.length`));
+    await ev(`document.querySelector('#c3dReferenceList .c3d-reference').click()`);await sleep(400);
+    check('原图弹层显示有效图像',await ev(`document.querySelector('#c3dReferenceDialog').open&&document.querySelector('#c3dReferenceBody img').naturalWidth>0`));
+    await shot('mobile-reference-comparison');
+    await ev(`document.getElementById('c3dReferenceClose').click()`);
+    check('原图弹层关闭清理媒体',await ev(`!document.getElementById('c3dReferenceDialog').open&&document.getElementById('c3dReferenceBody').childElementCount===0`));
   }
   await ev(`location.hash='#/hometown'`);await sleep(800);
   await shot('mobile-map');

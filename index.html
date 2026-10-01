@@ -106,6 +106,12 @@
       <!-- ======== 3D 面板 ======== -->
       <div class="tab-panel" id="panel3d">
         <div class="c3d-list" id="c3dList"></div>
+        <div class="c3d-toolbar" aria-label="模型查看工具">
+          <button id="c3dZoomIn" type="button" aria-label="放大模型">＋ 放大</button>
+          <button id="c3dZoomOut" type="button" aria-label="缩小模型">－ 缩小</button>
+          <button id="c3dReset" type="button">复位</button>
+          <button id="c3dPause" type="button" aria-pressed="false">暂停旋转</button>
+        </div>
         <div class="c3d-viewport" id="c3dViewport">
           <div class="c3d-loading">加载 3D 模型中…</div>
         </div>
@@ -114,6 +120,18 @@
           <div class="c3d-info-desc" id="c3dDesc"></div>
         </div>
         <div class="c3d-hint">🖱 左键旋转 · 右键平移 · 滚轮缩放 ｜ 触屏：单指旋转 · 双指平移缩放</div>
+        <div id="c3dPatterns" class="c3d-patterns" hidden aria-label="蓝染样布纹样">
+          <button data-indigo-pattern="rings" type="button" aria-pressed="true">双环样布</button>
+          <button data-indigo-pattern="rays" type="button" aria-pressed="false">放射样布</button>
+        </div>
+        <details id="c3dReferences" class="c3d-references">
+          <summary>实物参考</summary>
+          <div id="c3dReferenceList" class="c3d-reference-list"></div>
+        </details>
+        <dialog id="c3dReferenceDialog" class="c3d-reference-dialog" aria-labelledby="c3dReferenceTitle">
+          <div class="c3d-dialog-head"><strong id="c3dReferenceTitle"></strong><button id="c3dReferenceClose" type="button" aria-label="关闭参考照片">关闭</button></div>
+          <div id="c3dReferenceBody"></div>
+        </dialog>
       </div>
 
       <!-- ======== 典藏面板 ======== -->
@@ -232,6 +250,10 @@
   <script src="js/ui.js"></script>
   <script src="js/admin.js"></script>
   <script src="js/textures.js"></script>
+  <script src="js/model-references.js"></script>
+  <script src="js/models-textiles.js"></script>
+  <script src="js/models-crafts.js"></script>
+  <script src="js/models-place.js"></script>
   <script src="js/showcase3d.js"></script>
   <script src="js/diancang.js"></script>
   <script src="js/data-hometown.js"></script>

@@ -87,6 +87,7 @@
     this.label = '本地知识库';
     // 从 Store 读取合并后的知识库（默认 + 管理员修改）
     this.entries = (window.Store ? window.Store.getEntries() : (window.KNOWLEDGE_BASE || [])).slice();
+    this.lastTopicId = '';
   }
 
   RulesEngine.prototype.scoreEntry = function (entry, tokens, hay) {
@@ -158,6 +159,24 @@
     return null;
   }
 
+  function topicId(question) {
+    var q = norm(question);
+    if (/蓝染|蓝靛|靛蓝|蓝印花/.test(q)) return 'landye';
+    if (/织带|花带|冬头帕/.test(q)) return 'v2-zhidai';
+    if (/竹编|竹篾|篾匠|竹艺|竹制/.test(q)) return 'v2-zhubian';
+    if (/围屋|土楼|关西新围|燕翼围/.test(q)) return 'weiwu';
+    return '';
+  }
+
+  function withRecentTopic(question, recentTopic, entries) {
+    if (topicId(question) || !recentTopic) return String(question || '');
+    var q = norm(question);
+    if (!/^(那|它|这个|这项|其|还有|另外|然后|再说)/.test(q)
+      && !/(呢|怎么样|怎么做|如何做|什么寓意|有什么寓意|哪些步骤|什么步骤)$/.test(q)) return String(question || '');
+    var entry = pickEntry(entries, recentTopic);
+    return entry ? entry.title + ' ' + String(question || '') : String(question || '');
+  }
+
   function collectSources(entries) {
     var refs = [];
     (entries || []).forEach(function (entry) {
@@ -184,14 +203,14 @@
 
   function questionIntent(question, entries) {
     var q = norm(question);
-    var compare = /比較|对比|区别|差异|不同|相似|相同|共同|类似|异同/.test(q);
-    var same = /相似|相同|共同|类似/.test(q);
-    var both = /异同|既.*又|相似.*区别|区别.*相似|相同.*不同|不同.*相同/.test(q);
-    var process = /工艺|步骤|怎么做|如何制作|制作方法|流程|原料|材料/.test(q);
-    var inheritor = /传承人|谁在传|谁传承|谁来传|代表性传承|传承者|老师是谁|师傅是谁/.test(q);
-    var hasBlue = /蓝染|蓝印花|靛蓝|扎染/.test(q);
-    var hasWeave = /织带|花带|冬头帕/.test(q);
-    var hasBamboo = /竹编|竹篾|篾匠/.test(q);
+    var compare = /比较|对比|相比|相较|区别|差异|不同|不一样|相似|相同|共同|类似|相近|异同/.test(q);
+    var same = /相似|相同|共同|类似|相近|共通/.test(q);
+    var both = /异同|既.*又|相似.*区别|区别.*相似|相同.*不同|不同.*相同|共同点.*不同点|相同点.*不同点/.test(q);
+    var process = /工艺|步骤|工序|怎么做|如何制作|制作方法|流程|原料|材料|做法/.test(q);
+    var inheritor = /传承人|谁在传|谁传承|谁来传|传给谁|代表性传承|传承者|老师是谁|师傅是谁|谁在做/.test(q);
+    var hasBlue = /蓝染|蓝印花|靛蓝|蓝靛|植物染蓝|扎染/.test(q);
+    var hasWeave = /织带|手织带|花带|彩带|冬头帕/.test(q);
+    var hasBamboo = /竹编|竹篾|篾匠|竹艺|竹制/.test(q);
     var nantong = /南通|蓝印花布/.test(q);
     var dali = /白族|大理|周城/.test(q);
     var references = [];
@@ -200,7 +219,7 @@
     // A multi-topic craft question must be answered as a comparison before any
     // single keyword can win the ordinary ranker.
     if (compare && hasWeave && hasBamboo) {
-      var strap = pickEntry(entries, 'zhidai');
+      var strap = pickEntry(entries, 'v2-zhidai');
       var bamboo = pickEntry(entries, 'v2-zhubian');
       if (strap && bamboo) {
         references = [strap, bamboo];
@@ -219,7 +238,7 @@
       var hakka = pickEntry(entries, 'landye');
       var nt = nantong ? pickEntry(entries, 'v2-nantong-blue-print') : null;
       var dl = dali ? pickEntry(entries, 'v2-dali-bai-tie-dye') : null;
-      var generalOther = /其他地方|别的地方|其他地区|外地|各地|不同地区|相近的地方|相似的地方|地方染艺|地方做法|别处|他处/.test(q);
+      var generalOther = /其他地方|别的地方|其他地区|外地|各地|不同地区|相近的地方|相似的地方|地方(?:染艺|做法|蓝染|蓝靛|染布)|别处|他处/.test(q);
       var explicitlyUnknown = /日本|日本蓝染|江户|琉球|福建|土楼|围屋/.test(q);
       if (!nantong && !dali && generalOther && !explicitlyUnknown) {
         nt = pickEntry(entries, 'v2-nantong-blue-print');
@@ -253,7 +272,7 @@
 
     if (compare && (/围屋|土楼/.test(q) || hasWeave || hasBamboo)) {
       var knownSide = /竹编|竹篾|篾匠/.test(q) ? pickEntry(entries, 'v2-zhubian')
-        : (/织带|花带|冬头帕/.test(q) ? pickEntry(entries, 'zhidai')
+        : (/织带|花带|冬头帕/.test(q) ? pickEntry(entries, 'v2-zhidai')
           : (hasBlue ? pickEntry(entries, 'landye') : pickEntry(entries, 'weiwu')));
       if (knownSide && /日本|福建|土楼|围屋|外地|其他地区|其他地方|相较|相比|比较|对比|区别|不同/.test(q)) {
         text = '龙南资料记载：' + headLine(knownSide.answer, 145) + '。馆内资料没有覆盖你提到的另一方，因此我先不推断差异；可以按该地官方或非遗资料再核对。';
@@ -275,7 +294,7 @@
 
     if (process) {
       var processEntry = hasBlue ? (nantong ? pickEntry(entries, 'v2-nantong-blue-print') : (dali ? pickEntry(entries, 'v2-dali-bai-tie-dye') : pickEntry(entries, 'landye')))
-        : (hasWeave ? pickEntry(entries, 'zhidai') : (hasBamboo ? pickEntry(entries, 'v2-zhubian') : null));
+        : (hasWeave ? pickEntry(entries, 'v2-zhidai') : (hasBamboo ? pickEntry(entries, 'v2-zhubian') : null));
       if (processEntry) {
         if (hasBlue && !nantong && !dali) {
           text = '客家蓝染的资料步骤是：用蓝草制取靛蓝；李洁春以“三浸三晒三发酵”制靛泥；再以蜡染模板等方式制作纹样并进行染制。与织带结合的靛蓝织带资料称有24道染制工序。';
@@ -344,10 +363,12 @@
 
   RulesEngine.prototype.ask = function (question) {
     var self = this;
+    var resolvedQuestion = withRecentTopic(question, this.lastTopicId, this.entries);
+    this.lastTopicId = topicId(resolvedQuestion) || this.lastTopicId;
     return mockDelay().then(function () {
-      var intent = questionIntent(question, self.entries);
+      var intent = questionIntent(resolvedQuestion, self.entries);
       if (intent) return intent;
-      var ranked = self.rank(question);
+      var ranked = self.rank(resolvedQuestion);
       if (!ranked.scored.length) {
         return {
           text: '嗯嗯？阿蓝没听清，换个说法再问一次。',
@@ -377,6 +398,7 @@
     // 时 _fallback 是 undefined，catch 里拿不到它，只能回一句罐头话，
     // 明明库里有的答案就这么丢了。
     this._fallback = new RulesEngine();
+    this.lastTopicId = '';
     if (!canCallApi(this.cfg)) {
       console.warn('[answer-engine] 未配置 API 代理或本地 apiKey，将回退到本地知识库。');
     }
@@ -459,8 +481,10 @@
    */
   ApiEngine.prototype.ask = function (question) {
     var self = this;
-    var ranked = this._fallback.rank(question);
-    var intent = questionIntent(question, this._fallback.entries);
+    var resolvedQuestion = withRecentTopic(question, this.lastTopicId, this._fallback.entries);
+    this.lastTopicId = topicId(resolvedQuestion) || this.lastTopicId;
+    var ranked = this._fallback.rank(resolvedQuestion);
+    var intent = questionIntent(resolvedQuestion, this._fallback.entries);
 
     // 复杂或多主题意图先从有出处的条目组成针对性回答；无论 API 配置如何，
     // 相似/区别/工艺/传承人问法都可离线给出同一条可追溯答案。

@@ -105,6 +105,16 @@
       + 'aria-label="龙南市家乡地图，点一个地名看书里怎么讲它">'];
     svg.push('<g class="hm-world" transform="translate(0 0) scale(1)">');
     svg.push('<path class="hm-land" d="' + outlinePath(proj) + '"></path>');
+    var graticule=[];
+    for(var lat=Math.ceil(data.bbox[1]*10)/10;lat<data.bbox[3];lat+=0.1){
+      var y=proj(data.bbox[0],lat)[1];
+      graticule.push('<line x1="'+PAD+'" y1="'+y+'" x2="'+(W-PAD)+'" y2="'+y+'"></line>');
+    }
+    for(var lon=Math.ceil(data.bbox[0]*10)/10;lon<data.bbox[2];lon+=0.1){
+      var x=proj(lon,data.bbox[1])[0];
+      graticule.push('<line x1="'+x+'" y1="'+PAD+'" x2="'+x+'" y2="'+(H-PAD)+'"></line>');
+    }
+    svg.push('<g class="hm-graticule" aria-hidden="true">'+graticule.join('')+'</g>');
     placeSpots(proj).forEach(function (d) {
       var p = data.places[d.idx];
       var n = exhibitsFor(p.name).length;
@@ -119,7 +129,11 @@
         + '" r="' + (p.kind === 'seat' ? 7 : 5) + '"></circle>'
         + '</g>');
     });
-    svg.push('</g></svg>');
+    var meanLat=(data.bbox[1]+data.bbox[3])/2;
+    var scaleLength=(proj(data.bbox[0]+10/(111.32*Math.cos(meanLat*Math.PI/180)),meanLat)[0]-proj(data.bbox[0],meanLat)[0]);
+    svg.push('</g><g class="hm-compass" aria-label="北方"><path d="M 665 60 L 675 30 L 685 60 L 675 53 Z"></path><text x="675" y="21" text-anchor="middle">北 N</text></g>'
+      +'<g class="hm-scale" aria-label="地图比例尺"><path d="M 46 '+(H-46)+' V '+(H-38)+' H '+(46+scaleLength)+' V '+(H-46)+'"></path>'
+      +'<text x="46" y="'+(H-54)+'">约 10 公里</text></g></svg>');
     var toolbar = '<div class="hm-tools" role="group" aria-label="地图操作">'
       + '<div class="hm-tool-row"><span class="hm-tool-hint">拖动地图平移 · 滚轮或双指缩放</span>'
       + '<div class="hm-zoom" aria-label="缩放地图">'
@@ -135,7 +149,8 @@
       + data.places.map(function (p, i) { return '<button type="button" class="hm-place-link hm-kind-' + esc(p.kind)
         + '" data-place="' + i + '"><span>' + esc(p.name) + '</span><small>书中 ' + exhibitsFor(p.name).length + ' 处</small></button>'; }).join('')
       + '</div><div class="hm-map-status" aria-live="polite">地图已就绪，可放大查看地点。</div></div>';
-    mapEl.innerHTML = toolbar + '<div class="hm-viewport">' + svg.join('') + '</div>';
+    mapEl.innerHTML = toolbar + '<div class="hm-viewport">' + svg.join('') + '</div>'
+      +'<div class="hm-legend"><span class="hm-legend-seat">城区</span><span class="hm-legend-town">乡镇</span><span class="hm-legend-site">文保点</span><span>地点关联典藏原文与客家话原声</span></div>';
     var svgEl = mapEl.querySelector('.hm-svg');
     // Source-check scripts use a tiny DOM stub that stores HTML without parsing it.
     // Keep init()/places()/exhibitsFor() usable in that non-rendering environment.
@@ -146,6 +161,8 @@
       var pct = Math.round(zoom * 100);
       var status = mapEl.querySelector('.hm-map-status');
       if (status) status.textContent = '缩放 ' + pct + '% · ' + (selected ? selected.name + ' 已选中' : '点选地图标记或下方地点');
+      var scaleLabel=mapEl.querySelector('.hm-scale text');
+      if(scaleLabel)scaleLabel.textContent='约 '+(10/zoom).toFixed(zoom>1?1:0)+' 公里';
     }
     function clampView() {
       tx = Math.max(W * (1 - zoom), Math.min(0, tx));
@@ -164,14 +181,15 @@
     }
     function center() { return [W / 2, H / 2]; }
     function nearestPlace(e) {
-      var point = svgPoint(e), rect = svgEl.getBoundingClientRect();
-      var scalePx = rect.width / W, best = null, bestDistance = Infinity;
+      var best = null, bestDistance = Infinity;
       mapEl.querySelectorAll('.hm-place').forEach(function (g) {
         var dot = g.querySelector('.hm-dot');
         if (!dot || g.classList.contains('is-filtered')) return;
         var x = parseFloat(dot.getAttribute('cx')) * zoom + tx;
         var y = parseFloat(dot.getAttribute('cy')) * zoom + ty;
-        var distance = Math.hypot((point.x - x) * scalePx, (point.y - y) * scalePx);
+        var marker = svgEl.createSVGPoint(); marker.x = x; marker.y = y;
+        var screen = marker.matrixTransform(svgEl.getScreenCTM());
+        var distance = Math.hypot(e.clientX - screen.x, e.clientY - screen.y);
         if (distance < bestDistance) { bestDistance = distance; best = g; }
       });
       return bestDistance <= 23 ? best : null;

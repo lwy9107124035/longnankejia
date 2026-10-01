@@ -325,20 +325,20 @@
   /* ---------- 三合土夯墙：暖黄土色、水平夯层、砂砾与流水痕 ---------- */
   function rammedLoam() {
     var t=createCanvas(512,512),ctx=t.ctx;
-    ctx.fillStyle='#c3a67e';ctx.fillRect(0,0,512,512);
+    ctx.fillStyle='#b4afa2';ctx.fillRect(0,0,512,512);
     for(var y=0;y<512;y+=42){
-      ctx.fillStyle='rgba(118,90,58,.30)';ctx.fillRect(0,y,512,2.5);
-      ctx.fillStyle='rgba(233,215,183,.20)';ctx.fillRect(0,y+3,512,2);
+      ctx.fillStyle='rgba(92,88,77,.25)';ctx.fillRect(0,y,512,2.5);
+      ctx.fillStyle='rgba(221,218,207,.20)';ctx.fillRect(0,y+3,512,2);
       for(var k=0;k<9;k++){
-        ctx.fillStyle='rgba(124,96,64,.15)';ctx.beginPath();
+        ctx.fillStyle='rgba(93,90,80,.15)';ctx.beginPath();
         ctx.arc(Math.random()*512,y+10+Math.random()*24,3+Math.random()*3,0,Math.PI*2);ctx.fill();
       }
     }
     for(var i=0;i<900;i++){
-      ctx.fillStyle=Math.random()>.5?'rgba(236,224,200,.35)':'rgba(102,78,53,.30)';
+      ctx.fillStyle=Math.random()>.5?'rgba(230,226,217,.35)':'rgba(89,86,77,.30)';
       ctx.fillRect(Math.random()*512,Math.random()*512,1+Math.random()*2,1+Math.random()*2);
     }
-    for(var s=0;s<26;s++){ctx.fillStyle='rgba(226,214,190,.10)';ctx.fillRect(Math.random()*512,0,2+Math.random()*5,512);}
+    for(var s=0;s<26;s++){ctx.fillStyle='rgba(223,217,204,.10)';ctx.fillRect(Math.random()*512,0,2+Math.random()*5,512);}
     return t.canvas;
   }
 

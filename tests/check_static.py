@@ -384,12 +384,20 @@ def check_deploy_workflow():
     if "SILICONFLOW_API_KEY" in ptxt:
         fail("pages.yml 不得读取或写入 API secret；GitHub Pages 仅通过 main 服务端代理调用")
     # 发布集必须是白名单：pack() 里从源码目录搬的每一项都得是页面真正加载的东西
-    allow = {"index.html", "css", "js", "assets/avatar", "assets/pdf-imgs", "assets/textures"}
+    allow = {"index.html", "css", "js", "assets/avatar", "assets/pdf-imgs", "assets/textures",
+             "assets/model-references", "assets/model-textures"}
     moved = set(re.findall(r'"\$src/([A-Za-z0-9_./-]+)"', ptxt))
     for m in sorted(moved - allow):
         fail("pages.yml 把 %s 也搬进了上线目录；白名单只有 %s" % (m, "、".join(sorted(allow))))
     if not moved:
         fail("pages.yml 里找不到 pack() 的 $src/... 搬运语句，白名单守卫失效")
+    required_assets = {"assets/model-references", "assets/model-textures"}
+    for m in sorted(required_assets - moved):
+        fail("pages.yml 没有把 %s 搬进上线目录" % m)
+    for asset in ("model-references", "model-textures"):
+        copy = re.escape('if [ -d "$src/assets/%s" ]; then cp -r "$src/assets/%s" "$dest/assets/"; fi' % (asset, asset))
+        if not re.search(copy, ptxt):
+            fail("pages.yml 必须仅在 $src/assets/%s 存在时复制它" % asset)
 
     # Cloudflare Pages 是公开入口：白名单资源、服务端 secret binding、永不内嵌静态 key。
     cf = rel(".github", "workflows", "cf-pages.yml")
@@ -429,7 +437,10 @@ def check_deploy_workflow():
         fail("cf-pages.yml 没有用 CLOUDFLARE_API_TOKEN 认证")
     cf_moved = set(re.findall(r'(?:cp -r |cp )"(?:_site/)?([A-Za-z0-9_./-]+)"? _site', ctxt))
     cf_moved |= set(re.findall(r'cp -r ([A-Za-z0-9_./ -]+) _site(?:/assets)?/', ctxt))
-    for m in sorted({x for grp in cf_moved for x in grp.split() if x} - allow):
+    cf_moved = {x for grp in cf_moved for x in grp.split() if x}
+    for m in sorted(required_assets - cf_moved):
+        fail("cf-pages.yml 没有把 %s 搬进上线目录" % m)
+    for m in sorted(cf_moved - allow):
         fail("cf-pages.yml 把 %s 也搬进了上线目录；白名单只有 %s" % (m, "、".join(sorted(allow))))
     notes.append("公开入口 = Cloudflare Pages（main→longnankejia；qcode/codex/doubao→longnankejia-dev；"
                  "API key 仅存服务端 secret binding，浏览器资源为空）")
