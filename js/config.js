@@ -21,8 +21,8 @@ window.APP_CONFIG = {
 
   ai: {
     // 'rules' = 只用本地知识库（离线演示，不联网）
-    // 'api'   = 混合链路：本地知识库优先，未命中才转大模型；大模型不可用时回到
-    //           馆内最接近的资料。三条路径都必须给出内容，不允许回"回答不了"。
+    // 'api'   = 简单概述读取馆内资料；具体、比较和追问经检索后交给大模型整理。
+    //           接口不可用时给资料节选；缺少证据时明确说明。
     // 线上由 Pages Function 使用服务端密钥；本地可用 js/secrets.js 覆盖为直连模式。
     mode: 'api',
 
@@ -33,15 +33,15 @@ window.APP_CONFIG = {
         : '/api/ai/chat/completions',
       // 本地直连密钥（若有）；线上通过 proxyUrl 转发，密钥不会下发到浏览器。
       apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || '',
-      model: 'Qwen/Qwen2.5-7B-Instruct',
-      temperature: 0.7,
-      maxTokens: 256,
+      model: 'deepseek-ai/DeepSeek-V3.2',
+      temperature: 0.2,
+      maxTokens: 900,
       systemPrompt:
         '你是"阿蓝"，龙南客家非遗数字助手，为游客介绍江西龙南的客家非物质文化遗产。' +
         '你熟悉蓝染、竹编、客家织带、客家围屋、客家山歌与童谣、客家方言等知识。' +
         '回答要求：使用简体中文，像馆里的讲解员那样说话，不用书面腔；' +
         '内容准确，不确定时坦诚说明，不编造史实；' +
-        '每次回答控制在 120 字以内，不用 emoji，结尾不写总结套话。'
+        '长度随问题需要，不用 emoji，结尾不写总结套话。'
     },
 
     // 语音输入（问答框的麦克风）：录音走 MediaRecorder，转写用国内可直连的 ASR 接口，

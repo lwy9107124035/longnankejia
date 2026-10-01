@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const out=path.join(root,'.cache',process.argv.includes('--baseline')?'v2-before':'reference-review-final');
+const out=path.join(root,'.cache',process.env.REVIEW_OUTPUT|| (process.argv.includes('--baseline')?'v2-before':'reference-review-final'));
 fs.mkdirSync(out,{recursive:true});
 const port=9359;
 const baseUrl=process.env.REVIEW_URL||'http://127.0.0.1:8788';
@@ -61,7 +61,7 @@ try {
   else await sleep(700);
   const report={models:[],errors,checks:[]};
   const check=(name,pass,detail)=>{report.checks.push({name,pass,detail});if(!pass)process.exitCode=1;};
-  const ids=mapOnly?[]:await ev('Showcase3D.items().map(x=>x.id)');
+  const ids=(mapOnly?[]:await ev('Showcase3D.items().map(x=>x.id)')).filter(id=>!process.env.REVIEW_MODELS||process.env.REVIEW_MODELS.split(',').includes(id));
   if(!mapOnly)await ev(`document.getElementById('c3dPause').click()`);
   const selectInUi=async id=>{
     await ev(`document.querySelector('#c3dList .c3d-item[data-id="${id}"]').click()`);
@@ -69,6 +69,16 @@ try {
     const item=await ev(`Showcase3D.items().find(x=>x.id===${JSON.stringify(id)})`);
     const selected=await ev(`(()=>{const b=document.querySelector('#c3dList .c3d-item.active');return b?.getAttribute('data-id')===${JSON.stringify(id)}&&document.querySelector('#c3dName')?.textContent===b.querySelector('.c3d-item-name').textContent+' · '+b.querySelector('.c3d-item-sub').textContent;})()`);
     check(id+' 界面选中项、模型名称与当前模型同步',selected,{item});
+  };
+  const turnTo=async angle=>{
+    const pos=await ev(`(()=>{const r=document.querySelector('#c3dViewport canvas').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,angle:Showcase3D.debugState().targetRotY};})()`);
+    const dx=(angle-pos.angle)/0.008;
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',x:pos.x,y:pos.y,button:'left',buttons:1,clickCount:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:pos.x+dx,y:pos.y,button:'left',buttons:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:pos.x+dx,y:pos.y,button:'left',buttons:0,clickCount:1});
+    await sleep(1100);
+    const delta=(await ev('Showcase3D.debugState().rotY'))-angle;
+    check('旋转控件到达视角 '+angle.toFixed(2),Math.abs(Math.atan2(Math.sin(delta),Math.cos(delta)))<0.035);
   };
   for(const id of ids){
     await selectInUi(id);
@@ -114,6 +124,11 @@ try {
       const fp=measurement.footprint||{}, ratio=fp.x/fp.z;
       check('关西新围方形围合与长墙比例',ratio>0.95&&ratio<1.05&&measurement.metadata.wallHeightRatio<0.15,fp);
     }
+    if(process.argv.includes('--all-angles')){
+      for(const [view,angle] of [['front',0],['side',Math.PI/2],['back',Math.PI],['other-side',Math.PI*1.5]]){
+        await turnTo(angle);await shot('desktop-'+id+'-'+view);
+      }
+    }
   }
   for(const id of (mapOnly?[]:['weiwu','zhidai'])){
     await selectInUi(id);
@@ -134,6 +149,12 @@ try {
       const framing=await ev(`(()=>{const g=Showcase3D.debugModel(),c=Showcase3D.debugCamera();g.updateMatrixWorld(true);let max=0;g.traverse(o=>{if(!o.isMesh)return;const m=new THREE.Matrix4(),v=new THREE.Vector3();for(let k=0;k<(o.isInstancedMesh?o.count:1);k++){if(o.isInstancedMesh){o.getMatrixAt(k,m);m.premultiply(o.matrixWorld);}else m.copy(o.matrixWorld);for(let j=0;j<o.geometry.attributes.position.count;j++){v.fromBufferAttribute(o.geometry.attributes.position,j).applyMatrix4(m).project(c);max=Math.max(max,Math.abs(v.x),Math.abs(v.y));}}});return max;})()`);
       check(id+' 手机默认视图完整',framing<0.98,framing);
     }
+  }
+  if(process.env.REVIEW_MODELS){
+    fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));
+    console.log(JSON.stringify({checks:report.checks.length,failed:report.checks.filter(c=>!c.pass),errors,out}));
+    if(errors.length)process.exitCode=1;
+    ws.close();chrome.kill();process.exit(process.exitCode||0);
   }
   if(!mapOnly){
     await ev(`if(!Showcase3D.debugState().paused)document.getElementById('c3dPause').click()`);await sleep(400);

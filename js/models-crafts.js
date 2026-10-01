@@ -258,6 +258,15 @@
     var canopy = new THREE.Group();
     canopy.name = 'asymmetric flowering crown';
     g.add(canopy);
+    function treePath(path) {
+      return path.map(function(p){
+        var height=Math.max(0,Math.min(1,(p[1]-0.67)/2.4));
+        return [p[0],p[1],p[2]*1.7+0.34*Math.sin(p[0]*2.3)*height+0.12*height];
+      });
+    }
+    function treeTube(name,material,path,radius,sides,taper) {
+      return curvedTube(THREE,canopy,name,material,treePath(path),radius,sides,taper);
+    }
     var bark = new THREE.MeshStandardMaterial({color:0xb5917e, map:textures.paperBark, roughness:0.96});
     var twig = mat(THREE, 0x49362b), pot = mat(THREE, 0x20261e), rim = mat(THREE, 0x5e6540), pebble = mat(THREE, 0xd7d0b8), leaf = mat(THREE, 0x73764a);
     var orange = mat(THREE, 0xef9358), paleOrange = mat(THREE, 0xf4b975), darkOrange = mat(THREE, 0xcc7246);
@@ -278,13 +287,13 @@
       p.position.set(Math.cos(angle) * radius, 0.64 + (stone % 2) * 0.018, Math.sin(angle) * radius); p.scale.set(1.25, 0.52, 0.9);
     }
     // The trunk sweeps from the pot to the left, then turns up and right.
-    curvedTube(THREE, canopy, 'continuous S-curved paper-tree trunk', bark,
+    treeTube('continuous S-curved paper-tree trunk', bark,
       [[0.28,0.67,0.02],[0.08,0.85,0.01],[-0.33,1.00,0],[-0.62,1.30,0.01],[-0.62,1.58,0.02],[-0.34,1.83,0.04],[0.06,2.09,0.06],[0.38,2.48,0.06]], 0.16, 10, 0.53);
-    curvedTube(THREE, canopy, 'low left spreading branch', bark,
+    treeTube('low left spreading branch', bark,
       [[-0.48,1.21,0],[-0.88,1.10,0],[-1.38,1.13,0.04]], 0.05, 7, 0.50);
-    curvedTube(THREE, canopy, 'low right spreading branch', bark,
+    treeTube('low right spreading branch', bark,
       [[-0.51,1.40,0],[-0.03,1.46,-0.01],[0.45,1.31,0.01],[0.62,1.50,0.03]], 0.05, 7, 0.62);
-    curvedTube(THREE, canopy, 'upper right crooked branch', bark,
+    treeTube('upper right crooked branch', bark,
       [[0.14,2.14,0.05],[0.57,2.10,0.07],[0.81,1.80,0.05],[1.25,1.88,0.06]], 0.065, 8, 0.57);
     var branches = [
       [[-0.30,1.88,0.04],[-0.65,2.13,0.05],[-0.76,2.55,0.08],[-1.08,3.07,0.12]],
@@ -298,6 +307,7 @@
       [[0.56,2.09,0.05],[0.76,2.48,-0.17],[0.90,2.75,-0.18]],
       [[-0.02,1.45,0],[0.01,1.74,0.10],[0.13,2.05,0.13]]
     ];
+    branches=branches.map(treePath);
     var flowerPoints = [];
     branches.forEach(function (path, bi) {
       curvedTube(THREE, canopy, 'continuous tapered flowering twig', twig, path, bi < 2 ? 0.024 : 0.017, 5, 0.76);
@@ -319,7 +329,8 @@
     var petalGeom = foldedPetal(THREE);
     var orangePetals = [], lightPetals = [], darkPetals = [];
     flowerPoints.forEach(function (p, fi) {
-      var c = p._tip, norm = new THREE.Vector3((fi % 3 - 1) * 0.32, 0.18 + (fi % 2) * 0.35, 1).normalize();
+      var c = p._tip, direction=(fi%7)*Math.PI*2/7;
+      var norm = new THREE.Vector3(Math.sin(direction)*0.75, 0.22+(fi%2)*0.24, Math.cos(direction)).normalize();
       var u = new THREE.Vector3(0, 1, 0).cross(norm).normalize();
       if (u.lengthSq() < 0.1) u.set(1, 0, 0);
       var v = norm.clone().cross(u).normalize();
@@ -342,6 +353,7 @@
     makeFlowerBatch(THREE, canopy, darkPetals, darkOrange, petalGeom, 'rust orange paper blossom petals', scalePetal);
     g.userData.referenceIds = [204, 206, 207];
     g.userData.referenceMode = 'reference-shaped';
+    g.userData.reconstruction='保留正面S形主干与六角花盆，合理补充枝条纵深及朝不同方向开放的纸花';
     return g;
   }
 

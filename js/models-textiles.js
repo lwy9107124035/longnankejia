@@ -53,6 +53,44 @@
       material(THREE, color));
   }
 
+  function clothGrid(THREE, columns, rows, sample, reverse) {
+    var positions = [], uvs = [], indices = [];
+    for (var row = 0; row <= rows; row++) for (var col = 0; col <= columns; col++) {
+      var u = col / columns, v = row / rows, point = sample(u, v);
+      positions.push(point[0], point[1], point[2]);
+      uvs.push(point[3] == null ? u : point[3], point[4] == null ? v : point[4]);
+    }
+    for (var y = 0; y < rows; y++) for (var x = 0; x < columns; x++) {
+      var a = y * (columns + 1) + x, b = a + columns + 1;
+      if (reverse) indices.push(a, b, a + 1, a + 1, b, b + 1);
+      else indices.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+    var geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices); geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  function profileAt(profile, y) {
+    for (var i = 1; i < profile.length; i++) {
+      if (y <= profile[i][0]) {
+        var a = profile[i - 1], b = profile[i], t = Math.max(0, (y - a[0]) / (b[0] - a[0]));
+        return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      }
+    }
+    return profile[profile.length - 1].slice(1);
+  }
+
+  function ellipseSeam(group, THREE, name, rx, rz, y, color, radius) {
+    var points = [];
+    for (var i = 0; i <= 64; i++) {
+      var angle = i / 64 * Math.PI * 2;
+      points.push([Math.cos(angle) * rx, y, Math.sin(angle) * rz]);
+    }
+    return addTube(group, THREE, name, points, radius || 0.007, color, 64);
+  }
+
   function createStrip(THREE, name, texture, options) {
     var width = options.width, length = options.length, steps = options.steps || 48;
     var columns = 4, vertices = [], uvs = [], indices = [];
@@ -102,14 +140,16 @@
     var black = material(THREE, 0x17151b), red = material(THREE, 0x9b2435), trim = material(THREE, 0xe8c8ad);
     var crown = addMesh(g, THREE, '黑布帽冠', new THREE.SphereGeometry(0.72, 40, 28, 0, Math.PI * 2, 0, Math.PI * 0.70), black, [0, 0.89, 0]);
     crown.scale.y = 0.86;
-    addMesh(g, THREE, '帽檐软边', new THREE.CylinderGeometry(0.77, 0.72, 0.12, 48), black, [0, 0.46, 0]);
+    addMesh(g, THREE, '帽檐软边', new THREE.CylinderGeometry(0.77, 0.72, 0.12, 48, 1, true), black, [0, 0.46, 0]);
     var brimPiping = addMesh(g, THREE, '帽檐红色包边', new THREE.TorusGeometry(0.755, 0.035, 7, 48), red, [0, 0.51, 0]);
     brimPiping.rotation.x = Math.PI / 2;
-    addMesh(g, THREE, '帽内衬', new THREE.CylinderGeometry(0.53, 0.56, 0.1, 40), material(THREE, 0x302a30), [0, 0.39, 0]);
+    var lining = addMesh(g, THREE, '帽内衬', new THREE.SphereGeometry(0.695, 40, 28, 0, Math.PI * 2, 0, Math.PI * 0.70), material(THREE, 0x302a30, null, 1, THREE.BackSide), [0, 0.89, 0]);
+    lining.scale.y = 0.86;
+    addTube(g, THREE, '帽后拼缝', [[0,1.50,0],[0,1.39,-0.48],[0,1.13,-0.69],[0,0.85,-0.72],[0,0.60,-0.61]], 0.005, 0x39303d, 40);
 
     function hatSurfaceZ(x, y) {
       var yy = (y - 0.89) / 0.86;
-      return Math.sqrt(Math.max(0.015, 0.72*0.72 - x*x - yy*yy*0.72*0.72)) + 0.012;
+      return Math.sqrt(Math.max(0.015, 0.72*0.72 - x*x - yy*yy)) + 0.012;
     }
     function addHatPatch(name, texture, width, height, centerY, rows, cols) {
       var positions = [], uvs = [], indices = [];
@@ -121,6 +161,10 @@
           // the lower embroidered band broad across the front of the crown.
           var patchWidth = name === '219白地花绣冠饰' ? 0.48 + 0.52 * v : 1;
           var x = (u - 0.5) * width * patchWidth;
+          if(name === '219白地花绣冠饰'){
+            var height=(y-0.89)/0.86,available=Math.sqrt(Math.max(0.01,0.72*0.72-height*height));
+            x=Math.sin((u-0.5)*Math.PI*0.88)*available;
+          }
           positions.push(x, y, hatSurfaceZ(x, y)); uvs.push(u, 1 - v);
         }
       }
@@ -174,132 +218,180 @@
   }
 
   function buildDongtoupa(THREE, textures) {
-    var g = new THREE.Group(); g.name = '冬头帕235·矩形织物';
-    var back = material(THREE, 0x4d2927), edge = material(THREE, 0x9d4d46);
-    addMesh(g, THREE, '方形布料厚身', new THREE.BoxGeometry(1.58, 1.58, 0.075), back, [0, 0.80, 0]);
-    var cloth = new THREE.PlaneGeometry(1.55, 1.55, 24, 24);
-    var points = cloth.attributes.position;
-    for (var v = 0; v < points.count; v++) {
-      points.setZ(v, 0.008 * Math.sin(points.getX(v) * 8) * Math.sin(points.getY(v) * 6));
+    var g = new THREE.Group(); g.name = '冬头帕235·垂悬软布';
+    function clothPoint(u, v, back) {
+      var x = (u - 0.5) * 1.58, y = 0.01 + v * 1.58;
+      var sag = 0.11 * Math.cos((u - 0.5) * Math.PI) * (1 - v);
+      var z = 0.12 * Math.sin(u * Math.PI) + 0.065 * Math.sin(u * Math.PI * 4 + v * 1.2)
+        + 0.024 * Math.sin(u * 23 + v * 4) * (1 - v * 0.7);
+      return [x, y - sag, z + (back ? -0.006 : 0.006), u, v];
     }
-    cloth.computeVertexNormals();
-    addMesh(g, THREE, '235红布与中央密竖纹', cloth,
-      material(THREE, 0xffffff, textures.dongtoupaFront, 1, THREE.DoubleSide), [0, 0.80, 0.052]);
-    var hem = [[-0.77,0.02,0.05],[-0.40,0.005,0.05],[0.0,0.025,0.05],[0.40,0.005,0.05],[0.77,0.02,0.05]];
-    addTube(g, THREE, '下摆锁边', hem, 0.022, 0xdec1a0, 28);
-    addTube(g, THREE, '上边锁线', [[-0.76,1.57,0.05],[0,1.59,0.05],[0.76,1.57,0.05]], 0.013, 0xc18874, 20);
-    for (var side = -1; side <= 1; side += 2) {
-      addTube(g, THREE, side < 0 ? '左侧缝线' : '右侧缝线', [[side*0.76,0.08,0.05],[side*0.78,0.80,0.05],[side*0.76,1.52,0.05]], 0.009, 0xa76358, 20);
+    addMesh(g, THREE, '235红布与中央密竖纹', clothGrid(THREE, 48, 48, function (u, v) {
+      return clothPoint(u, v, false);
+    }), material(THREE, 0xffffff, textures.dongtoupaFront, 1));
+    addMesh(g, THREE, '冬头帕织物背面', clothGrid(THREE, 48, 48, function (u, v) {
+      return clothPoint(u, v, true);
+    }, true), material(THREE, 0xa68b82, textures.dongtoupaFront, 1));
+    var edges = [[], [], [], []];
+    for (var e = 0; e <= 32; e++) {
+      var t = e / 32;
+      edges[0].push(clothPoint(t, 0, false).slice(0, 3));
+      edges[1].push(clothPoint(t, 1, false).slice(0, 3));
+      edges[2].push(clothPoint(0, t, false).slice(0, 3));
+      edges[3].push(clothPoint(1, t, false).slice(0, 3));
     }
+    edges.forEach(function (points, i) { addTube(g, THREE, '软布锁边-' + i, points, 0.008, 0xc9ab91, 48); });
+    g.userData.reconstruction = '连续双面布料曲面，垂悬褶皱为展示补全';
     return setEvidence(g, [235], 'photo-textured');
   }
 
   function buildDajinshan(THREE, textures) {
-    var g = new THREE.Group(); g.name = '大襟衫230·单件上衣';
-    var blue = material(THREE, 0x263b64), inside = material(THREE, 0x18243e);
-    var torsoShape = new THREE.Shape();
-    torsoShape.moveTo(-0.48, 1.84); torsoShape.lineTo(0.48, 1.84); torsoShape.lineTo(0.59, 1.60);
-    torsoShape.lineTo(0.53, 0.13); torsoShape.quadraticCurveTo(0, 0.02, -0.53, 0.13);
-    torsoShape.lineTo(-0.59, 1.60); torsoShape.closePath();
-    addMesh(g, THREE, '上衣蓝色后身', new THREE.ExtrudeGeometry(torsoShape, { depth: 0.15, bevelEnabled: true, bevelSegments: 2, bevelSize: 0.025, bevelThickness: 0.025 }), blue, [0, 0, -0.08]);
-    var front = new THREE.PlaneGeometry(1, 1.73, 24, 32);
-    var vertices = front.attributes.position;
-    for (var i = 0; i < vertices.count; i++) {
-      var u = vertices.getX(i) + 0.5, y = vertices.getY(i) + 0.995;
-      var halfWidth = y > 1.60 ? 0.59 - (y - 1.60) / 0.265 * 0.11 : 0.53 + (y - 0.13) / 1.47 * 0.06;
-      vertices.setXYZ(i, (u - 0.5) * halfWidth * 2, y,
-        0.115 + 0.025 * Math.sin(u * Math.PI) + 0.008 * Math.sin(u * 23 + y * 3));
-    }
-    front.computeVertexNormals();
+    var g = new THREE.Group(); g.name = '大襟衫230·立体衣身与宽袖';
+    var inside = material(THREE, 0x556584, textures.dajinshanBody, 1, THREE.BackSide);
     var blueCloth = material(THREE, 0xffffff, textures.dajinshanBody, 1, THREE.DoubleSide);
-    addMesh(g, THREE, '前襟照片织纹', front, blueCloth);
+    var profile = [[0.12,0.57,0.225],[0.40,0.56,0.245],[0.95,0.52,0.26],
+      [1.45,0.565,0.25],[1.60,0.58,0.225],[1.71,0.46,0.195],[1.84,0.215,0.145]];
+    function torsoPoint(angle, y, inner) {
+      var size = profileAt(profile, y), height = (y - 0.12) / 1.72;
+      var fold = (0.013 * Math.cos(angle * 10 + y * 0.6) + 0.009 * Math.sin(angle * 17 - y * 2))
+        * Math.sin(Math.PI * Math.min(0.93, 1 - height * 0.75));
+      var factor = inner ? 0.965 : 1;
+      return [Math.cos(angle) * (size[0] + fold) * factor,
+        y + 0.011 * Math.sin(angle * 5) * (1 - height),
+        Math.sin(angle) * (size[1] + fold) * factor];
+    }
+    function torsoSurface(inner) {
+      return clothGrid(THREE, 80, 56, function (u, v) {
+        var angle = u * Math.PI * 2, y = 0.12 + v * 1.72, point = torsoPoint(angle, y, inner);
+        // Both sides use the same photographed plain weave, rather than a solid back plate.
+        point.push(0.5 + Math.cos(angle) * 0.5, v);
+        return point;
+      }, true);
+    }
+    addMesh(g, THREE, '立体衣身连续前后曲面', torsoSurface(false), blueCloth);
+    addMesh(g, THREE, '领口与下摆可见布衫内层', torsoSurface(true), inside);
     [-1, 1].forEach(function (side) {
       var arm = new THREE.Group(); arm.name = side < 0 ? '左宽袖' : '右宽袖';
-      arm.position.set(side * 0.74, 1.10, 0); arm.rotation.z = side * 0.26;
+      arm.position.set(side * 0.77, 1.03, 0); arm.rotation.z = side * 0.25;
       g.add(arm);
-      var sleeve = new THREE.CylinderGeometry(0.17, 0.26, 1.10, 28, 18, true);
+      var sleeve = new THREE.CylinderGeometry(0.18, 0.265, 1.22, 40, 28, true);
       var sleevePoints = sleeve.attributes.position;
       for (var j = 0; j < sleevePoints.count; j++) {
         var sx = sleevePoints.getX(j), sy = sleevePoints.getY(j), sz = sleevePoints.getZ(j);
-        var ripple = 1 + 0.035 * Math.cos(Math.atan2(sz, sx) * 7 + sy * 4);
-        sleevePoints.setXYZ(j, sx * ripple, sy, sz * 0.70 * ripple);
+        var ripple = 1 + 0.055 * Math.cos(Math.atan2(sz, sx) * 7 + sy * 3);
+        sleevePoints.setXYZ(j, sx * ripple, sy, sz * 0.82 * ripple);
       }
       sleeve.computeVertexNormals();
       addMesh(arm, THREE, '宽袖照片织纹', sleeve, blueCloth);
-      var shoulder = addMesh(arm, THREE, '圆顺袖山', new THREE.SphereGeometry(0.175,20,12), blueCloth, [0,0.53,0]);
-      shoulder.scale.set(1,0.60,0.70);
-      var cuff = addMesh(arm, THREE, '袖口整圈织带', new THREE.CylinderGeometry(0.245,0.263,0.20,28,1,true),
-        material(THREE, 0xffffff, textures.dajinshanCuff, 1, THREE.DoubleSide), [0,-0.45,0]);
-      cuff.scale.z = 0.70;
+      var innerSleeve = addMesh(arm, THREE, '袖筒内衬', sleeve.clone(), inside);
+      innerSleeve.scale.set(0.95,1,0.95);
+      var shoulder = addMesh(arm, THREE, '圆顺袖山', new THREE.SphereGeometry(0.188,24,16), blueCloth, [0,0.57,0]);
+      shoulder.scale.set(1,0.72,0.82);
+      var cuff = addMesh(arm, THREE, '袖口整圈织带', new THREE.CylinderGeometry(0.251,0.269,0.18,40,4,true),
+        material(THREE, 0xffffff, textures.dajinshanCuff, 1, THREE.DoubleSide), [0,-0.52,0]);
+      cuff.scale.z = 0.82;
+      var mouth = ellipseSeam(arm, THREE, '袖口折边', 0.266, 0.218, -0.61, 0xa99986, 0.006);
+      mouth.material.map = textures.dajinshanCuff;
     });
-    // The diagonal overlap is visible on the photographed garment and sits over the plain body.
-    var sash = addMesh(g, THREE, '领口斜襟织带', new THREE.PlaneGeometry(0.82,0.135),
-      material(THREE,0xffffff,textures.dajinshanSash,1,THREE.DoubleSide), [0,1.67,0.145]);
-    sash.rotation.z = 0.22;
-    var overlap = addMesh(g, THREE, '斜襟下接织边', new THREE.PlaneGeometry(0.57,0.09),
-      material(THREE,0xffffff,textures.dajinshanSash,1,THREE.DoubleSide), [-0.42,1.37,0.155]);
-    overlap.rotation.z = 1.45;
-    addTube(g, THREE, '斜襟缝线', [[-0.38,1.57,0.15],[-0.15,1.64,0.15],[0.10,1.70,0.15],[0.38,1.79,0.15]], 0.008, 0xb9a4ad, 22);
+    function band(name, points, width) {
+      var path = curve(THREE, points);
+      var geometry = clothGrid(THREE, 64, 8, function (u, v) {
+        var p = path.getPoint(u), tangent = path.getTangent(u), offset = (v - 0.5) * width;
+        var y = p.y + tangent.x * offset, size = profileAt(profile, y);
+        var x = Math.max(-size[0]*0.96, Math.min(size[0]*0.96, p.x - tangent.y * offset));
+        var angle = Math.acos(x / size[0]), surface = torsoPoint(angle, y, false);
+        return [x, y, surface[2] + 0.012, u, v];
+      });
+      addMesh(g, THREE, name, geometry, material(THREE, 0xffffff, textures.dajinshanSash, 1, THREE.DoubleSide));
+    }
+    band('随衣身弯曲的领口斜襟织带', [[-0.39,1.55,0],[0,1.67,0],[0.40,1.68,0]], 0.13);
+    band('斜襟下接织边', [[-0.39,1.55,0],[-0.47,1.35,0],[-0.49,1.15,0]], 0.075);
     var collar = addMesh(g, THREE, '圆弧立领', new THREE.CylinderGeometry(0.20,0.23,0.19,28,1,true), blueCloth, [0,1.91,0]);
-    collar.scale.z = 0.60;
+    collar.scale.z = 0.73;
     var collarInside = addMesh(g, THREE, '立领内侧', new THREE.CylinderGeometry(0.195,0.22,0.18,28,1,true), inside, [0,1.91,0]);
-    collarInside.scale.z = 0.60; collarInside.material.side = THREE.DoubleSide;
-    addTube(g, THREE, '衣摆折痕', [[-0.51,0.14,0.10],[-0.24,0.11,0.112],[0.05,0.13,0.112],[0.31,0.10,0.10],[0.52,0.14,0.10]], 0.012, 0x8090a5, 24);
+    collarInside.scale.z = 0.73; collarInside.material.side = THREE.DoubleSide;
+    ellipseSeam(g, THREE, '立领滚边', 0.202, 0.147, 2.005, 0x728399, 0.006);
+    var hem = [], backSeam = [];
+    for (var k = 0; k <= 64; k++) hem.push(torsoPoint(k / 64 * Math.PI * 2, 0.12, false));
+    for (var s = 0; s <= 28; s++) backSeam.push(torsoPoint(Math.PI * 1.5, 0.15 + s / 28 * 1.63, false));
+    addTube(g, THREE, '衣摆整圈折缝', hem, 0.006, 0x7889a5, 64);
+    addTube(g, THREE, '后身细接缝', backSeam, 0.003, 0x526c91, 40);
+    g.userData.reconstruction = '依据正面轮廓补全胸背、肩部、袖筒和内层；背面形体为合理展示重建';
     return setEvidence(g, [230], 'photo-textured');
   }
 
   function buildZisundai(THREE, textures) {
-    var g = new THREE.Group(); g.name = '子孙袋199·软布袋';
-    var backing = material(THREE, 0x5a4b3e), piping = material(THREE, 0xd9c9a6);
-    addMesh(g, THREE, '袋身填充厚度', new THREE.BoxGeometry(1.12,1.23,0.05), backing, [0,0.66,0]);
-    addMesh(g, THREE, '199号实物拼布正面', new THREE.PlaneGeometry(1.07,1.177), material(THREE, 0xffffff, textures.zisundaiFront, 1, THREE.DoubleSide), [0,0.66,0.026]);
-    addTube(g, THREE, '袋口折缝', [[-0.52,1.28,0.075],[-0.26,1.30,0.075],[0,1.28,0.075],[0.26,1.30,0.075],[0.52,1.28,0.075]], 0.012, 0xcbb58f, 24);
-    addTube(g, THREE, '左侧包边', [[-0.52,1.23,0.07],[-0.55,0.66,0.07],[-0.52,0.09,0.07]], 0.020, 0xd3c2a0, 24);
-    addTube(g, THREE, '右侧包边', [[0.52,1.23,0.07],[0.55,0.66,0.07],[0.52,0.09,0.07]], 0.020, 0xd3c2a0, 24);
-    addTube(g, THREE, '袋底缝线', [[-0.50,0.09,0.075],[-0.25,0.06,0.075],[0,0.08,0.075],[0.25,0.06,0.075],[0.50,0.09,0.075]], 0.014, 0xd3c2a0, 24);
+    var g = new THREE.Group(); g.name = '子孙袋199·开口软布囊';
+    var profile = [[0.08,0.46,0.025],[0.25,0.51,0.125],[0.65,0.55,0.19],[1.00,0.535,0.16],[1.28,0.51,0.09]];
+    function bagPoint(u, v, rear, inner) {
+      var y = 0.08 + v * 1.20, size = profileAt(profile, y), across = u * 2 - 1;
+      var round = Math.pow(Math.max(0, 1 - across * across), 0.65);
+      var fold = 0.014 * Math.sin(across * 19 + v * 4) * round * Math.sin(Math.PI * v);
+      var z = 0.018 + size[1] * round + fold;
+      if (inner) z *= 0.92;
+      var uvX = rear ? 0.025 + u * 0.08 : u;
+      var uvY = rear ? 0.30 + v * 0.35 : v;
+      return [across * size[0] * (inner ? 0.992 : 1), y + 0.009 * Math.sin(u * 15) * v,
+        rear ? -z : z, uvX, uvY];
+    }
+    var frontMat = material(THREE, 0xffffff, textures.zisundaiFront, 1);
+    var rearMat = material(THREE, 0xe0e4ed, textures.zisundaiFront, 1);
+    [false, true].forEach(function (rear) {
+      addMesh(g, THREE, rear ? '蓝布背囊曲面' : '199号实物拼布软囊正面',
+        clothGrid(THREE, 48, 48, function (u, v) { return bagPoint(u, v, rear, false); }, rear), rear ? rearMat : frontMat);
+      addMesh(g, THREE, rear ? '袋内后层' : '袋内前层',
+        clothGrid(THREE, 48, 48, function (u, v) { return bagPoint(u, v, rear, true); }, rear),
+        material(THREE, 0xb5a58d, null, 1, THREE.BackSide));
+      var lip = [];
+      for (var i = 0; i <= 40; i++) lip.push(bagPoint(i / 40, 1, rear, false).slice(0, 3));
+      addTube(g, THREE, rear ? '袋口后折边' : '袋口前折边', lip, 0.009, 0xcabb9f, 48);
+    });
+    [-1, 1].forEach(function (side) {
+      addMesh(g, THREE, '柔软侧围-' + side, clothGrid(THREE, 6, 40, function (u, v) {
+        var front = bagPoint(side < 0 ? 0 : 1, v, false, false);
+        return [front[0], front[1], front[2] * (1 - 2 * u), 0.025 + u * 0.08, 0.30 + v * 0.35];
+      }), rearMat);
+      var seam = [];
+      for (var j = 0; j <= 32; j++) seam.push(bagPoint(side < 0 ? 0 : 1, j / 32, false, false).slice(0, 3));
+      addTube(g, THREE, side < 0 ? '左侧包边' : '右侧包边', seam, 0.009, 0xd3c2a0, 40);
+    });
+    addMesh(g, THREE, '袋底闭合折缝', clothGrid(THREE, 48, 4, function (u, v) {
+      var point = bagPoint(u, 0, false, false); point[2] *= 1 - 2 * v;
+      return point;
+    }), rearMat);
+    var bottom = [];
+    for (var b = 0; b <= 40; b++) bottom.push(bagPoint(b / 40, 0, false, false).slice(0, 3));
+    addTube(g, THREE, '袋底缝线', bottom, 0.008, 0xd3c2a0, 48);
+    g.userData.reconstruction = '保留实物绣面，补全蓝布背囊、开口、侧围、内层和软褶；不增设提手';
     return setEvidence(g, [199], 'photo-textured');
-  }
-
-  function ringSector(THREE, name, inner, outer, start, end, y, mat) {
-    var segments = 22, positions = [], uvs = [], indices = [];
-    for (var i = 0; i <= segments; i++) {
-      var t = i / segments, angle = start + (end - start) * t;
-      [inner, outer].forEach(function (r, row) {
-        positions.push(Math.cos(angle)*r, y, Math.sin(angle)*r);
-        // The photograph's center at (.48,.416) from the top becomes v=.584.
-        uvs.push(0.48 + Math.cos(angle)*r/outer*0.47, 0.584 + Math.sin(angle)*r/outer*0.47);
-      });
-    }
-    for (var j = 0; j < segments; j++) {
-      var a = j*2; indices.push(a,a+1,a+2,a+1,a+3,a+2);
-    }
-    var geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs,2));
-    geo.setIndex(indices); geo.computeVertexNormals();
-    var mesh = new THREE.Mesh(geo, mat);
-    mesh.name = name;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    return mesh;
   }
 
   function buildBowei(THREE, textures) {
     var g = new THREE.Group(); g.name = '脖围193·圆四分绣片';
     var outer = 0.78, inner = 0.164;
-    for (var i = 0; i < 4; i++) {
-      var start = -Math.PI/2 + i*Math.PI/2, end = start + Math.PI/2;
-      var sector = ringSector(THREE, '四分之一照片布片-' + (i+1), inner, outer, start, end, 0.18,
-        material(THREE, 0xffffff, textures.boweiTop, 1, THREE.DoubleSide));
-      g.add(sector);
+    function surface(angle, radial, underside) {
+      var r = inner + (outer-inner)*radial;
+      var height = 0.07 + 0.15*Math.pow(1-radial, 1.4) + 0.038*Math.sin(angle*4)*radial
+        + 0.009*Math.sin(angle*12+radial*9)*Math.sin(radial*Math.PI);
+      return [Math.cos(angle)*r, height-(underside ? 0.015 : 0), Math.sin(angle)*r,
+        0.48+Math.cos(angle)*r/outer*0.47, 0.584+Math.sin(angle)*r/outer*0.47];
     }
-    addMesh(g, THREE, '脖围软布侧壁', new THREE.CylinderGeometry(outer,outer,0.10,64,1,true), material(THREE,0x26374d, null,1,THREE.DoubleSide), [0,0.13,0]);
-    addMesh(g, THREE, '孔口包边内壁', new THREE.CylinderGeometry(inner,inner,0.10,48,1,true), material(THREE,0x11192d, null,1,THREE.DoubleSide), [0,0.13,0]);
-    // TorusGeometry starts in XY; rotate it flat in XZ to frame the real center opening.
-    var topRim = addMesh(g, THREE, '外圈缝线', new THREE.TorusGeometry(outer-0.025,0.022,6,64), material(THREE,0xafa18c), [0,0.195,0]);
-    topRim.rotation.x = Math.PI/2;
-    var holeRim = addMesh(g, THREE, '中心孔包边', new THREE.TorusGeometry(inner+0.018,0.025,7,48), material(THREE,0x11182a), [0,0.20,0]);
-    holeRim.rotation.x = Math.PI/2;
+    for (var i = 0; i < 4; i++) {
+      var start = -Math.PI/2 + i*Math.PI/2;
+      addMesh(g, THREE, '四分之一照片布片-' + (i+1), clothGrid(THREE, 24, 16, function(u,v){
+        return surface(start+u*Math.PI/2,v,false);
+      }), material(THREE, 0xffffff, textures.boweiTop, 1, THREE.DoubleSide));
+    }
+    addMesh(g,THREE,'脖围曲面底衬',clothGrid(THREE,96,20,function(u,v){return surface(u*Math.PI*2,v,true);},true),material(THREE,0x26374d,null,1,THREE.DoubleSide));
+    [0,1].forEach(function(radial){
+      var points=[];
+      for(var j=0;j<=96;j++)points.push(surface(j/96*Math.PI*2,radial,false).slice(0,3));
+      addTube(g,THREE,radial?'外圈缝线':'中心孔包边',points,radial?0.009:0.012,radial?0xc0ae94:0x11182a,96);
+      addMesh(g,THREE,radial?'脖围薄布外沿':'孔口包边内壁',clothGrid(THREE,96,2,function(u,v){
+        var p=surface(u*Math.PI*2,radial,false);p[1]-=v*0.015;return p;
+      }),material(THREE,0x26374d,null,1,THREE.DoubleSide));
+    });
+    g.userData.reconstruction='四片绣面保留中心孔，补全轻微垂褶和薄布底衬';
     return setEvidence(g, [193], 'photo-textured');
   }
 

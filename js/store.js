@@ -126,7 +126,11 @@
           id: e.id || 'imported-' + i + '-' + Date.now(),
           title: String(e.title || '未命名'),
           keywords: Array.isArray(e.keywords) ? e.keywords.map(String) : [],
-          answer: String(e.answer || '')
+          answer: String(e.answer || ''),
+          topics: Array.isArray(e.topics) ? e.topics.map(String) : undefined,
+          aliases: Array.isArray(e.aliases) ? e.aliases.map(String) : undefined,
+          relatedTopics: Array.isArray(e.relatedTopics) ? e.relatedTopics.map(String) : [],
+          sources: Array.isArray(e.sources) ? e.sources.map(function(s) { return { title: String(s.title || ''), url: String(s.url || '') }; }) : []
         };
       });
       write(LS.custom, cleaned);

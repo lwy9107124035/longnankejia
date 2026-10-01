@@ -222,6 +222,8 @@ async function proxyAuthorized(request, context, endpoint) {
       try { parsed = JSON.parse(new TextDecoder().decode(bytes)); }
       catch { return json(400, { error: '请求内容无效' }); }
       if (!validChatBody(parsed)) return json(400, { error: '请求字段或模型不受支持' });
+      // V3.2 defaults to reasoning; museum answers need the final text within the request timeout.
+      if (parsed.model === 'deepseek-ai/DeepSeek-V3.2') parsed.enable_thinking = false;
       body = JSON.stringify(parsed);
       headers = { 'Content-Type': 'application/json' };
     } else {

@@ -379,73 +379,31 @@ async function run() {
   check('回落来源标注为本地知识库', fb.source === 'rules', String(fb.source));
   check('不再返回丢弃知识库的兜底套话', (fb.text || '').indexOf('网络似乎不太稳定') === -1);
 
-  console.log('\n4d. 本地优先 → 未命中转大模型 → 绝不拒答');
+  console.log('\n4d. 简单概述本地回答，具体问题检索后整理，证据不足明确说明');
   const routing = await page.evaluate(`(async () => {
-    // 判据只有一份：模块里那个函数。测试再抄一份词表，两处就会判得不一样。
-    const refusal = (t) => window.AnswerEngine.isRefusal(t);
-    const orig = window.fetch;
-    let calls = 0;
-    const e = new window.AnswerEngine.ApiEngine();
-    const minScore = (window.APP_CONFIG.ai.minScore) || 1.0;
-
-    // A. 知识库命中：一次接口都不该发
-    window.fetch = function () { calls++; return orig.apply(this, arguments); };
-    const hit = await e.ask('什么是客家蓝染？');
-    window.fetch = orig;
-
-    // B. 知识库未命中 + 接口失败：必须回到馆内最接近的资料
-    const q2 = '潮汕工夫茶的冲泡步骤是什么';
-    const ranked = e._fallback.rank(q2);
-    window.fetch = () => Promise.reject(new Error('forced failure'));
-    const weak = await e.ask(q2);
-    window.fetch = orig;
-
-    // C. 知识库未命中 + 接口可用：应当真的转大模型
-    let live = null;
-    try { live = await e.ask(q2); } catch (err) { live = { err: String(err) }; }
-
-    return {
-      hit: { source: hit.source, matched: hit.matched || '', calls: calls, refusal: refusal(hit.text) },
-      bestScore: ranked.scored.length ? +ranked.scored[0].score.toFixed(2) : 0,
-      bestMatched: ranked.scored.length ? ranked.scored[0].matched.length : 0,
-      hasHit: !!ranked.hit,
-      minScore: minScore,
-      weak: { source: weak.source, fallback: !!weak.fallback,
-              nearest: (weak.nearest || []).length, topics: !!weak.topics,
-              refusal: refusal(weak.text), head: String(weak.text).slice(0, 24) },
-      live: live ? { source: live.source, len: String(live.text || '').length,
-                     refusal: refusal(live.text || ''), head: String(live.text || '').slice(0, 40),
-                     err: live.err || '' } : null,
-      probe: { sorry: refusal('抱歉，这个问题我暂时无法回答。'),
-               plain: refusal('蓝染的布要用板蓝根制靛，竹编的染架撑着它。') }
+    const orig=window.fetch;let calls=0;const e=new AnswerEngine.ApiEngine();
+    window.fetch=async(_url,init)=>{
+      const audit=JSON.parse(init.body).messages[0].content.startsWith('你是资料核对员');if(!audit)calls++;
+      const content=audit?JSON.stringify({parts:[],gaps:['资料不足，不能确定当前年龄。']}):'资料不足，不能确定当前年龄。';
+      return {ok:true,json:async()=>({choices:[{message:{content}}]})};
     };
-  })()`, true);
-  check('知识库命中时一次接口都不调', routing.hit.calls === 0, routing.hit.calls + ' 次请求');
-  check('知识库命中直接给馆内答案', routing.hit.source === 'rules' && !!routing.hit.matched,
-    routing.hit.matched);
-  check('馆外话题不算本地命中（无关键词字面出现）',
-    !routing.hasHit && routing.bestMatched === 0,
-    'score=' + routing.bestScore + ' matched=' + routing.bestMatched);
-  // 封顶是独立的一道保险：不封顶时长问句会靠 2-gram 累加把分数堆过阈值（实测 1.35）
-  check('2-gram 部分重合的贡献被封顶在 1.2', routing.bestScore <= 1.2 + 1e-9,
-    '该问题最高分 ' + routing.bestScore);
-  check('接口失败时仍端出内容（最接近资料或馆内话题），不许空手',
-    routing.weak.fallback && (routing.weak.nearest >= 1 || routing.weak.topics === true),
-    routing.weak.head + ' / nearest=' + routing.weak.nearest + ' topics=' + routing.weak.topics);
-  check('三条路径都不出现拒答措辞',
-    !routing.hit.refusal && !routing.weak.refusal && !(routing.live && routing.live.refusal),
-    JSON.stringify({ h: routing.hit.refusal, w: routing.weak.refusal,
-                     l: routing.live && routing.live.refusal,
-                     大模型原话: routing.live && routing.live.head }));
-  // 判据本身也要能失败：把 isRefusal 弄成永远 false，这条就红
-  check('拒答话识得出，正常答复不误杀',
-    routing.probe.sorry === true && routing.probe.plain === false,
-    JSON.stringify(routing.probe));
-  // 接口通不通取决于现场网络，两种结果都算通过：要么真由大模型答，要么回到馆内资料
-  check('未命中时要么大模型作答、要么馆内兜底（不许空手而归）',
-    !!routing.live && ((routing.live.source === 'api' && routing.live.len > 4)
-      || (routing.live.fallback === true) || (routing.live.source === 'rules')),
-    JSON.stringify(routing.live));
+    try {
+      const hit=await e.ask('什么是客家蓝染？'),overviewCalls=calls;
+      const detail=await e.ask('黄竹英现在几岁？');
+      const grounded=e._fallback.rank('织带和竹编的工具有什么区别？');
+      const unknown=e._fallback.rank('潮汕工夫茶的冲泡步骤是什么');
+      window.fetch=()=>Promise.reject(new Error('forced failure'));
+      const weak=await e.ask('潮汕工夫茶的冲泡步骤是什么');
+      return {hit,overviewCalls,detail,calls,topics:grounded.subjects,context:grounded.chunks.map(c=>c.text).join(' '),unknown:!!unknown.hit,weak};
+    } finally {window.fetch=orig;}
+  })()`,true);
+  check('明确概述无需调用接口',routing.overviewCalls===0&&routing.hit.source==='rules');
+  check('具体问题即使命中本地资料也调用大模型',routing.calls===1&&routing.detail.source==='api');
+  check('不确定性回答保留，不被无关词条替代',/不能确定当前年龄/.test(routing.detail.text));
+  check('两方工具资料都参与检索',routing.topics.length===2&&/带尺/.test(routing.context)&&/度篾齿/.test(routing.context));
+  check('馆外问题不误命中',!routing.unknown);
+  check('接口失败明确资料缺口',routing.weak.fallback&&routing.weak.route==='uncovered'&&/没有覆盖/.test(routing.weak.text));
+  check('缺少证据时不编造相关事实',!/染架|堂屋|蓝染|竹编/.test(routing.weak.text));
 
   async function sectionVoice() {
   console.log('\n4e. 问答框的语音输入');

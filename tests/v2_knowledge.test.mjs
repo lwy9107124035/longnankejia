@@ -1,125 +1,94 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const window = {
-  APP_CONFIG: { ai: { mode: 'rules', mockDelay: [0, 0], minScore: 1, api: { apiKey: '', baseUrl: 'https://example.invalid', model: 'test' } } },
-};
-let fetchCalls = 0;
-let fetchImpl = async () => { throw new Error('fetch should not run'); };
-const sandbox = {
-  window,
-  console: { warn() {}, error() {} },
-  AbortController,
-  setTimeout,
-  clearTimeout,
-  fetch: (...args) => { fetchCalls += 1; return fetchImpl(...args); },
-};
-vm.runInNewContext(fs.readFileSync(path.join(root, 'js/knowledge-base.js'), 'utf8'), sandbox, { filename: 'knowledge-base.js' });
-vm.runInNewContext(fs.readFileSync(path.join(root, 'js/answer-engine.js'), 'utf8'), sandbox, { filename: 'answer-engine.js' });
-const { RulesEngine, ApiEngine } = window.AnswerEngine;
-const rules = new RulesEngine();
-const ask = (q) => rules.ask(q);
-
-const different = await ask('客家蓝染和其他地方蓝染对比，有何区别？');
-const similar = await ask('其他地方蓝染和客家蓝染相似之处？');
-const sourceUrls = (a) => (a.sources || []).map((s) => s.url).join(' ');
-assert.match(different.text, /南通/);
-assert.match(different.text, /白族/);
-assert.match(different.text, /刻花版/);
-assert.match(different.text, /扎缝/);
-assert.match(similar.text, /相似处/);
-assert.match(similar.text, /都以植物蓝靛染色/);
-assert.doesNotMatch(similar.text, /差异主要在/);
-assert.notEqual(different.text, similar.text, 'difference and similarity intents must get different answers');
-// 出处链接在 sources 里，由界面上的"资料出处"展开区呈现，不塞进回答正文
-assert.match(sourceUrls(different), /ihchina\.cn/);
-assert.match(sourceUrls(similar), /yndali\.gov\.cn/);
-
-const reversed = await ask('与龙南客家蓝染相近的地方染艺有哪些共同点？');
-assert.match(reversed.text, /相似处/);
-assert.match(reversed.text, /不代表其他地区都一样/);
-assert.notEqual(reversed.matched, '蓝染', '“相近的地方染艺”这类问法不能掉回通用蓝染条目');
-
-const reverseDifference = await ask('其他地方蓝染和客家蓝染相比有哪些不同？');
-assert.match(reverseDifference.text, /南通/);
-assert.match(reverseDifference.text, /白族/);
-assert.match(reverseDifference.text, /工艺各有路径/);
-assert.notEqual(reverseDifference.text, similar.text);
-const commonAndDifferent = await ask('客家蓝染和其他地方蓝染的相同点与不同点是什么？');
-assert.match(commonAndDifferent.text, /相似处/);
-assert.match(commonAndDifferent.text, /区别/);
-const synonymComparison = await ask('客家蓝靛染与地方蓝靛染的共同点有哪些？');
-assert.match(synonymComparison.text, /相似处/);
-assert.match(synonymComparison.text, /都以植物蓝靛染色/);
-
-const craftComparison = await ask('织带和竹编的工艺区别是什么？');
-assert.match(craftComparison.text, /绠瓠子/);
-assert.match(craftComparison.text, /破篾/);
-assert.notEqual(craftComparison.matched, '客家织带工艺与传承');
-
-const inheritor = await ask('织带是谁在传承？');
-assert.match(inheritor.text, /廖秋华、黄竹英/);
-assert.match(inheritor.text, /以公布的名录为准/);
-const process = await ask('客家蓝染的制靛工艺怎么做？');
-assert.match(process.text, /三浸三晒三发酵/);
-const bambooSummary = await ask('杨村竹编有哪些常用工具？');
-assert.match(bambooSummary.text, /度篾齿/);
-const bambooFollowup = await ask('那制作步骤呢？');
-assert.match(bambooFollowup.text, /起底/);
-const weaveEntry = window.KNOWLEDGE_BASE.find((entry) => entry.id === 'v2-zhidai');
-assert.match(weaveEntry.answer, /绠瓠子/);
-assert.match(weaveEntry.answer, /带尺/);
-assert.match(weaveEntry.answer, /冬头帕/);
-const pendingArticle = window.KNOWLEDGE_BASE.find((entry) => entry.id === 'source-pending-wechat-patterns');
-assert.match(pendingArticle.answer, /无法读取正文/);
-assert.match(pendingArticle.sources[0].url, /mp\.weixin\.qq\.com/);
-assert.doesNotMatch(pendingArticle.answer, /花鸟|几何|吉祥愿望/,
-  'the inaccessible article must not contribute unverified cultural claims');
-
-fetchCalls = 0;
-fetchImpl = async () => { throw new Error('offline'); };
-const apiOffline = new ApiEngine();
-apiOffline.cfg.apiKey = 'test-key';
-const offlineAnswer = await apiOffline.ask('其他地方蓝染和客家蓝染相似之处？');
-assert.match(offlineAnswer.text, /相似处/);
-assert.equal(offlineAnswer.source, 'rules');
-assert.equal(fetchCalls, 0, 'intent-specific local answer is available offline');
-
-const apiEngine = new ApiEngine();
-apiEngine.cfg.apiKey = 'test-key';
-fetchImpl = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: 'API 路由成功。' } }] }) });
-const apiSuccess = await apiEngine.ask('潮汕工夫茶冲泡方法是什么？');
-assert.equal(apiSuccess.source, 'api');
-assert.match(apiSuccess.text, /API 路由成功/);
-assert.equal(fetchCalls, 1);
-
-const proxyEngine = new ApiEngine();
-proxyEngine.cfg.apiKey = '';
-proxyEngine.cfg.proxyUrl = '/api/ai/chat/completions';
-fetchImpl = async (url, init) => {
-  assert.equal(url, '/api/ai/chat/completions');
-  assert.equal(Object.hasOwn(init.headers, 'Authorization'), false,
-    'browser-to-proxy requests must not contain an API key');
-  return { ok: true, json: async () => ({ choices: [{ message: { content: '服务端代理路由成功。' } }] }) };
-};
-const proxySuccess = await proxyEngine.ask('潮汕工夫茶冲泡方法是什么？');
-assert.equal(proxySuccess.source, 'api');
-assert.match(proxySuccess.text, /服务端代理路由成功/);
-assert.equal(fetchCalls, 2);
-
-fetchImpl = async () => { throw new Error('offline'); };
-const apiFallback = await apiEngine.ask('潮汕工夫茶冲泡方法是什么？');
-assert.equal(apiFallback.source, 'rules');
-assert.equal(apiFallback.fallback, true);
-assert.equal(fetchCalls, 3);
-
-const allKbText = JSON.stringify(window.KNOWLEDGE_BASE);
-assert.doesNotMatch(allKbText, /茶果/, 'the disallowed Hakka tea-fruit section must not be ingested');
-assert.doesNotMatch(weaveEntry.answer + window.KNOWLEDGE_BASE.find((entry) => entry.id === 'v2-zhubian').answer
-  + window.KNOWLEDGE_BASE.find((entry) => entry.id === 'landye').answer, /\b(?:76|78)岁\b/,
-  'unverified ages from the source text must not enter these new answers');
-console.log('v2 knowledge checks passed: distinct and combined comparisons, reversed/synonym questions, source tracking, contextual follow-ups, non-tea docx coverage, API routing, and pending article status.');
+import test from 'node:test';
+function setup(custom){
+ const window={APP_CONFIG:{ai:{mode:'api',mockDelay:[0,0],api:{proxyUrl:'/api/ai/chat/completions',model:'test',temperature:0.2,maxTokens:900}}}};
+ const calls=[],audits=[];let response={choices:[{message:{content:'按资料说明。[资料1]'}}]};let reject=false,auditOverride;
+ const storage=new Map();
+ const sandbox={window,console:{warn(){}},AbortController,setTimeout,clearTimeout,localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},fetch:async(url,init)=>{
+  const call={url,...init,body:JSON.parse(init.body)},audit=call.body.messages[0].content.startsWith('你是资料核对员');
+  (audit?audits:calls).push(call);if(reject)throw new Error('offline');
+  if(audit){
+   const quote=call.body.messages[0].content.includes('[证据1.1]');
+   const report=auditOverride || (quote?{parts:[{text:response.choices[0].message.content.replace(/\[资料\d+\]/g,''),evidence:['1.1']}],gaps:[]}:{parts:[],gaps:['资料没有覆盖这个问题，不能核实。']});
+   return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(report)}}]})};
+  }
+  return {ok:true,json:async()=>response};
+ }};
+ vm.createContext(sandbox);
+ for(const file of ['knowledge-base.js','store.js','answer-engine.js'])vm.runInContext(fs.readFileSync(new URL('../js/'+file,import.meta.url),'utf8'),sandbox);
+ if(custom)window.Store.addEntry(custom);
+ return {window,calls,audits,setResponse:v=>{response=v;},setAudit:v=>{auditOverride=v;},fail:()=>{reject=true;},rules:()=>new window.AnswerEngine.RulesEngine(),api:()=>new window.AnswerEngine.ApiEngine()};
+}
+test('overviews are local; specific, comparative and unseen questions use grounded synthesis',async()=>{
+ const s=setup(),e=s.api();
+ assert.equal((await e.ask('什么是客家蓝染？')).source,'rules');assert.equal(s.calls.length,0);
+ for(const q of ['织带和竹编的工具有什么不同？','客家蓝染和其他地方蓝染的区别？','脖围和大襟衫的结构有什么不同？','门榜为什么被叫作微型族谱？','介绍日本蓝染']){
+  const before=s.calls.length;assert.equal((await e.ask(q)).source,'api',q);assert.equal(s.calls.length,before+1,q);
+ }
+ const context=s.calls[0].body.messages[0].content;
+ assert.match(context,/织带的工具/);assert.match(context,/制篾工具/);assert.match(context,/带尺/);assert.match(context,/度篾齿/);
+ const compare=s.calls[1].body.messages[0].content;assert.match(compare,/南通/);assert.match(compare,/白族/);
+ assert.match(s.calls[2].body.messages[0].content,/脖围实物/);assert.match(s.calls[2].body.messages[0].content,/大襟衫实物/);
+ assert.match(s.calls[3].body.messages[0].content,/微型族谱/);
+ assert.equal(s.calls[0].headers.Authorization,undefined);
+ assert.equal(s.audits.length,5,'each generated answer is independently checked');
+});
+test('followups retain real conversation; a new subject clears stale retrieval context',async()=>{
+ const s=setup(),e=s.api();await e.ask('杨村竹编常用哪些工具？');await e.ask('那制作步骤呢？');
+ const msgs=s.calls[1].body.messages;
+ assert.equal(msgs.length,4);assert.equal(msgs[1].role,'user');assert.match(msgs[1].content,/杨村竹编/);
+ assert.equal(msgs.at(-1).content,'那制作步骤呢？');assert.match(msgs[0].content,/起底/);
+ await e.ask('潮汕工夫茶怎样冲泡？');assert.doesNotMatch(s.calls[2].body.messages[0].content,/度篾齿|起底/);
+ await e.ask('那有哪些器具？');assert.doesNotMatch(s.calls[3].body.messages[0].content,/杨村|度篾齿/);
+ assert.ok(e._fallback.history.length<=8);
+});
+test('out-of-domain and shared generic words do not become confident local answers',async()=>{
+ const s=setup(),r=s.rules();
+ const rank=r.rank('潮汕工夫茶冲泡步骤是什么？');assert.equal(rank.hit,null);assert.equal(rank.chunks.length,0);
+ const no=await r.ask('潮汕工夫茶冲泡步骤是什么？');assert.match(no.text,/没有覆盖|暂不能核实/);assert.doesNotMatch(no.text,/蓝染|竹编|我是/);
+ const model=r.rank('大襟衫的背面纹样是否有实际照片？');assert.ok(model.chunks.length);assert.ok(model.chunks.every(c=>c.topics.includes('大襟衫')));
+ assert.equal(r.route('介绍日本蓝染',r.rank('介绍日本蓝染')),'grounded');
+ assert.equal(r.route('什么是福建土楼？',r.rank('什么是福建土楼？')),'uncovered');
+});
+test('unavailable API gives sourced excerpts and marks partial coverage',async()=>{
+ const s=setup(),e=s.api();s.fail();
+ const a=await e.ask('杨村竹编和日本竹艺的工具有哪些区别？');assert.equal(a.source,'rules');assert.equal(a.fallback,true);
+ assert.match(a.text,/度篾齿/);assert.match(a.text,/仍需进一步核实/);assert.ok(a.sources.length);
+ const b=await e.ask('潮汕工夫茶怎样冲泡？');assert.equal(b.route,'uncovered');assert.equal(b.sources.length,0);
+});
+test('uncertainty stays public; reasoning and nonexistent citations cannot be answers',async()=>{
+ const s=setup(),e=s.api();
+ s.setResponse({choices:[{message:{content:'抱歉，资料没有记录黄竹英的准确当前年龄，暂时无法核实。[资料1]'}}]});
+ const a=await e.ask('黄竹英现在几岁？');assert.equal(a.source,'api');assert.match(a.text,/暂时无法核实/);
+ s.setResponse({choices:[{message:{content:'',reasoning_content:'不该展示的内部思考'}}]});
+ const b=await e.ask('蓝染具体发酵温度是多少？');assert.equal(b.source,'rules');assert.doesNotMatch(b.text,/内部思考/);
+ s.setResponse({choices:[{message:{content:'有内容。'}}]});s.setAudit({parts:[{text:'错误引文。',evidence:['99.1']}],gaps:[]});
+ assert.equal((await e.ask('竹编怎么做？')).source,'rules');
+});
+test('sources correspond to valid cited evidence and long answers are not cut at 300 characters',async()=>{
+ const s=setup(),e=s.api();s.setResponse({choices:[{message:{content:'资料解释。'.repeat(90)+'[资料1]'},finish_reason:'stop'}]});
+ const a=await e.ask('门榜有什么文化意义？');assert.ok(a.text.length>300);assert.equal(a.citationKind,'verified-evidence');assert.ok(a.sources.every(ref=>ref.title.includes('罗勇')));
+ assert.match(a.sources[0].title,/PDF/);
+});
+test('an audit must quote actual evidence; unsupported numbers fail closed',async()=>{
+ const s=setup(),e=s.api();s.setAudit({parts:[{text:'织带需高温染色。',evidence:['1.99']}],gaps:[]});
+ assert.equal((await e.ask('蓝染温度是多少？')).source,'rules');
+ const r=e._fallback.rank('蓝染温度是多少？');
+ s.setAudit({parts:[{text:'必须在99摄氏度染色。',evidence:['1.1']}],gaps:[]});
+ assert.equal((await e.ask('蓝染温度是多少？')).source,'rules');
+});
+test('import and runtime custom entries preserve provenance and remain retrievable',async()=>{
+ const entry={id:'custom-wheel',title:'陶轮',topics:['陶轮'],keywords:['陶轮','脚踏'],answer:'馆内记录使用脚踏陶轮。',sources:[{title:'用户展品记录',url:'https://example.com/record'}]};
+ const s=setup(entry);const a=await s.api().ask('陶轮是怎么驱动的？');assert.equal(a.source,'api');assert.match(s.calls[0].body.messages[0].content,/脚踏陶轮/);
+ assert.equal(s.window.Store.importKB(JSON.stringify([entry])),true);
+ const imported=s.window.Store.getEntries().find(e=>e.id===entry.id);assert.equal(imported.sources[0].url,entry.sources[0].url);assert.equal(imported.topics[0],'陶轮');
+});
+test('downloaded article is ingested; excluded material and contradictory ages stay excluded',()=>{
+ const {window}=setup();const text=JSON.stringify(window.KNOWLEDGE_BASE);
+ assert.doesNotMatch(text,/茶果|待核验微信文章|无法读取正文/);
+ const article=window.KNOWLEDGE_BASE.filter(e=>e.id.startsWith('pattern-'));assert.ok(article.length>=8);assert.ok(article.every(e=>e.sources.length));
+ const process=window.KNOWLEDGE_BASE.find(e=>e.id==='indigo-process');assert.match(process.answer,/没有逐道列明/);
+ assert.doesNotMatch(window.KNOWLEDGE_BASE.find(e=>e.id==='weave-people').answer,/76岁|78岁/);
+});

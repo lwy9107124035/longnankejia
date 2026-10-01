@@ -80,3 +80,37 @@ test('blue dye samples switch actual photograph textures',()=>{
   const two=build('landye').getObjectByName('photo_rectified_indigo_fabric').material.map;
   assert.notEqual(one,two);
 });
+
+test('shirt and bag retain curved fabric on the back and real depth without backing plates',()=>{
+ for(const [id,map,minDepth,y] of [['dajinshan',textures.dajinshanBody,0.4,1],['zisundai',textures.zisundaiFront,0.3,0.7]]){
+  const g=build(id);g.updateMatrixWorld(true);const hits=[];
+  for(const sign of [-1,1]){
+   const ray=new T.Raycaster(new T.Vector3(0.1,y,sign*3),new T.Vector3(0,0,-sign));
+   const first=ray.intersectObject(g,true)[0];assert.ok(first,id+' has an exposed back and front');assert.equal(first.object.material.map,map);hits.push(first.point.z);
+  }
+  assert.ok(Math.abs(hits[0]-hits[1])>minDepth,id+' is a volume rather than a photo plane');
+  g.traverse(o=>{if(o.isMesh)assert.notEqual(o.geometry.type,'BoxGeometry',id+' must not use a rectangular backing');});
+ }
+});
+test('shirt collar and bag mouth are open, and hat has visible inside fabric',()=>{
+ const shirt=build('dajinshan');shirt.updateMatrixWorld(true);
+ const ray=new T.Raycaster(new T.Vector3(0,3,0),new T.Vector3(0,-1,0));
+ assert.equal(ray.intersectObject(shirt,true).length,0,'no solid cap across the collar or hem');
+ const bag=build('zisundai');bag.updateMatrixWorld(true);
+ const hit=ray.intersectObject(bag,true)[0];assert.ok(!hit||hit.point.y<0.2,'bag mouth must not be capped by a board');
+ const hat=build('hutoumao');hat.updateMatrixWorld(true);
+ ray.set(new T.Vector3(0,-0.2,0),new T.Vector3(0,1,0));assert.equal(ray.intersectObject(hat,true)[0]?.object.name,'帽内衬');
+});
+test('bowei has cloth thickness and a curved surface; blue dye fabric has an actual reverse',()=>{
+ const g=build('bowei'),surface=g.getObjectByName('四分之一照片布片-1'),back=g.getObjectByName('脖围曲面底衬');
+ assert.ok(back);const p=surface.geometry.attributes.position;let low=Infinity,high=-Infinity;
+ for(let i=0;i<p.count;i++){low=Math.min(low,p.getY(i));high=Math.max(high,p.getY(i));}assert.ok(high-low>0.1,'cloth should drape around the center opening');
+ assert.ok(build('landye').getObjectByName('indigo_fabric_reverse'));
+});
+test('paper tree canopy has longitudinal branches and blossoms facing several directions',()=>{
+ const g=build('zhiyi'),canopy=g.getObjectByName('asymmetric flowering crown');
+ const bounds=new T.Box3().setFromObject(canopy),size=bounds.getSize(new T.Vector3());assert.ok(size.z>0.8,'canopy is still confined to one flat plane');
+ const petals=canopy.getObjectByName('orange paper blossom petals'),matrix=new T.Matrix4(),normal=new T.Vector3();let front=0,rear=0;
+ for(let i=0;i<petals.count;i++){petals.getMatrixAt(i,matrix);normal.set(0,0,1).transformDirection(matrix);if(normal.z>0.25)front++;if(normal.z<-.25)rear++;}
+ assert.ok(front>20&&rear>20,'paper flowers must face forward and backward');
+});

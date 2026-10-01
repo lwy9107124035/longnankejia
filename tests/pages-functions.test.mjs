@@ -249,3 +249,13 @@ test('forwards only allowed audio fields to the fixed transcription endpoint', a
     assert.equal((await response.json()).text, '客家山歌');
   });
 });
+
+test('DeepSeek final-answer mode is enforced upstream without allowing arbitrary browser fields',async()=>{
+ await withFakeFetch(async(_url,init)=>{
+  const body=JSON.parse(init.body);assert.equal(body.model,'deepseek-ai/DeepSeek-V3.2');assert.equal(body.enable_thinking,false);
+  return Response.json({choices:[{message:{content:'已核对资料。'}}]});
+ },async()=>{
+  const res=await onChat(request('/api/ai/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...chatPayload,model:'deepseek-ai/DeepSeek-V3.2'})}),{env});
+  assert.equal(res.status,200);
+ });
+});

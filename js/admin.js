@@ -270,8 +270,8 @@
     $('#apiSaveBtn').addEventListener('click', function () {
       window.Store.setApiOverrides({
         model: $('#apiModel').value.trim(),
-        temperature: parseFloat($('#apiTemp').value) || 0.7,
-        maxTokens: parseInt($('#apiMaxTok').value, 10) || 256
+        temperature: Number.isFinite(parseFloat($('#apiTemp').value)) ? parseFloat($('#apiTemp').value) : 0.2,
+        maxTokens: parseInt($('#apiMaxTok').value, 10) || 900
       });
       window.AnswerEngine.reset();
       alert('API 设置已保存');

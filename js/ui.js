@@ -122,7 +122,7 @@
       var seen = [];
       sources.forEach(function (source) {
         if (!source || !source.title) return;
-        var key = source.url || source.title;
+        var key = source.title + '|' + (source.url || '');
         if (seen.indexOf(key) !== -1) return;
         seen.push(key);
         var item = el('li');

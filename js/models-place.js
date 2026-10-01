@@ -9,8 +9,7 @@
     var p = geo.attributes.position;
     for (var i = 0; i < p.count; i++) {
       var x = p.getX(i), y = p.getY(i);
-      p.setZ(i, 0.018*Math.sin(x*9+y*2) + 0.009*Math.cos(y*16-x*3)
-        + 0.023*Math.pow(Math.abs(x)/0.975, 8)*Math.sin(y*7));
+      p.setZ(i, fabricZ(x,y));
     }
     geo.computeVertexNormals();
     var cloth = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
@@ -19,6 +18,31 @@
     }));
     cloth.name = 'photo_rectified_indigo_fabric'; cloth.castShadow = true;
     g.add(cloth);
+    function fabricZ(x,y) {
+      return 0.045*Math.sin(x*4+y*2) + 0.012*Math.cos(y*16-x*3)
+        + 0.055*Math.pow(Math.abs(x)/0.975,8)*Math.sin(y*7);
+    }
+    var backGeo=geo.clone(),back=backGeo.attributes.position;
+    for(var b=0;b<back.count;b++)back.setZ(b,back.getZ(b)-0.008);
+    backGeo.computeVertexNormals();
+    var reverse=new THREE.Mesh(backGeo,new THREE.MeshStandardMaterial({
+      map:cloth.material.map,color:0xcbd4d6,roughness:1,side:THREE.BackSide
+    }));
+    reverse.name='indigo_fabric_reverse';reverse.castShadow=true;g.add(reverse);
+    var hemPoints=[],hemIndices=[];
+    for(var h=0;h<4;h++){
+      var origin=hemPoints.length/3;
+      for(var k=0;k<=64;k++){
+        var t=-0.975+k/64*1.95;
+        var hx=h<2?t:(h===2?-0.975:0.975),hy=h<2?(h===0?-0.975:0.975):t,hz=fabricZ(hx,hy);
+        hemPoints.push(hx,hy,hz,hx,hy,hz-0.008);
+        if(k<64){var a=origin+k*2;hemIndices.push(a,a+1,a+2,a+1,a+3,a+2);}
+      }
+    }
+    var hemGeo=new THREE.BufferGeometry();hemGeo.setAttribute('position',new THREE.Float32BufferAttribute(hemPoints,3));
+    hemGeo.setIndex(hemIndices);hemGeo.computeVertexNormals();
+    var hem=new THREE.Mesh(hemGeo,new THREE.MeshStandardMaterial({color:0x314a77,roughness:1,side:THREE.DoubleSide}));
+    hem.name='indigo_thin_closed_hem';g.add(hem);
     var edge = new THREE.MeshStandardMaterial({color: 0xd6ded7, roughness: 1});
     var stitchGeo = new THREE.CylinderGeometry(0.0015, 0.0015, 0.014, 4);
     var stitches = new THREE.InstancedMesh(stitchGeo, edge, 400);
@@ -28,7 +52,7 @@
       var q=-0.966+j*0.0195;
       var sx=side<2?q:(side===2?-0.969:0.969);
       var sy=side<2?(side===0?-0.969:0.969):q;
-      dummy.position.set(sx,sy,0.018*Math.sin(sx*9+sy*2)+0.009*Math.cos(sy*16-sx*3)+0.004);
+      dummy.position.set(sx,sy,fabricZ(sx,sy)+0.004);
       dummy.rotation.set(0,0,side<2?0:Math.PI/2); dummy.updateMatrix();
       stitches.setMatrixAt(n++,dummy.matrix);
     }

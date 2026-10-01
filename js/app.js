@@ -70,14 +70,14 @@
         if (statusEl) {
           var label = engine.label || engine.name;
           if (result.source === 'api') {
-            statusEl.textContent = '当前引擎：本地未命中 → 大模型作答';
+            statusEl.textContent = result.route === 'grounded' ? '回答方式：参考资料 · AI整理' : '回答方式：AI解释 · 馆内资料未覆盖';
           } else if (result.matched) {
-            statusEl.textContent = '当前引擎：本地知识库 · 命中「' + result.matched + '」';
+            statusEl.textContent = result.fallback ? '回答方式：馆内资料节选' : '回答方式：馆内资料';
           } else if (result.nearest) {
             statusEl.textContent = '当前引擎：本地知识库 · 最接近的馆内资料（'
               + result.nearest.join('、') + '）';
           } else if (result.fallback) {
-            statusEl.textContent = '当前引擎：本地知识库 · 该词未收录，已给相关线索';
+            statusEl.textContent = '回答方式：现有资料未覆盖';
           } else {
             statusEl.textContent = '当前引擎：' + label;
           }
