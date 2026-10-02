@@ -24,6 +24,8 @@ flowchart TD
 
 默认采用 Qwen3-30B-A3B-Instruct-2507，证据选择请求由代理固定为JSON输出。旧的7B模型在实测中会把单个地区的做法泛化到所有地区，DeepSeek-V3.2则多次超时；[SiliconFlow官方模型页](https://www.siliconflow.com/models/qwen3-30b-a3b-instruct-2507)确认新的指令模型仅使用非思考模式并支持JSON模式。每次请求限20秒，所有失败路径都有资料兜底。
 
+后台保留模型、温度与输出上限设置，自由系统提示词入口改为资料规则说明；不用讲解口吻、固定回答长度等旧提示干扰证据选择。共同点问法只选各方同一特征的证据，异同问法可选择各方不同做法，不维护某一对地区的手写答案。
+
 DeepSeek-V3.2仍作为可选模型，代理固定 `enable_thinking: false`；浏览器不能提交任意上游字段。该参数依据[SiliconFlow官方模型说明](https://www.siliconflow.com/zh/blog/deepseek-v3-2-now-on-siliconflow-reasoning-first-model-built-for-agents)核对。路由设计参考[Haystack官方路由文档](https://docs.haystack.deepset.ai/docs/routers)，实现保留项目已有静态架构，无新增框架依赖。
 
 用户下载的文章按正文页码整理，作者的象征分析与照片可见事实分别表述。《非遗.docx》前三个主题拆成可检索的工具、工序和传习段落；茶果章节排除。年龄冲突、24道染制工序未逐项列明、照片没有背面实测等限制明确写入资料。

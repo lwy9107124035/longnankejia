@@ -165,11 +165,10 @@
       merged.api = Object.assign({}, def.api, {
         apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || def.api.apiKey || ''
       });
-      // model/temperature/maxTokens/systemPrompt 允许覆盖
+      // 模型及生成参数允许覆盖；事实来源规则固定。
       if (ovr.model !== undefined) merged.api.model = ovr.model;
       if (ovr.temperature !== undefined) merged.api.temperature = ovr.temperature;
       if (ovr.maxTokens !== undefined) merged.api.maxTokens = ovr.maxTokens;
-      if (ovr.systemPrompt !== undefined) merged.api.systemPrompt = ovr.systemPrompt;
     }
     return merged;
   }

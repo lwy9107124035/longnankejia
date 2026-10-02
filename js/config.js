@@ -35,13 +35,7 @@ window.APP_CONFIG = {
       apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || '',
       model: 'Qwen/Qwen3-30B-A3B-Instruct-2507',
       temperature: 0.2,
-      maxTokens: 900,
-      systemPrompt:
-        '你是"阿蓝"，龙南客家非遗数字助手，为游客介绍江西龙南的客家非物质文化遗产。' +
-        '你熟悉蓝染、竹编、客家织带、客家围屋、客家山歌与童谣、客家方言等知识。' +
-        '回答要求：使用简体中文，像馆里的讲解员那样说话，不用书面腔；' +
-        '内容准确，不确定时坦诚说明，不编造史实；' +
-        '长度随问题需要，不用 emoji，结尾不写总结套话。'
+      maxTokens: 900
     },
 
     // 语音输入（问答框的麦克风）：录音走 MediaRecorder，转写用国内可直连的 ASR 接口，

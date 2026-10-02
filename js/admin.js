@@ -240,20 +240,19 @@
       '  <div class="admin-row">' +
       '    <div class="admin-col">' +
       '      <label class="admin-label">Temperature（0–2）</label>' +
-      '      <input type="number" id="apiTemp" class="admin-input" value="' + (api.temperature || 0.7) + '" min="0" max="2" step="0.1">' +
+      '      <input type="number" id="apiTemp" class="admin-input" value="' + (api.temperature == null ? 0.2 : api.temperature) + '" min="0" max="2" step="0.1">' +
       '    </div>' +
       '    <div class="admin-col">' +
       '      <label class="admin-label">最大 Token 数</label>' +
-      '      <input type="number" id="apiMaxTok" class="admin-input" value="' + (api.maxTokens || 256) + '" min="50" max="2000" step="50">' +
+      '      <input type="number" id="apiMaxTok" class="admin-input" value="' + (api.maxTokens || 900) + '" min="50" max="2000" step="50">' +
       '    </div>' +
       '  </div>' +
       '  <button class="admin-btn admin-btn-primary" id="apiSaveBtn" style="margin-top:12px">保存 API 设置</button>' +
       '</div>' +
 
       '<div class="admin-api-section">' +
-      '  <div class="admin-form-title">System Prompt（系统提示词）</div>' +
-      '  <textarea id="apiSysPrompt" class="admin-textarea" rows="4">' + esc(api.systemPrompt || '') + '</textarea>' +
-      '  <button class="admin-btn admin-btn-primary" id="apiPromptSaveBtn" style="margin-top:8px">保存提示词</button>' +
+      '  <div class="admin-form-title">资料问答规则</div>' +
+      '  <p class="admin-hint">AI按具体问题选择相关资料，事实按原文展示并附出处；资料缺失或冲突时说明限制。新增内容请在知识库中填写来源。</p>' +
       '</div>';
 
     // 模式切换
@@ -277,13 +276,6 @@
       alert('API 设置已保存');
     });
 
-    $('#apiPromptSaveBtn').addEventListener('click', function () {
-      // systemPrompt 存在 api 覆盖里
-      var sp = $('#apiSysPrompt').value.trim();
-      window.Store.setApiOverrides({ systemPrompt: sp });
-      window.AnswerEngine.reset();
-      alert('提示词已保存');
-    });
   }
 
   /* ==================== 系统 Tab ==================== */
