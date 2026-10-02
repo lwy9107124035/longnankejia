@@ -70,7 +70,7 @@
         if (statusEl) {
           var label = engine.label || engine.name;
           if (result.source === 'api') {
-            statusEl.textContent = result.route === 'grounded' ? '回答方式：参考资料 · AI整理' : '回答方式：AI解释 · 馆内资料未覆盖';
+            statusEl.textContent = result.route === 'grounded' ? '回答方式：参考资料 · AI整理' : '回答方式：现有资料未覆盖';
           } else if (result.matched) {
             statusEl.textContent = result.fallback ? '回答方式：馆内资料节选' : '回答方式：馆内资料';
           } else if (result.nearest) {
