@@ -142,7 +142,9 @@ try {
     await sleep(1000);await shot('desktop-'+id+'-close');
   }
   await send('Emulation.setDeviceMetricsOverride',{width:360,height:800,deviceScaleFactor:1,mobile:true});
-  await send('Page.reload');await sleep(3500);
+  await send('Page.reload');
+  const mobileReady=await ev(`new Promise(resolve=>{let n=0;const timer=setInterval(()=>{if(window.Showcase3D&&Showcase3D.booted()&&document.querySelector('.c3d-item')){clearInterval(timer);resolve(true);}else if(++n>150){clearInterval(timer);resolve(false);}},200);})`,true);
+  if(!mobileReady)throw new Error('mobile 3D reload did not finish');
   for(const id of ids){
     await selectInUi(id);await shot('mobile-'+id);
     if(!process.argv.includes('--baseline')){

@@ -269,3 +269,15 @@ test('the grounded Qwen3 instruction model is accepted with the same restricted 
   assert.equal(res.status,200);
  });
 });
+test('Qwen3 evidence selection uses JSON output without opening upstream fields to browsers',async()=>{
+ await withFakeFetch(async(_url,init)=>{
+  assert.deepEqual(JSON.parse(init.body).response_format,{type:'json_object'});
+  return Response.json({choices:[{message:{content:'{"parts":[],"gaps":[]}'}}]});
+ },async()=>{
+  const payload={...chatPayload,model:'Qwen/Qwen3-30B-A3B-Instruct-2507',messages:[{role:'system',content:'你是资料核对员。只选择证据。'},{role:'user',content:'资料不足时如何说明？'}]};
+  const res=await onChat(request('/api/ai/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),{env});
+  assert.equal(res.status,200);
+  const rejected=await onChat(request('/api/ai/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,response_format:{type:'json_object'}})}),{env});
+  assert.equal(rejected.status,400);
+ });
+});

@@ -383,8 +383,8 @@ async function run() {
   const routing = await page.evaluate(`(async () => {
     const orig=window.fetch;let calls=0;const e=new AnswerEngine.ApiEngine();
     window.fetch=async(_url,init)=>{
-      const audit=JSON.parse(init.body).messages[0].content.startsWith('你是资料核对员');if(!audit)calls++;
-      const content=audit?JSON.stringify({parts:[],gaps:['资料不足，不能确定当前年龄。']}):'资料不足，不能确定当前年龄。';
+      calls++;
+      const content=JSON.stringify({parts:[],gaps:['现在几岁']});
       return {ok:true,json:async()=>({choices:[{message:{content}}]})};
     };
     try {
@@ -399,7 +399,7 @@ async function run() {
   })()`,true);
   check('明确概述无需调用接口',routing.overviewCalls===0&&routing.hit.source==='rules');
   check('具体问题即使命中本地资料也调用大模型',routing.calls===1&&routing.detail.source==='api');
-  check('不确定性回答保留，不被无关词条替代',/不能确定当前年龄/.test(routing.detail.text));
+  check('不确定性回答保留，不被无关词条替代',/不足以核实.*现在几岁/.test(routing.detail.text));
   check('两方工具资料都参与检索',routing.topics.length===2&&/带尺/.test(routing.context)&&/度篾齿/.test(routing.context));
   check('馆外问题不误命中',!routing.unknown);
   check('接口失败明确资料缺口',routing.weak.fallback&&routing.weak.route==='uncovered'&&/没有覆盖/.test(routing.weak.text));

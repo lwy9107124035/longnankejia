@@ -4,14 +4,15 @@ import vm from 'node:vm';
 import test from 'node:test';
 function setup(custom){
  const window={APP_CONFIG:{ai:{mode:'api',mockDelay:[0,0],api:{proxyUrl:'/api/ai/chat/completions',model:'test',temperature:0.2,maxTokens:900}}}};
- const calls=[],audits=[];let response={choices:[{message:{content:'按资料说明。[资料1]'}}]};let reject=false,auditOverride;
+ const calls=[],audits=[];let response;let reject=false,auditOverride;
  const storage=new Map();
  const sandbox={window,console:{warn(){}},AbortController,setTimeout,clearTimeout,localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},fetch:async(url,init)=>{
   const call={url,...init,body:JSON.parse(init.body)},audit=call.body.messages[0].content.startsWith('你是资料核对员');
-  (audit?audits:calls).push(call);if(reject)throw new Error('offline');
+  calls.push(call);if(audit)audits.push(call);if(reject)throw new Error('offline');
+  if(response!==undefined)return {ok:true,json:async()=>response};
   if(audit){
    const quote=call.body.messages[0].content.includes('[证据1.1]');
-   const report=auditOverride || (quote?{parts:[{text:response.choices[0].message.content.replace(/\[资料\d+\]/g,''),evidence:['1.1']}],gaps:[]}:{parts:[],gaps:['资料没有覆盖这个问题，不能核实。']});
+   const report=auditOverride || (quote?{parts:[{evidence:['1.1']}],gaps:[]}:{parts:[],gaps:[call.body.messages.at(-1).content]});
    return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(report)}}]})};
   }
   return {ok:true,json:async()=>response};
@@ -33,7 +34,7 @@ test('overviews are local; specific, comparative and unseen questions use ground
  assert.match(s.calls[2].body.messages[0].content,/脖围实物/);assert.match(s.calls[2].body.messages[0].content,/大襟衫实物/);
  assert.match(s.calls[3].body.messages[0].content,/微型族谱/);
  assert.equal(s.calls[0].headers.Authorization,undefined);
- assert.equal(s.audits.length,5,'each generated answer is independently checked');
+ assert.equal(s.audits.length,5,'each detailed answer selects evidence in one bounded model request');
 });
 test('followups retain real conversation; a new subject clears stale retrieval context',async()=>{
  const s=setup(),e=s.api();await e.ask('杨村竹编常用哪些工具？');await e.ask('那制作步骤呢？');
@@ -60,24 +61,29 @@ test('unavailable API gives sourced excerpts and marks partial coverage',async()
 });
 test('uncertainty stays public; reasoning and nonexistent citations cannot be answers',async()=>{
  const s=setup(),e=s.api();
- s.setResponse({choices:[{message:{content:'抱歉，资料没有记录黄竹英的准确当前年龄，暂时无法核实。[资料1]'}}]});
- const a=await e.ask('黄竹英现在几岁？');assert.equal(a.source,'api');assert.match(a.text,/暂时无法核实/);
+ s.setAudit({parts:[{evidence:['1.3']}],gaps:['现在几岁']});
+ const a=await e.ask('黄竹英现在几岁？');assert.equal(a.source,'api');assert.match(a.text,/不能据此回答她现在几岁/);
  s.setResponse({choices:[{message:{content:'',reasoning_content:'不该展示的内部思考'}}]});
  const b=await e.ask('蓝染具体发酵温度是多少？');assert.equal(b.source,'rules');assert.doesNotMatch(b.text,/内部思考/);
- s.setResponse({choices:[{message:{content:'有内容。'}}]});s.setAudit({parts:[{text:'错误引文。',evidence:['99.1']}],gaps:[]});
+ s.setResponse(undefined);s.setAudit({parts:[{evidence:['99.1']}],gaps:[]});
  assert.equal((await e.ask('竹编怎么做？')).source,'rules');
 });
-test('sources correspond to valid cited evidence and long answers are not cut at 300 characters',async()=>{
- const s=setup(),e=s.api();s.setResponse({choices:[{message:{content:'资料解释。'.repeat(90)+'[资料1]'},finish_reason:'stop'}]});
- const a=await e.ask('门榜有什么文化意义？');assert.ok(a.text.length>300);assert.equal(a.citationKind,'verified-evidence');assert.ok(a.sources.every(ref=>ref.title.includes('罗勇')));
+test('sources correspond to selected sentences and complete long quotes are retained',async()=>{
+ const s=setup(),e=s.api();
+ const q='客家蓝染和其他地方蓝染的共同点和区别是什么？',ranked=e._fallback.rank(q);
+ s.setAudit({parts:ranked.chunks.slice(0,3).map((chunk,i)=>({evidence:(chunk.text.match(/[^。！？!?]+[。！？!?]?/g)||[]).slice(0,3).map((_,j)=>(i+1)+'.'+(j+1))})),gaps:[]});
+ const long=await e.ask(q);assert.ok(long.text.length>300);assert.match(long.text,/蓝底白花/);
+ s.setAudit({parts:[{evidence:['1.1']}],gaps:[]});
+ const a=await e.ask('门榜有什么文化意义？');assert.equal(a.citationKind,'selected-evidence');assert.ok(a.sources.every(ref=>ref.title.includes('罗勇')));
  assert.match(a.sources[0].title,/PDF/);
 });
-test('an audit must quote actual evidence; unsupported numbers fail closed',async()=>{
+test('model-written claims and gap explanations cannot introduce unsupported facts',async()=>{
  const s=setup(),e=s.api();s.setAudit({parts:[{text:'织带需高温染色。',evidence:['1.99']}],gaps:[]});
  assert.equal((await e.ask('蓝染温度是多少？')).source,'rules');
- const r=e._fallback.rank('蓝染温度是多少？');
  s.setAudit({parts:[{text:'必须在99摄氏度染色。',evidence:['1.1']}],gaps:[]});
- assert.equal((await e.ask('蓝染温度是多少？')).source,'rules');
+ const a=await e.ask('蓝染温度是多少？');assert.equal(a.source,'api');assert.doesNotMatch(a.text,/99|摄氏度/);
+ s.setAudit({parts:[],gaps:['资料未记载，但在日本通常为99摄氏度']});
+ const b=await e.ask('日本蓝染温度是多少？');assert.doesNotMatch(b.text,/99|通常/);assert.match(b.text,/不足/);
 });
 test('import and runtime custom entries preserve provenance and remain retrievable',async()=>{
  const entry={id:'custom-wheel',title:'陶轮',topics:['陶轮'],keywords:['陶轮','脚踏'],answer:'馆内记录使用脚踏陶轮。',sources:[{title:'用户展品记录',url:'https://example.com/record'}]};

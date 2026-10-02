@@ -225,6 +225,7 @@ async function proxyAuthorized(request, context, endpoint) {
       if (!validChatBody(parsed)) return json(400, { error: '请求字段或模型不受支持' });
       // V3.2 defaults to reasoning; museum answers need the final text within the request timeout.
       if (parsed.model === 'deepseek-ai/DeepSeek-V3.2') parsed.enable_thinking = false;
+      if (parsed.model === 'Qwen/Qwen3-30B-A3B-Instruct-2507' && parsed.messages[0].content.startsWith('你是资料核对员')) parsed.response_format = { type: 'json_object' };
       body = JSON.stringify(parsed);
       headers = { 'Content-Type': 'application/json' };
     } else {
