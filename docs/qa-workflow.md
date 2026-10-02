@@ -21,7 +21,9 @@ flowchart TD
 
 资料按句编号。第二次模型请求核对候选答案，返回每段对应的证据编号和不能核实的内容；程序从已提供资料取出原句，核对编号、数值及响应是否完整。网页仅展示回答正文，不使用 reasoning_content，也不将“无法核实”当作失败再换成无关答案。出处按实际使用的资料句关联。接口或核对失败时明确提供节选，不把节选说成完整比较结论。
 
-代理对 DeepSeek-V3.2 使用 `enable_thinking: false`，避免默认推理过程耗尽交互时间；浏览器仍不能提交任意上游字段。每次请求限20秒，所有失败路径都有资料兜底。该参数依据[SiliconFlow 官方模型说明](https://www.siliconflow.com/zh/blog/deepseek-v3-2-now-on-siliconflow-reasoning-first-model-built-for-agents)核对。路由设计参考[Haystack 官方路由文档](https://docs.haystack.deepset.ai/docs/routers)，实现保留项目已有静态架构，无新增框架依赖。
+默认采用 Qwen3-30B-A3B-Instruct-2507。旧的7B模型在实测中会把单个地区的做法泛化到所有地区，DeepSeek-V3.2则多次超时；[SiliconFlow官方模型页](https://www.siliconflow.com/models/qwen3-30b-a3b-instruct-2507)确认新的指令模型仅使用非思考模式。每次请求限20秒，所有失败路径都有资料兜底。
+
+DeepSeek-V3.2仍作为可选模型，代理固定 `enable_thinking: false`；浏览器不能提交任意上游字段。该参数依据[SiliconFlow官方模型说明](https://www.siliconflow.com/zh/blog/deepseek-v3-2-now-on-siliconflow-reasoning-first-model-built-for-agents)核对。路由设计参考[Haystack官方路由文档](https://docs.haystack.deepset.ai/docs/routers)，实现保留项目已有静态架构，无新增框架依赖。
 
 用户下载的文章按正文页码整理，作者的象征分析与照片可见事实分别表述。《非遗.docx》前三个主题拆成可检索的工具、工序和传习段落；茶果章节排除。年龄冲突、24道染制工序未逐项列明、照片没有背面实测等限制明确写入资料。
 

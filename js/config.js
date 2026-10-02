@@ -33,7 +33,7 @@ window.APP_CONFIG = {
         : '/api/ai/chat/completions',
       // 本地直连密钥（若有）；线上通过 proxyUrl 转发，密钥不会下发到浏览器。
       apiKey: (window.APP_SECRETS && window.APP_SECRETS.apiKey) || '',
-      model: 'deepseek-ai/DeepSeek-V3.2',
+      model: 'Qwen/Qwen3-30B-A3B-Instruct-2507',
       temperature: 0.2,
       maxTokens: 900,
       systemPrompt:

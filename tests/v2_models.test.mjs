@@ -101,6 +101,13 @@ test('shirt collar and bag mouth are open, and hat has visible inside fabric',()
  const hat=build('hutoumao');hat.updateMatrixWorld(true);
  ray.set(new T.Vector3(0,-0.2,0),new T.Vector3(0,1,0));assert.equal(ray.intersectObject(hat,true)[0]?.object.name,'帽内衬');
 });
+test('hat embroidery stays on the crown without spikes above its cloth shell',()=>{
+ const hat=build('hutoumao'),patch=hat.getObjectByName('219白地花绣冠饰');
+ const crownBounds=new T.Box3().setFromObject(hat.getObjectByName('黑布帽冠'));
+ const patchBounds=new T.Box3().setFromObject(patch);
+ assert.ok(patchBounds.max.y<=crownBounds.max.y+0.015,'embroidered panel protrudes above the crown');
+ assert.ok(patchBounds.min.y>crownBounds.min.y,'embroidered panel should stay above the brim');
+});
 test('bowei has cloth thickness and a curved surface; blue dye fabric has an actual reverse',()=>{
  const g=build('bowei'),surface=g.getObjectByName('四分之一照片布片-1'),back=g.getObjectByName('脖围曲面底衬');
  assert.ok(back);const p=surface.geometry.attributes.position;let low=Infinity,high=-Infinity;

@@ -4,6 +4,7 @@ const CHAT_LIMIT = 64 * 1024;
 const AUDIO_LIMIT = 8 * 1024 * 1024;
 const CHAT_MODELS = new Set([
   'Qwen/Qwen2.5-7B-Instruct',
+  'Qwen/Qwen3-30B-A3B-Instruct-2507',
   'deepseek-ai/DeepSeek-V3.2',
 ]);
 const AUDIO_MODELS = new Set([

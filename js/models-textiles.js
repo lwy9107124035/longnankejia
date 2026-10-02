@@ -149,7 +149,7 @@
 
     function hatSurfaceZ(x, y) {
       var yy = (y - 0.89) / 0.86;
-      return Math.sqrt(Math.max(0.015, 0.72*0.72 - x*x - yy*yy)) + 0.012;
+      return Math.sqrt(Math.max(0.0003, 0.72*0.72 - x*x - yy*yy)) + 0.012;
     }
     function addHatPatch(name, texture, width, height, centerY, rows, cols) {
       var positions = [], uvs = [], indices = [];
@@ -162,10 +162,12 @@
           var patchWidth = name === '219白地花绣冠饰' ? 0.48 + 0.52 * v : 1;
           var x = (u - 0.5) * width * patchWidth;
           if(name === '219白地花绣冠饰'){
-            var height=(y-0.89)/0.86,available=Math.sqrt(Math.max(0.01,0.72*0.72-height*height));
+            var normalizedY=(y-0.89)/0.86,available=Math.sqrt(Math.max(0.01,0.72*0.72-normalizedY*normalizedY));
             x=Math.sin((u-0.5)*Math.PI*0.88)*available;
           }
-          positions.push(x, y, hatSurfaceZ(x, y)); uvs.push(u, 1 - v);
+          positions.push(x, y, hatSurfaceZ(x, y));
+          var uvTop=name === '219白地花绣冠饰' ? 0.97-0.18*Math.pow(u*2-1,2) : 1;
+          uvs.push(u, (1-v)*uvTop);
         }
       }
       for (var pr = 0; pr < rows; pr++) for (var pc = 0; pc < cols; pc++) {

@@ -236,7 +236,7 @@
       '  <div class="admin-form-title">模型参数</div>' +
       '  <label class="admin-label">模型名称</label>' +
       '  <input type="text" id="apiModel" class="admin-input" value="' + esc(api.model || '') + '">' +
-      '  <div class="admin-hint">推荐：Qwen/Qwen2.5-7B-Instruct（快）或 deepseek-ai/DeepSeek-V3.2（强）</div>' +
+      '  <div class="admin-hint">默认：Qwen/Qwen3-30B-A3B-Instruct-2507；也支持 DeepSeek-V3.2 与 Qwen2.5-7B-Instruct。</div>' +
       '  <div class="admin-row">' +
       '    <div class="admin-col">' +
       '      <label class="admin-label">Temperature（0–2）</label>' +

@@ -259,3 +259,13 @@ test('DeepSeek final-answer mode is enforced upstream without allowing arbitrary
   assert.equal(res.status,200);
  });
 });
+test('the grounded Qwen3 instruction model is accepted with the same restricted request fields',async()=>{
+ await withFakeFetch(async(_url,init)=>{
+  const body=JSON.parse(init.body);assert.equal(body.model,'Qwen/Qwen3-30B-A3B-Instruct-2507');
+  assert.equal(body.enable_thinking,undefined);
+  return Response.json({choices:[{message:{content:'资料中的工序没有列明。'}}]});
+ },async()=>{
+  const res=await onChat(request('/api/ai/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...chatPayload,model:'Qwen/Qwen3-30B-A3B-Instruct-2507'})}),{env});
+  assert.equal(res.status,200);
+ });
+});
