@@ -104,9 +104,45 @@ test('shirt collar and bag mouth are open, and hat has visible inside fabric',()
 test('hat embroidery stays on the crown without spikes above its cloth shell',()=>{
  const hat=build('hutoumao'),patch=hat.getObjectByName('219白地花绣冠饰');
  const crownBounds=new T.Box3().setFromObject(hat.getObjectByName('黑布帽冠'));
+ const brimBounds=new T.Box3().setFromObject(hat.getObjectByName('帽檐红色包边'));
  const patchBounds=new T.Box3().setFromObject(patch);
  assert.ok(patchBounds.max.y<=crownBounds.max.y+0.015,'embroidered panel protrudes above the crown');
- assert.ok(patchBounds.min.y>crownBounds.min.y,'embroidered panel should stay above the brim');
+ assert.ok(patchBounds.min.y>brimBounds.max.y,'embroidered panel should stay above the brim');
+});
+test('shirt shoulders form a connected cloth surface and cuffs remain covered',()=>{
+ const shirt=build('dajinshan');shirt.updateMatrixWorld(true);
+ assert.equal(shirt.getObjectByName('肩袖连接蓝布'),undefined,'a shoulder disk would conceal the join');
+ const cloth=shirt.getObjectByName('衣身与宽袖连续布面').geometry;
+ const positions=cloth.attributes.position,index=cloth.index,edges=new Map();
+ const neighbors=Array.from({length:positions.count},()=>new Set());
+ for(let i=0;i<index.count;i+=3){
+  const triangle=[index.getX(i),index.getX(i+1),index.getX(i+2)];
+  for(let j=0;j<3;j++){
+   const a=triangle[j],b=triangle[(j+1)%3],key=a<b?`${a},${b}`:`${b},${a}`;
+   edges.set(key,(edges.get(key)||0)+1);neighbors[a].add(b);neighbors[b].add(a);
+  }
+ }
+ const reached=new Set([0]),pending=[0];
+ for(let i=0;i<pending.length;i++)for(const next of neighbors[pending[i]])if(!reached.has(next)){reached.add(next);pending.push(next);}
+ assert.equal(reached.size,positions.count,'torso and sleeves must share a single connected surface');
+ let shoulderEdges=0;
+ for(const [key,count] of edges){
+  assert.ok(count<=2,'cloth must not contain overlapping faces along an edge');
+  const [a,b]=key.split(',').map(Number);
+  const x=(positions.getX(a)+positions.getX(b))/2,y=(positions.getY(a)+positions.getY(b))/2;
+  if(Math.abs(x)>0.28&&y>0.95&&y<1.80){
+   shoulderEdges++;
+   assert.equal(count,2,'a shoulder edge is open or is not welded to the sleeve');
+  }
+ }
+ assert.ok(shoulderEdges>100,'the continuity check must cover both shoulders');
+ for(const name of ['左宽袖','右宽袖']){
+  const arm=shirt.getObjectByName(name);
+  const origin=arm.localToWorld(new T.Vector3(0,-0.35,0));
+  const center=arm.localToWorld(new T.Vector3(0,0.1,0));
+  const hits=new T.Raycaster(origin,center.sub(origin).normalize()).intersectObject(arm,true);
+  assert.equal(hits[0]?.object.name,'袖口闭合蓝布',name+' still looks open at the cuff');
+ }
 });
 test('bowei has cloth thickness and a curved surface; blue dye fabric has an actual reverse',()=>{
  const g=build('bowei'),surface=g.getObjectByName('四分之一照片布片-1'),back=g.getObjectByName('脖围曲面底衬');

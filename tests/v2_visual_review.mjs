@@ -80,6 +80,15 @@ try {
     const delta=(await ev('Showcase3D.debugState().rotY'))-angle;
     check('旋转控件到达视角 '+angle.toFixed(2),Math.abs(Math.atan2(Math.sin(delta),Math.cos(delta)))<0.035);
   };
+  const tiltTo=async angle=>{
+    const pos=await ev(`(()=>{const r=document.querySelector('#c3dViewport canvas').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,angle:Showcase3D.debugState().targetRotX};})()`);
+    const dy=(angle-pos.angle)/0.006;
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',x:pos.x,y:pos.y,button:'left',buttons:1,clickCount:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:pos.x,y:pos.y+dy,button:'left',buttons:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:pos.x,y:pos.y+dy,button:'left',buttons:0,clickCount:1});
+    await sleep(1100);
+    check('俯仰控件到达视角 '+angle.toFixed(2),Math.abs((await ev('Showcase3D.debugState().rotX'))-angle)<0.035);
+  };
   for(const id of ids){
     await selectInUi(id);
     // 每件模型都保留实际浏览器截图。
@@ -133,6 +142,11 @@ try {
     if(process.argv.includes('--all-angles')){
       for(const [view,angle] of [['front',0],['side',Math.PI/2],['back',Math.PI],['other-side',Math.PI*1.5]]){
         await turnTo(angle);await shot('desktop-'+id+'-'+view);
+      }
+      if(id==='dajinshan'){
+        await turnTo(0);await tiltTo(1.15);await shot('desktop-dajinshan-top');
+        await turnTo(0.42);await shot('desktop-dajinshan-top-oblique');
+        await tiltTo(0.15);
       }
     }
   }
