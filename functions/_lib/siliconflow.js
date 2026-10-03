@@ -16,6 +16,7 @@ const PRODUCTION_HOSTS = new Map([
   ['qcode', 'qcode.longnankejia-dev.pages.dev'],
   ['codex', 'codex.longnankejia-dev.pages.dev'],
   ['doubao', 'longnankejia-dev.pages.dev'],
+  ['antigravity', 'antigravity.longnankejia-dev.pages.dev'],
 ]);
 const GITHUB_PAGES_ORIGIN = 'https://lwy9107124035.github.io';
 const MAIN_PAGES_HOST = 'longnankejia.pages.dev';

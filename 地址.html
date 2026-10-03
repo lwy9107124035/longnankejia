@@ -32,6 +32,7 @@
   .tag.q { background: var(--accent); }
   .tag.d { background: var(--muted); }
   .tag.c { background: #4767a8; }
+  .tag.a { background: #6366F1; }
   .name { font-size: 17px; font-weight: 700; color: var(--primary-deep); }
   .url { margin-top: 3px; font-size: 13px; color: var(--accent); word-break: break-all; }
   .note { margin-top: 6px; font-size: 12.5px; color: var(--ink-soft); }
@@ -53,8 +54,22 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>四个分支的网页地址</h1>
+  <h1>各分支网页地址</h1>
   <p class="sub">龙南客家非遗数字助手 · 点卡片即开，手机也能直接收藏</p>
+
+  <a class="card" href="https://antigravity.longnankejia-dev.pages.dev/">
+    <span class="tag a">antigravity</span>
+    <div class="name">Antigravity 主力开发分支（当前进行中）</div>
+    <div class="url">https://antigravity.longnankejia-dev.pages.dev/</div>
+    <div class="note">对应 antigravity 分支。已完全照搬 codex v2 内容；后续所有甲方修改意见落地、3D 模型精细化与地图增强均在此分支进行。大模型问答与语音输入已配置。</div>
+  </a>
+
+  <a class="card" href="https://codex.longnankejia-dev.pages.dev/">
+    <span class="tag c">codex</span>
+    <div class="name">codex v2 预览分支</div>
+    <div class="url">https://codex.longnankejia-dev.pages.dev/</div>
+    <div class="note">对应 codex 分支。问答与语音输入通过服务端代理使用 API；3D 模型、地图与典藏可直接体验。</div>
+  </a>
 
   <a class="card" href="https://longnankejia.pages.dev/">
     <span class="tag">main</span>
@@ -67,7 +82,7 @@
     <span class="tag q">qcode</span>
     <div class="name">独立验收分支</div>
     <div class="url">https://qcode.longnankejia-dev.pages.dev/</div>
-    <div class="note">独立于 codex v2 的验收分支。问答与语音输入通过服务端代理使用 API。</div>
+    <div class="note">独立于 codex/antigravity 的验收分支。问答与语音输入通过服务端代理使用 API。</div>
   </a>
 
   <a class="card" href="https://longnankejia-dev.pages.dev/">
@@ -77,24 +92,18 @@
     <div class="note">原 dev 豆包工作分支，现已更名为 doubao。大模型问答通过服务端代理使用 API。</div>
   </a>
 
-  <a class="card" href="https://codex.longnankejia-dev.pages.dev/">
-    <span class="tag c">codex</span>
-    <div class="name">v2 预览（当前版本）</div>
-    <div class="url">https://codex.longnankejia-dev.pages.dev/</div>
-    <div class="note">对应 codex 分支的 v2。问答与语音输入通过服务端代理使用 API；3D 模型、地图与典藏可直接体验。</div>
-  </a>
-
   <div class="row">
-    <button type="button" onclick="['https://longnankejia.pages.dev/','https://qcode.longnankejia-dev.pages.dev/','https://longnankejia-dev.pages.dev/','https://codex.longnankejia-dev.pages.dev/'].forEach(function (u) { window.open(u, '_blank'); })">四个都打开</button>
-    <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/hometown','_blank')">直接看 v2 家乡地图</button>
-    <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/model3d','_blank')">直接看 v2 的 3D 模型</button>
-    <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/dialect','_blank')">直接听方言原声</button>
+    <button type="button" onclick="['https://antigravity.longnankejia-dev.pages.dev/','https://codex.longnankejia-dev.pages.dev/','https://longnankejia.pages.dev/','https://qcode.longnankejia-dev.pages.dev/','https://longnankejia-dev.pages.dev/'].forEach(function (u) { window.open(u, '_blank'); })">全部打开</button>
+    <button type="button" onclick="window.open('https://antigravity.longnankejia-dev.pages.dev/#/model3d','_blank')">直接看 antigravity 3D 模型</button>
+    <button type="button" onclick="window.open('https://antigravity.longnankejia-dev.pages.dev/#/hometown','_blank')">直接看 antigravity 家乡地图</button>
+    <button type="button" onclick="window.open('https://codex.longnankejia-dev.pages.dev/#/model3d','_blank')">查看 codex v2 模型</button>
+    <button type="button" onclick="window.open('https://antigravity.longnankejia-dev.pages.dev/#/dialect','_blank')">直接听方言原声</button>
   </div>
 
   <div class="box">
-    <p><b>v2 这一轮改动在 codex 分支。</b>它从 main 基线 <code>eab8f30</code> 开始，基线标签为 <code>v2-base</code>。
-    codex 分支的固定预览地址是 <code>https://codex.longnankejia-dev.pages.dev/</code>；<code>v2</code> 是版本号。</p>
-    <p><b>四个可点地址</b>分别是正式版 main、独立工作的 qcode、doubao，以及 codex 上的 v2 预览。doubao 是原 dev 分支更名后的地址；codex 预览随 codex 分支更新。</p>
+    <p><b>当前主力开发分支为 antigravity。</b>它已完整照搬 codex v2（commit <code>25e5bbd</code>）的全部成果，
+    后续的一切修改与甲方意见落实均在 <code>antigravity</code> 分支上进行，预览地址为 <code>https://antigravity.longnankejia-dev.pages.dev/</code>。</p>
+    <p><b>五个可点地址</b>分别是主力开发版 antigravity、codex v2 预览版、正式版 main、独立验收版 qcode，以及 doubao 分支。</p>
     <p><b>本地那份和线上这份不是一回事。</b>双击 <code>qidong.bat</code> 打开的是这个文件夹当前检出的分支，
     它要 push 并且部署过，线上才会变。启动脚本会打印 <code>branch 名字 @ commit</code>，
     想知道自己在看哪一份就看那一行。</p>
