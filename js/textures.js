@@ -609,7 +609,47 @@
     return s.canvas;
   }
 
+  function surfaceDetail(kind) {
+    var color=createCanvas(512,512),height=createCanvas(512,512),rough=createCanvas(512,512);
+    var pixels=color.ctx.createImageData(512,512),relief=height.ctx.createImageData(512,512),finish=rough.ctx.createImageData(512,512);
+    var seed=731;
+    function noise(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296-0.5;}
+    for(var y=0;y<512;y++)for(var x=0;x<512;x++){
+      var n=noise(),grain,shade,r;
+      if(kind==='fabric'){
+        grain=14*Math.cos(x*Math.PI/2)*Math.sin(y*Math.PI/2)+8*Math.sin(x*Math.PI/2)+8*Math.cos(y*Math.PI/2)+n*12;
+        shade=236+grain*0.25;r=224+grain*0.3;
+      }else if(kind==='wood'||kind==='bamboo'){
+        var bend=x+6*Math.sin(y/57)+3*Math.sin(y/23+x/70);
+        grain=17*Math.sin(bend*0.39)+7*Math.sin(bend*1.7)+n*13;
+        if(kind==='wood')grain=25*Math.sin(bend*0.13)+10*Math.sin(bend*0.67)+n*12+18*Math.sin(Math.sqrt(Math.pow((x-165)*1.1,2)+Math.pow((y-280)*0.19,2))*0.15)*Math.exp(-Math.pow((x-165)/90,2));
+        shade=216+grain;r=(kind==='wood'?193:204)+grain*0.5;
+      }else{
+        grain=n*35+8*Math.sin(x/17+y/27)+6*Math.sin(x/61-y/35);
+        shade=231+grain*0.45;r=(kind==='ceramic'?145:kind==='paper'?226:236)+grain*0.4;
+      }
+      var i=(y*512+x)*4;
+      for(var c=0;c<3;c++){pixels.data[i+c]=shade;relief.data[i+c]=128+grain;finish.data[i+c]=r;}
+      pixels.data[i+3]=relief.data[i+3]=finish.data[i+3]=255;
+    }
+    color.ctx.putImageData(pixels,0,0);height.ctx.putImageData(relief,0,0);rough.ctx.putImageData(finish,0,0);
+    return {color:color.canvas,height:height.canvas,roughness:rough.canvas};
+  }
+
+  function studioEnvironment() {
+    var t=createCanvas(1024,512),ctx=t.ctx;
+    ctx.fillStyle='#65635f';ctx.fillRect(0,0,1024,512);
+    [[230,120,190],[740,160,130]].forEach(function(p){
+      var gradient=ctx.createRadialGradient(p[0],p[1],8,p[0],p[1],p[2]);
+      gradient.addColorStop(0,'rgba(255,253,246,.95)');gradient.addColorStop(0.5,'rgba(236,236,230,.65)');gradient.addColorStop(1,'rgba(236,236,230,0)');
+      ctx.fillStyle=gradient;ctx.fillRect(0,0,1024,512);
+    });
+    return t.canvas;
+  }
+
   window.Textures = {
+    surfaceDetail: surfaceDetail,
+    studioEnvironment: studioEnvironment,
     redFabric: redFabric,
     tigerFace: tigerFaceTexture,
     landye: landyeTexture,

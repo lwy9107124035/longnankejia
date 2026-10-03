@@ -304,8 +304,8 @@ async function run() {
   await page.send('Page.navigate', { url: BASE + '/index.html' });
   await until(page, 'document.readyState==="complete"', 8000);
   await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`);
-  check('engine reports the local knowledge base',
-    await until(page, `/本地知识库/.test(document.getElementById('engineStatus').textContent)`, 4000));
+  check('answer status stays pending before the first question',
+    await until(page, `document.getElementById('engineStatus').textContent === '回答方式：待提问'`, 4000));
   const chips = await page.evaluate(`[...document.querySelectorAll('.chip')].map(c => c.dataset.q)`);
   check('quick questions present', chips.length >= 4, chips.length + ' chips');
   for (const q of chips) {

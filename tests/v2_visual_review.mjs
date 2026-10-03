@@ -89,8 +89,13 @@ try {
     const measurement=await ev(`(()=>{
       const g=Showcase3D.debugModel();let meshes=0,drawUnits=0,triangles=0;
       let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,finite=true;
+      const surfaces=new Set();let surfaceCount=0,surfaceMapsValid=true;
       const camera=Showcase3D.debugCamera();g.updateMatrixWorld(true);camera.updateMatrixWorld(true);
       g.traverse(o=>{if(!o.isMesh)return;meshes++;drawUnits+=Array.isArray(o.material)?o.material.length:1;
+        for(const m of (Array.isArray(o.material)?o.material:[o.material])){
+          if(!m.userData.surface||surfaces.has(m))continue;surfaces.add(m);surfaceCount++;
+          surfaceMapsValid=surfaceMapsValid&&!!m.bumpMap&&!!m.roughnessMap&&m.bumpMap.encoding===THREE.LinearEncoding&&m.roughnessMap.encoding===THREE.LinearEncoding&&m.map?.encoding===THREE.sRGBEncoding&&!!o.geometry.attributes.uv;
+        }
         triangles+=(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3*(o.isInstancedMesh?o.count:1);
         const vertex=new THREE.Vector3(),matrix=new THREE.Matrix4();
         for(let k=0;k<(o.isInstancedMesh?o.count:1);k++){
@@ -110,10 +115,11 @@ try {
       const fb=new THREE.Box3().setFromObject(g);
       const footprint={x:+(fb.max.x-fb.min.x).toFixed(2),z:+(fb.max.z-fb.min.z).toFixed(2)};
       g.rotation.y=r0;g.updateMatrixWorld(true);
-      return {id:${JSON.stringify(id)},meshes,drawUnits,triangles,finite,seat,footprint,extent:{minX,maxX,minY,maxY},stats:Showcase3D.debugRendererStats?.(),metadata:g.userData};
+      return {id:${JSON.stringify(id)},meshes,drawUnits,triangles,finite,seat,footprint,surfaceCount,surfaceMapsValid,extent:{minX,maxX,minY,maxY},stats:Showcase3D.debugRendererStats?.(),metadata:g.userData};
     })()`);
     report.models.push(measurement);
     check(id+' 的所有实际顶点与实例矩阵有效',measurement.finite);
+    check(id+' 表面细节已接入且高度与粗糙度使用线性色彩',measurement.surfaceCount>0&&measurement.surfaceMapsValid,{count:measurement.surfaceCount,valid:measurement.surfaceMapsValid});
     check(id+' 的实际绘制预算',measurement.stats?.calls<300&&measurement.triangles<200000,measurement.stats);
     check(id+' 默认视图完整',Object.values(measurement.extent).every(n=>Math.abs(n)<0.98),measurement.extent);
     // 必须真被画出来：逐顶点量的是场景图，模型忘了 scene.add 时它照样"完整"。
@@ -130,7 +136,7 @@ try {
       }
     }
   }
-  for(const id of (mapOnly?[]:['weiwu','zhidai'])){
+  for(const id of (mapOnly?[]:['weiwu','zhidai','zhiji','boji','dajinshan'])){
     await selectInUi(id);
     const rect=await ev(`(()=>{const r=document.querySelector('#c3dViewport canvas').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
     // Use the real controls; the model must respond without changing its internals.

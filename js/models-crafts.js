@@ -1,8 +1,17 @@
 (function (root) {
   'use strict';
 
-  function mat(THREE, color, roughness) {
-    return new THREE.MeshStandardMaterial({ color: color, roughness: roughness == null ? 0.78 : roughness });
+  function mat(THREE, color, roughness, surface) {
+    var result=new THREE.MeshStandardMaterial({ color: color, roughness: roughness == null ? 0.78 : roughness });
+    result.userData.surface=surface || 'fabric';return result;
+  }
+
+  function timberBox(THREE,width,height,depth){
+    var r=Math.min(0.008,Math.min(width,height,depth)*0.06),shape=new THREE.Shape();
+    var x=width/2-r,y=height/2-r;
+    shape.moveTo(-x,-y);shape.lineTo(x,-y);shape.lineTo(x,y);shape.lineTo(-x,y);shape.closePath();
+    var geometry=new THREE.ExtrudeGeometry(shape,{depth:depth-2*r,bevelEnabled:true,bevelSize:r,bevelThickness:r,bevelSegments:2,steps:1});
+    geometry.translate(0,0,-depth/2+r);return geometry;
   }
 
   function mesh(THREE, geometry, material, parent, name) {
@@ -13,7 +22,8 @@
   }
 
   function box(THREE, parent, name, material, size, position) {
-    var item = mesh(THREE, new THREE.BoxGeometry(size[0], size[1], size[2]), material, parent, name);
+    var geometry=material.userData.surface==='wood'?timberBox(THREE,size[0],size[1],size[2]):new THREE.BoxGeometry(size[0],size[1],size[2]);
+    var item = mesh(THREE, geometry, material, parent, name);
     item.position.set(position[0], position[1], position[2]);
     return item;
   }
@@ -41,53 +51,21 @@
   function squareBeam(THREE, parent, name, material, a, b, width, depth) {
     var start = new THREE.Vector3(a[0], a[1], a[2]);
     var end = new THREE.Vector3(b[0], b[1], b[2]);
-    var axis = end.clone().sub(start).normalize();
-    var side = new THREE.Vector3(0, 0, 1).addScaledVector(axis, -axis.z).normalize();
-    if (side.lengthSq() < 0.01) side.set(1, 0, 0).addScaledVector(axis, -axis.x).normalize();
-    var up = axis.clone().cross(side).normalize();
-    var hw = width / 2, hd = (depth || width) / 2;
-    var points = [];
-    [start, end].forEach(function (center) {
-      [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(function (corner) {
-        var p = center.clone().addScaledVector(side, corner[0] * hw).addScaledVector(up, corner[1] * hd);
-        points.push(p.x, p.y, p.z);
-      });
-    });
-    var indices = [0,2,1,0,3,2,4,5,6,4,6,7];
-    for (var i = 0; i < 4; i++) {
-      var n = (i + 1) % 4;
-      indices.push(i, i + 4, n, n, i + 4, n + 4);
-    }
-    var geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-    geo.setIndex(indices); geo.computeVertexNormals();
-    return mesh(THREE, geo, material, parent, name);
+    var delta=end.clone().sub(start),geometry=timberBox(THREE,width,delta.length(),depth||width);
+    var beam=mesh(THREE,geometry,material,parent,name);
+    beam.position.copy(start.clone().add(end).multiplyScalar(0.5));
+    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());
+    return beam;
   }
 
   function taperedSquareBeam(THREE, parent, name, material, a, b, widthA, widthB) {
-    var start = new THREE.Vector3(a[0], a[1], a[2]);
-    var end = new THREE.Vector3(b[0], b[1], b[2]);
-    var axis = end.clone().sub(start).normalize();
-    var side = new THREE.Vector3(0, 0, 1).addScaledVector(axis, -axis.z).normalize();
-    if (side.lengthSq() < 0.01) side.set(1, 0, 0).addScaledVector(axis, -axis.x).normalize();
-    var up = axis.clone().cross(side).normalize();
-    var points = [];
-    [[start, widthA],[end, widthB]].forEach(function (entry) {
-      var c = entry[0], half = entry[1] / 2;
-      [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(function (corner) {
-        var p = c.clone().addScaledVector(side, corner[0] * half).addScaledVector(up, corner[1] * half);
-        points.push(p.x, p.y, p.z);
-      });
-    });
-    var indices = [0,2,1,0,3,2,4,5,6,4,6,7];
-    for (var i = 0; i < 4; i++) {
-      var n = (i + 1) % 4;
-      indices.push(i, i + 4, n, n, i + 4, n + 4);
+    var beam=squareBeam(THREE,parent,name,material,a,b,widthA,widthA),p=beam.geometry.attributes.position;
+    var length=new THREE.Vector3().fromArray(b).distanceTo(new THREE.Vector3().fromArray(a));
+    for(var i=0;i<p.count;i++){
+      var ratio=1+(widthB/widthA-1)*Math.max(0,Math.min(1,p.getY(i)/length+0.5));
+      p.setXYZ(i,p.getX(i)*ratio,p.getY(i),p.getZ(i)*ratio);
     }
-    var geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-    geo.setIndex(indices); geo.computeVertexNormals();
-    return mesh(THREE, geo, material, parent, name);
+    beam.geometry.computeVertexNormals();return beam;
   }
 
   function curvedTube(THREE, parent, name, material, points, radius, radialSegments, taper) {
@@ -141,7 +119,7 @@
   function loom(THREE, textures) {
     var g = new THREE.Group();
     g.name = '木织机 · 参考照片结构';
-    var wood = mat(THREE, 0xb18b56), pale = mat(THREE, 0xc5a06e), dark = mat(THREE, 0x83633e), cord = mat(THREE, 0xd8c7a0);
+    var wood = mat(THREE, 0xb29b79,0.8,'wood'), pale = mat(THREE, 0xc7b28b,0.82,'wood'), dark = mat(THREE, 0x826e50,0.9,'wood'), cord = mat(THREE, 0xd8c7a0);
     var yarn = mat(THREE, 0xe4dfd4);
     var W = 2.45, D = 1.72, topY = 2.72;
     // Four square legs and the low rectangular stretcher frame.
@@ -183,6 +161,7 @@
     }
     g.add(reed);
     var clothMat = new THREE.MeshStandardMaterial({color: 0xffffff, map: textures.loomCloth, roughness: 0.94, side: THREE.DoubleSide});
+    clothMat.userData.surface='fabric';
     mesh(THREE, loomCloth(THREE), clothMat, g, 'continuous photographed blue white cloth');
     // The seat is a full-width plank carried by the long base frame.
     box(THREE, g, 'loom seat plank', pale, [1.97, 0.12, 0.52], [0, 0.70, 1.25]);
@@ -221,13 +200,14 @@
   }
 
   function foldedPetal(THREE) {
-    var positions = [], indices = [], rows = 8, columns = 4;
+    var positions = [], uvs=[], indices = [], rows = 12, columns = 8;
     for (var row = 0; row <= rows; row++) {
       var t = row / rows, width = Math.sin(Math.PI * t * 0.88) * 0.52 + 0.015;
       for (var col = 0; col <= columns; col++) {
         var s = col / columns * 2 - 1;
         positions.push(s * width, t,
-          0.38 * t * t + 0.20 * Math.abs(s) * Math.sin(t * Math.PI) - 0.08 * (1 - Math.abs(s)) * Math.sin(t * Math.PI));
+          0.38 * t * t + 0.20 * Math.abs(s) * Math.sin(t * Math.PI) - 0.08 * (1 - Math.abs(s)) * Math.sin(t * Math.PI)+0.035*Math.sin(s*9+t*13)*Math.sin(t*Math.PI));
+        uvs.push(col/columns,t);
         if (row < rows && col < columns) {
           var a = row * (columns + 1) + col, b = a + columns + 1;
           indices.push(a, a + 1, b, a + 1, b + 1, b);
@@ -236,6 +216,7 @@
     }
     var geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
     geo.setIndex(indices); geo.computeVertexNormals();
     return geo;
   }
@@ -249,6 +230,7 @@
     geo.setAttribute('uv', new THREE.Float32BufferAttribute([0,0,1,0,1,1,0,1], 2));
     geo.setIndex([0,1,2,0,2,3]); geo.computeVertexNormals();
     var material = new THREE.MeshStandardMaterial({color:0xffffff, map:map, roughness:0.82});
+    material.userData.surface='ceramic';
     mesh(THREE, geo, material, group, name).rotation.y = angle;
   }
 
@@ -268,8 +250,9 @@
       return curvedTube(THREE,canopy,name,material,treePath(path),radius,sides,taper);
     }
     var bark = new THREE.MeshStandardMaterial({color:0xb5917e, map:textures.paperBark, roughness:0.96});
-    var twig = mat(THREE, 0x49362b), pot = mat(THREE, 0x20261e), rim = mat(THREE, 0x5e6540), pebble = mat(THREE, 0xd7d0b8), leaf = mat(THREE, 0x73764a);
-    var orange = mat(THREE, 0xef9358), paleOrange = mat(THREE, 0xf4b975), darkOrange = mat(THREE, 0xcc7246);
+    bark.userData.surface='wood';
+    var twig = mat(THREE, 0x49362b,0.9,'wood'), pot = mat(THREE, 0x30372e,0.7,'ceramic'), rim = mat(THREE, 0x686947,0.7,'ceramic'), pebble = mat(THREE, 0xd7d0b8,1,'mineral'), leaf = mat(THREE, 0x73764a,1,'paper');
+    var orange = mat(THREE, 0xe9a16e,1,'paper'), paleOrange = mat(THREE, 0xe9b983,1,'paper'), darkOrange = mat(THREE, 0xbe794f,1,'paper');
     [orange, paleOrange, darkOrange].forEach(function (material) { material.side = THREE.DoubleSide; });
     // Six-sided, flared ceramic planter with thick angular lip and visible pale gravel.
     var body = mesh(THREE, new THREE.CylinderGeometry(0.66, 0.45, 0.62, 6, 1, false), pot, g, 'six sided dark green planter');
@@ -283,7 +266,7 @@
     soil.rotation.x = -Math.PI / 2; soil.rotation.z = Math.PI / 6; soil.position.y = 0.61;
     for (var stone = 0; stone < 28; stone++) {
       var angle = stone * 2.399, radius = 0.12 + 0.43 * Math.sqrt((stone + 0.5) / 28);
-      var p = mesh(THREE, new THREE.IcosahedronGeometry(0.065 + (stone % 3) * 0.012, 0), pebble, g, 'pale gravel in planter');
+      var p = mesh(THREE, new THREE.IcosahedronGeometry(0.065 + (stone % 3) * 0.012, 1), pebble, g, 'pale gravel in planter');
       p.position.set(Math.cos(angle) * radius, 0.64 + (stone % 2) * 0.018, Math.sin(angle) * radius); p.scale.set(1.25, 0.52, 0.9);
     }
     // The trunk sweeps from the pot to the left, then turns up and right.
@@ -334,15 +317,15 @@
       var u = new THREE.Vector3(0, 1, 0).cross(norm).normalize();
       if (u.lengthSq() < 0.1) u.set(1, 0, 0);
       var v = norm.clone().cross(u).normalize();
-      var radius = 0.090 + (fi % 4) * 0.009;
+      var radius = 0.083 + (fi % 5) * 0.010;
       for (var layer = 0; layer < 3; layer++) {
         var petals = layer === 0 ? 6 : 5;
         for (var pet = 0; pet < petals; pet++) {
           var ang = pet * Math.PI * 2 / petals + layer * 0.58 + fi * 0.73;
           var radial = u.clone().multiplyScalar(Math.sin(ang)).add(v.clone().multiplyScalar(Math.cos(ang)));
           var pos = new THREE.Vector3(c[0], c[1], c[2]).addScaledVector(radial, radius * 0.06).addScaledVector(norm, layer * 0.013);
-          var size = radius * (1 - layer * 0.25);
-          var rec = {p:pos.toArray(), n:norm, angle:ang, size:size};
+          var size = radius * (1 - layer * 0.25)*(0.9+0.13*Math.sin(fi*4.7+pet*2.1));
+          var rec = {p:pos.toArray(), n:norm, angle:ang+0.12*Math.sin(fi+pet*1.8), size:size};
           (layer === 2 ? darkPetals : fi % 4 === 0 ? lightPetals : orangePetals).push(rec);
         }
       }
@@ -358,7 +341,7 @@
   }
 
   function bambooWeaveGeometry(THREE, radius, dishDepth, stripWidth, count, direction, phase) {
-    var positions = [], indices = [];
+    var positions = [], uvs=[],colors=[],indices = [];
     var diagonal = Math.PI / 4 * direction;
     var normalX = -Math.sin(diagonal), normalZ = Math.cos(diagonal);
     for (var i = 0; i < count; i++) {
@@ -374,9 +357,11 @@
         var along = cx * Math.cos(diagonal) + cz * Math.sin(diagonal);
         var phaseLift = direction * Math.cos(along * 86 + phase + i * Math.PI) * 0.009;
         var y = 0.12 + dishDepth * ((cx * cx + cz * cz) / (radius * radius)) + phaseLift;
-        var halfW = stripWidth / 2;
+        var halfW = stripWidth / 2*(1+0.05*Math.sin(i*3.7+s*0.33));
         var bx = normalX * halfW, bz = normalZ * halfW;
         positions.push(cx - bx, y, cz - bz, cx + bx, y, cz + bz, cx - bx, y - 0.018, cz - bz, cx + bx, y - 0.018, cz + bz);
+        var tint=0.9+0.09*Math.sin(i*2.37);
+        for(var k=0;k<4;k++){uvs.push(k%2,s/steps*4);colors.push(tint,tint,tint);}
         if (s > 0) {
           var prev = start + (s - 1) * 4, cur = start + s * 4;
           indices.push(prev, cur, prev + 1, cur, cur + 1, prev + 1, prev + 2, prev + 3, cur + 2, cur + 2, prev + 3, cur + 3);
@@ -386,13 +371,16 @@
     }
     var geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+    geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
     geometry.setIndex(indices); geometry.computeVertexNormals();
     return geometry;
   }
 
   function circularTray(THREE) {
     var g = new THREE.Group(); g.name = '圆竹筛 · 参考照片结构';
-    var bamboo = mat(THREE, 0xc59a61), pale = mat(THREE, 0xe0c18c), dark = mat(THREE, 0x967044);
+    var bamboo = mat(THREE, 0xbcaa88,0.85,'bamboo'), pale = mat(THREE, 0xcfbf9c,0.9,'bamboo'), dark = mat(THREE, 0x917954,0.9,'bamboo');
+    bamboo.vertexColors=pale.vertexColors=true;
     var radius = 1.03;
     var base = mesh(THREE, bambooWeaveGeometry(THREE, radius, 0.12, 0.031, 35, 1, 0), bamboo, g, 'open diagonal bamboo strips one direction');
     var cross = mesh(THREE, bambooWeaveGeometry(THREE, radius, 0.12, 0.031, 35, -1, Math.PI), pale, g, 'open diagonal bamboo strips crossing direction');
@@ -416,7 +404,7 @@
   }
 
   function coneWeave(THREE, parent, name, material, radius, height, turns, offset, direction) {
-    var positions = [], indices = [], segments = 140, paths = 16;
+    var positions = [], uvs=[],colors=[], indices = [], segments = 140, paths = 16;
     for (var i = 0; i < paths; i++) {
       var baseAngle = i * Math.PI * 2 / paths + offset;
       var start = positions.length / 3;
@@ -425,10 +413,12 @@
         var angle = baseAngle + direction * turns * Math.PI * 2 * v;
         var r = radius * (1 - v * 0.88);
         var cx = Math.cos(angle) * r, cz = Math.sin(angle) * r, y = height * v;
-        var w = 0.014;
+        var w = 0.0125*(1+0.04*Math.sin(i*2.1+s*0.27));
         // Narrow ribbon width follows the local circumferential direction of the conical surface.
         var wx = -Math.sin(angle) * w, wz = Math.cos(angle) * w;
         positions.push(cx - wx, y, cz - wz, cx + wx, y, cz + wz, cx - wx, y - 0.012, cz - wz, cx + wx, y - 0.012, cz + wz);
+        var tint=0.9+0.09*Math.sin(i*2.37);
+        for(var k=0;k<4;k++){uvs.push(k%2,v*5);colors.push(tint,tint,tint);}
         if (s > 0) {
           var prev = start + (s - 1) * 4, cur = start + s * 4;
           indices.push(prev, cur, prev + 1, cur, cur + 1, prev + 1, prev + 2, prev + 3, cur + 2, cur + 2, prev + 3, cur + 3);
@@ -436,14 +426,16 @@
       }
     }
     var geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geo.setIndex(indices); geo.computeVertexNormals();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+    geo.setIndex(indices); geo.computeVertexNormals();material.vertexColors=true;
     var obj = mesh(THREE, geo, material, parent, name); obj.material.side = THREE.DoubleSide;
     return obj;
   }
 
   function bambooHat(THREE, root, label, position, rotation, scale) {
     var hat = new THREE.Group(); hat.name = label; hat.position.set(position[0], position[1], position[2]); hat.rotation.set(rotation[0], rotation[1], rotation[2]); hat.scale.set(scale[0], scale[1], scale[2]); root.add(hat);
-    var tan = mat(THREE, 0xc3a275), light = mat(THREE, 0xe0c18b), shadow = mat(THREE, 0x967c56);
+    var tan = mat(THREE, 0xc0af8d,0.85,'bamboo'), light = mat(THREE, 0xd5c7a7,0.9,'bamboo'), shadow = mat(THREE, 0x99815d,0.9,'bamboo');
     coneWeave(THREE, hat, 'open hexagonal bamboo lattice diagonal family A', tan, 0.66, 0.54, 1.2, 0, 1);
     coneWeave(THREE, hat, 'open hexagonal bamboo lattice diagonal family B', light, 0.66, 0.54, 1.2, Math.PI / 16, -1);
     // Polygonal mouth binding, plus a small crown knot and a red tie visible in the reference display.

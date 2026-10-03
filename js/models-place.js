@@ -59,6 +59,7 @@
     g.add(stitches);
     g.userData.referenceIds = [236,237,239,241];
     g.userData.referenceMode = 'photo-textured';
+    g.traverse(function(o){if(o.material)o.material.userData.surface='fabric';});
     return g;
   }
 
@@ -73,6 +74,8 @@
     var timber = new THREE.MeshStandardMaterial({color:0x6a4830,roughness:0.96});
     var dark = new THREE.MeshStandardMaterial({color:0x352e26,roughness:1});
     var lime = new THREE.MeshStandardMaterial({color:0xe0d9c5,roughness:1});
+    [earth,brick,stone,paving,tile,tileFine,lime].forEach(function(m){m.userData.surface='mineral';});
+    timber.userData.surface='wood';
     var W=5.2, D=5.2, wallH=0.61, towerH=0.88, foundation=0.075;
     function box(name,w,h,d,mat,x,y,z) {
       var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
