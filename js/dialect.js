@@ -94,13 +94,13 @@
       }
       var text = !buffer ? '点击播放，字幕将随录音切换。'
         : current >= buffer.duration ? '童谣播放结束。'
-        : cue ? lines[cue.line].text : current < cues[0].start ? '♪ 前奏'
+        : cue ? (cue.text || lines[cue.line].text) : current < cues[0].start ? '♪ 前奏'
         : current >= cues[cues.length-1].end ? '♪ 尾声' : '♪ 间奏';
       if (subtitle.textContent !== text) subtitle.textContent = text;
     }
     function loadCaptions() {
       captionState = 'loading';
-      fetch('assets/audio/yueguangguang-captions.json?v=20261008-unified-lyrics')
+      fetch('assets/audio/yueguangguang-captions.json?v=20261008-authoritative-ipa')
         .then(function (response) {
           if (!response.ok) throw new Error('Captions HTTP ' + response.status);
           return response.json();

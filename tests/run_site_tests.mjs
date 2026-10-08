@@ -1286,12 +1286,12 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     check('童谣使用页面内控件，不暴露原生音频或下载入口', await page.evaluate(`!!document.getElementById('rhymePlay') && !document.querySelector('.dl-rhyme-card audio, .dl-rhyme-card video, .dl-rhyme-card [download]')`));
     const resource = await page.evaluate(`fetch('assets/audio/yueguangguang.bin').then(async r=>({ok:r.ok,type:r.headers.get('content-type'),size:(await r.arrayBuffer()).byteLength}))`, true);
     check('录音二进制资源完整，未返回HTML或音视频类型', resource.ok && !/html|audio|video/.test(resource.type) && resource.size>100000, JSON.stringify(resource));
-    check('唱词列表从字幕同一数据源加载完整续唱和释义',await until(page,`document.querySelectorAll('#rhymeLyrics .dl-rhyme-item').length===15 && [...document.querySelectorAll('#rhymeLyrics .dl-rhyme-item')].every(row=>row.querySelector('.dl-rhyme-mandarin').textContent.length>8)`));
+    check('唱词列表从字幕同一数据源加载完整续唱和释义',await until(page,`document.querySelectorAll('#rhymeLyrics .dl-rhyme-item').length===14 && [...document.querySelectorAll('#rhymeLyrics .dl-rhyme-item')].every(row=>row.querySelector('.dl-rhyme-mandarin').textContent.length>8)`));
     check('页面唱词逐句等于字幕索引，时间段全部有效',await page.evaluate(`fetch('assets/audio/yueguangguang-captions.json').then(r=>r.json()).then(data=>{
       const rows=[...document.querySelectorAll('#rhymeLyrics .dl-rhyme-dialect')].map(row=>row.textContent);
       return JSON.stringify(rows)===JSON.stringify(data.lines.map(line=>line.text)) && data.cues.every(cue=>Number.isInteger(cue.line) && rows[cue.line] && cue.start<cue.end && cue.end<=data.duration);
     })`,true));
-    check('已移除不同唱词版本及不对应的音标',await page.evaluate(`!document.querySelector('.dl-rhyme-version-note') && !/讨妇娘|鲤嫲|种韭菜|一口塘，|长嘅/.test(document.querySelector('.dl-rhyme-card').textContent) && document.querySelectorAll('#rhymeLyrics .dl-rhyme-ipa').length===4`));
+    check('唱词严格对照权威文本与全部8句国际音标',await page.evaluate(`/讨妇娘/.test(document.querySelector('.dl-rhyme-card').textContent) && /鲤嫲/.test(document.querySelector('.dl-rhyme-card').textContent) && /种韭菜/.test(document.querySelector('.dl-rhyme-card').textContent) && /一口塘/.test(document.querySelector('.dl-rhyme-card').textContent) && /长嘅/.test(document.querySelector('.dl-rhyme-card').textContent) && document.querySelectorAll('#rhymeLyrics .dl-rhyme-ipa').length===8`));
     await page.send('Runtime.evaluate', {
       expression: `document.getElementById('rhymePlay').click()`, userGesture:true,
     });
@@ -1302,12 +1302,24 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     const pausedAt=await page.evaluate(`+document.getElementById('rhymeSeek').value`);
     await sleep(400);
     check('童谣暂停后进度保持',await page.evaluate(`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='false' && Math.abs(+document.getElementById('rhymeSeek').value-${pausedAt})<0.05`));
-    for(const [second,lyric] of [[4.3,'月光光，秀才郎。'],[6.6,'骑白马，过莲塘。'],[9.8,'莲塘背，栽韭菜。'],
-      [22.2,'短的拿来做学堂。'],[26.8,'月光光，秀才郎。'],[38.0,'结亲家。'],[42.8,'亲家门前一眼塘，'],
-      [58.1,'做个学堂四四方，'],[60.8,'两个姐妹拜月光。'],[64.3,'拜得月光。'],[67.2,'马又走，马又走，'],[71.2,'追的马来天又光。'],[74.5,'天又光。']]){
+    for(const [second,lyric,activeIdx] of [
+      [4.3,'月光光，秀才郎。', 0],
+      [6.6,'骑白马，过莲塘。', 1],
+      [9.8,'莲塘背，栽韭菜。', 2],
+      [22.2,'短的拿来做学堂。', 7],
+      [26.8,'月光光，秀才郎。', 0],
+      [38.0,'结亲家。', 3],
+      [42.8,'亲家门前一眼塘，', 4],
+      [58.1,'做个学堂四四方，', 8],
+      [60.8,'两个姐妹拜月光。', 9],
+      [64.3,'拜得月光。', 10],
+      [67.2,'马又走，马又走，', 11],
+      [71.2,'追的马来天又光。', 12],
+      [74.5,'天又光。', 13]
+    ]){
       await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=${second};s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
       check('拖动至 '+second+' 秒显示该段实际唱词',await until(page,`document.getElementById('rhymeSubtitle').textContent===${JSON.stringify(lyric)}`));
-      check('该段字幕与高亮唱词相同 '+second+' 秒',await page.evaluate(`document.querySelectorAll('#rhymeLyrics [aria-current="true"]').length===1 && document.querySelector('#rhymeLyrics [aria-current="true"] .dl-rhyme-dialect').textContent===document.getElementById('rhymeSubtitle').textContent`));
+      check('该段字幕高亮对应唱词条目 '+second+' 秒',await page.evaluate(`document.querySelectorAll('#rhymeLyrics [aria-current="true"]').length===1 && document.querySelectorAll('#rhymeLyrics .dl-rhyme-item')[${activeIdx}].getAttribute('aria-current')==='true'`));
     }
     await page.evaluate(`document.getElementById('rhymeCaptionToggle').click()`);
     check('字幕可关闭，不改变暂停位置',await page.evaluate(`document.getElementById('rhymeSubtitle').hidden && +document.getElementById('rhymeSeek').value===74.5`));
@@ -1329,7 +1341,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     check('播放结束清除上一句字幕',await page.evaluate(`document.getElementById('rhymeSubtitle').textContent==='童谣播放结束。'`));
     check('播放结束清除唱词高亮',await page.evaluate(`!document.querySelector('#rhymeLyrics [aria-current="true"]')`));
     await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=9.8;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-    check('结束后拖回正文恢复暂停提示与对应唱词',await page.evaluate(`document.getElementById('rhymeAudioStatus').textContent.startsWith('已暂停') && document.getElementById('rhymeSubtitle').textContent==='莲塘背，栽韭菜。' && document.querySelector('#rhymeLyrics [aria-current="true"] .dl-rhyme-dialect').textContent==='莲塘背，栽韭菜。'`));
+    check('结束后拖回正文恢复暂停提示与对应唱词',await page.evaluate(`document.getElementById('rhymeAudioStatus').textContent.startsWith('已暂停') && document.getElementById('rhymeSubtitle').textContent==='莲塘背，栽韭菜。' && document.querySelectorAll('#rhymeLyrics .dl-rhyme-item')[2].getAttribute('aria-current')==='true'`));
     await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=s.max;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
     check('结束后重播从头开始',await until(page,`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true' && +document.getElementById('rhymeSeek').value>0 && +document.getElementById('rhymeSeek').value<5`,5000));
