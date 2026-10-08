@@ -305,7 +305,7 @@ v2 预览：**https://codex.longnankejia-dev.pages.dev/**（`codex`）
 备用宿主：https://prismatic-syrniki-1e0e96.netlify.app（Netlify，额度耗尽后只手动）
 
 两条自动通道（`cf-pages.yml` 与 `pages.yml`）都只做一件事：**按白名单**把页面真正加载的
-东西（`index.html`、`css/`、`js/`、`assets/{avatar,pdf-imgs,textures,model-references,model-textures}`）搬进上线目录。
+东西（`index.html`、`css/`、`js/`、`assets/{avatar,pdf-imgs,textures,model-references,model-textures,audio}`）搬进上线目录。
 不是排除表——以前 Netlify 用 `publish = "."` 把整个仓库推上公网，实测
 `tests/badge-template.npy`、`scripts/scan_history_secrets.py` 和 8MB 的 `assets/source/`
 原图都能直接下载，而 `docs/` 里是比赛通知与简历。注意 Cloudflare 对不存在的路径回的是
@@ -344,3 +344,9 @@ Netlify 2025 年起按 credits 计费。这个账号的免费额度用完且未�
 印展板的成品图另说——它取 `js/config.js` 的 `app.canonicalUrl`，由
 `python scripts/make_entry_qr_png.py` 用**页面上同一个编码器**（经 `scripts/qr_matrix.mjs`）
 生成，写完自检解码；`check_static.py` 会核对成品图与 `canonicalUrl` 一致，脱节直接 FAIL。
+
+### 童谣播放器与花帽223
+
+童谣采用 Web Audio 在内存中解码录音，页面提供播放、暂停和进度控件，不再生成原生音频标签。`assets/audio/yueguangguang.bin` 与原 MP3 字节相同；替换录音时也需更新此二进制副本。这样减少下载管理扩展对媒体标签及音频请求的自动识别，网页无法控制扩展的全部检测方式。
+
+花帽以用户指定的223号照片为依据。`scripts/build_huamao_223.py`提取左右绣片、翻檐和后披布料，并输出人物饰件的轮廓与估计高度；原始照片保持原样。`scripts/build_textile_textures.py`负责其余纺织品。

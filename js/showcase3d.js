@@ -26,7 +26,7 @@
     {id:'liangmao',name:'竹编斗笠',subtitle:'锥形开放编织',icon:'👒',angle:0.40,desc:'对应墙面悬挂的锥形竹编帽，以开放篾网、锥顶与圈口表达照片形制。'},
     {id:'bowei',name:'脖围',subtitle:'四瓣绣花围领',icon:'🌸',angle:0.55,desc:'依据四分花绣脖围照片重做外缘、中心圆孔、黑色分隔与白底花绣，中心孔贯通。'},
     {id:'zhiyi',name:'客家纸艺',subtitle:'橙花盆景',icon:'🌼',angle:0.23,desc:'依据纸艺盆景多角度照片构建弯曲树干、分枝、橙色花簇与多边盆，花朵分布按照片概括。'},
-    {id:'hutoumao',name:'花帽',subtitle:'黑布彩绣童帽',icon:'🌺',angle:0.18,desc:'以《世界客家非物质文化遗产馆文化典藏》219号展品为依据，贴图映射顶檐白地花绣、虎脸与后垂红花布帘，展示儿童风帽形制。'},
+    {id:'hutoumao',name:'花帽',subtitle:'红金绣檐与金色饰件',icon:'🌺',angle:0.08,desc:'依据223号实物照片重制翻起的红金绣檐、七尊人物饰件、花形饰片、侧垂链与深红后披。纹样取自原图，饰件具有起伏和厚度；背面与内衬按帽体结构补全。'},
     {id:'weiwu',name:'关西新围',subtitle:'客家围屋',icon:'🏯',angle:0.65,desc:'参照官方实景与形制介绍，修正长墙与炮楼比例，补充瓦面、围内厅堂和天井，采用东西侧门与连续墙顶。内部开间按对称布局表达，尚无测绘尺寸。'}
   ];
 
@@ -328,12 +328,13 @@
     currentModel.traverse(function(object) {
       if (!object.material) return;
       (Array.isArray(object.material) ? object.material : [object.material]).forEach(function(material) {
+        if (object.isMesh) addSurfaceUVs(object.geometry,material);
         if (materials.has(material)) return;
         materials.add(material);
         if (material.color) material.color.convertSRGBToLinear();
         finishSurface(material);
       });
-      if (object.isMesh) { addSurfaceUVs(object.geometry,object.material);object.castShadow=true; object.receiveShadow=true; }
+      if (object.isMesh) { object.castShadow=true; object.receiveShadow=true; }
     });
     activeId = id;
     scene.add(currentModel); currentModel.updateMatrixWorld(true);

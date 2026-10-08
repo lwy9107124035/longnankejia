@@ -2,6 +2,11 @@
 window.ModelReferences = {
   "hutoumao": [
     {
+      "src": "assets/model-references/hutoumao-223.jpg",
+      "label": "本模型依据 · 花帽223",
+      "original": "3D模型参考原图/花帽/微信图片_20260928203744_223_964.jpg"
+    },
+    {
       "src": "assets/model-references/hutoumao-211.jpg",
       "label": "花帽 · 参考照片 211",
       "original": "3D模型参考原图/花帽/微信图片_20260928203744_211_964.jpg"
@@ -50,11 +55,6 @@ window.ModelReferences = {
       "src": "assets/model-references/hutoumao-222.jpg",
       "label": "花帽 · 参考照片 222",
       "original": "3D模型参考原图/花帽/微信图片_20260928203744_222_964.jpg"
-    },
-    {
-      "src": "assets/model-references/hutoumao-223.jpg",
-      "label": "花帽 · 参考照片 223",
-      "original": "3D模型参考原图/花帽/微信图片_20260928203744_223_964.jpg"
     },
     {
       "src": "assets/model-references/hutoumao-224.jpg",

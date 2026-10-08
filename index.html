@@ -180,12 +180,12 @@
           </div>
 
           <div class="dl-rhyme-player-box">
-            <audio id="rhymeAudio" class="dl-rhyme-audio" controls controlslist="nodownload" preload="none">
-              <source src="assets/audio/yueguangguang.mp3" type="audio/mpeg">
-              <source src="assets/audio/yueguangguang.m4a" type="audio/mp4">
-              您的浏览器不支持音频播放标签。
-            </audio>
-            <div id="rhymeAudioStatus" class="dl-rhyme-audio-caption" role="status">▶ 点击上方音频控制器收听客家话童谣音频</div>
+            <div id="rhymePlayer" class="dl-rhyme-player" role="group" aria-label="月光光童谣播放器">
+              <button id="rhymePlay" class="dl-rhyme-play" type="button" aria-label="播放童谣" aria-pressed="false">▶ 播放</button>
+              <input id="rhymeSeek" class="dl-rhyme-seek" type="range" min="0" max="0" value="0" step="0.1" aria-label="童谣播放进度" disabled>
+              <output id="rhymeTime" class="dl-rhyme-time" aria-label="播放时间">0:00 / —</output>
+            </div>
+            <div id="rhymeAudioStatus" class="dl-rhyme-audio-caption" role="status">点击播放收听客家话童谣，可拖动进度条选择位置。</div>
           </div>
 
           <div class="dl-rhyme-table-wrap">
@@ -365,6 +365,7 @@
   <script src="js/admin.js"></script>
   <script src="js/textures.js"></script>
   <script src="js/model-references.js"></script>
+  <script src="js/huamao-223-relief.js"></script>
   <script src="js/models-textiles.js"></script>
   <script src="js/models-crafts.js"></script>
   <script src="js/models-place.js"></script>

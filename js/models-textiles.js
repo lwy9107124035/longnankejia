@@ -3,10 +3,13 @@
   'use strict';
 
   var texturePaths = {
-    huamaoFace: 'assets/model-textures/cloth-huamao-face.jpg',
-    huamaoTop: 'assets/model-textures/cloth-huamao-top.jpg',
-    huamaoSide: 'assets/model-textures/cloth-huamao-side.png',
-    huamaoDrape: 'assets/model-textures/cloth-huamao-drape.jpg',
+    huamaoFace: 'assets/model-textures/cloth-huamao-223-front.png',
+    huamaoTop: 'assets/model-textures/cloth-huamao-223-brim.jpg',
+    huamaoSide: 'assets/model-textures/cloth-huamao-223-side.jpg',
+    huamaoSideLeft: 'assets/model-textures/cloth-huamao-223-side-left.jpg',
+    huamaoDrape: 'assets/model-textures/cloth-huamao-223-red.jpg',
+    huamaoMetal: 'assets/model-textures/metal-huamao-223-figures.jpg',
+    huamaoRosette: 'assets/model-textures/metal-huamao-223-rosette.jpg',
     zhidaiBand: 'assets/model-textures/cloth-zhidai-band.jpg',
     dongtoupaFront: 'assets/model-textures/cloth-dongtoupa-front.jpg',
     dajinshanBody: 'assets/model-textures/cloth-dajinshan-body.jpg',
@@ -143,99 +146,153 @@
   }
 
   function buildHutoumao(THREE, textures) {
-    var g = new THREE.Group(); g.name = '花帽219·虎脸绣片';
-    var black = material(THREE, 0x393638), red = material(THREE, 0x9b2435);
-    var crown = addMesh(g, THREE, '黑布帽冠', new THREE.SphereGeometry(0.75, 48, 32, 0, Math.PI * 2, 0, Math.PI / 2), black, [0, 1.13, 0]);
-    crown.scale.y = 0.32;
-    addMesh(g, THREE, '帽侧连续黑布', new THREE.CylinderGeometry(0.75,0.74,0.59,64,12,true), black, [0,0.835,0]);
-    var brimPiping = addMesh(g, THREE, '帽檐红色包边', new THREE.TorusGeometry(0.744, 0.007, 10, 64), red, [0, 0.54, 0]);
-    brimPiping.rotation.x = Math.PI / 2;
-    var liningMat=material(THREE,0x302a30,null,1,THREE.BackSide);
-    var lining = addMesh(g, THREE, '帽内衬', new THREE.SphereGeometry(0.725, 40, 28, 0, Math.PI * 2, 0, Math.PI / 2), liningMat, [0, 1.13, 0]);
-    lining.scale.y = 0.31;
-    addMesh(g,THREE,'帽侧内衬',new THREE.CylinderGeometry(0.715,0.715,0.59,48,8,true),liningMat,[0,0.835,0]);
-    addTube(g, THREE, '帽后拼缝', [[0,1.37,0],[0,1.27,-0.48],[0,1.10,-0.70],[0,0.56,-0.74]], 0.003, 0x39303d, 40);
+    var g = new THREE.Group(); g.name = '花帽223·红金绣檐与人物饰件';
+    var black = material(THREE, 0x332d28), red = material(THREE, 0x82201d);
+    var liningMat = material(THREE, 0x30201d, null, 1, THREE.BackSide);
+    var crown = addMesh(g, THREE, '黑布帽冠', new THREE.SphereGeometry(0.70, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2), black, [0, 1.32, 0]);
+    crown.scale.set(1, 0.20, 0.74);
+    var body = addMesh(g, THREE, '连续黑布帽体', new THREE.CylinderGeometry(0.70, 0.69, 0.92, 80, 24, true), black, [0, 0.86, 0]);
+    body.scale.z = 0.74;
+    var lining = addMesh(g, THREE, '帽内衬', new THREE.SphereGeometry(0.679, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), liningMat, [0, 1.32, 0]);
+    lining.scale.set(1, 0.195, 0.74);
+    var inner = addMesh(g, THREE, '帽侧内衬', new THREE.CylinderGeometry(0.68, 0.671, 0.92, 64, 16, true), liningMat, [0, 0.86, 0]);
+    inner.scale.z = 0.74;
+    ellipseSeam(g, THREE, '帽口红色包边', 0.69, 0.511, 0.40, 0x98362d, 0.006);
+    addTube(g, THREE, '帽后拼缝', [[0,1.46,0],[0,1.41,-0.32],[0,1.32,-0.52],[0,0.40,-0.51]], 0.003, 0x41302a, 40);
 
-    function hatSurfaceZ(x, y) {
-      var rise = Math.max(0, (y - 1.13) / 0.24);
-      var radius = 0.75 * Math.sqrt(Math.max(0.001, 1 - rise * rise));
-      return Math.sqrt(Math.max(0.0003, radius * radius - x * x)) + 0.018;
+    function frontZ(x) { return 0.518 * Math.sqrt(Math.max(0.015, 1 - x*x/(0.70*0.70))); }
+    var frontMat = material(THREE, 0xffffff, textures.huamaoFace, 1, THREE.DoubleSide);
+    frontMat.transparent = true; frontMat.alphaTest = 0.4;
+    addMesh(g, THREE, '223原图前额刺绣', clothGrid(THREE, 96, 64, function (u,v) {
+      var x = (u-0.5)*1.36;
+      return [x, 0.40+v*0.88, frontZ(x)+0.009, u, v];
+    }), frontMat);
+
+    function brimPoint(u,v) {
+      var a = (u-0.5)*2.85, edge = Math.abs(u*2-1);
+      return [0.85*Math.sin(a)*(1+0.035*(1-v)),
+        1.50-0.30*Math.pow(edge,1.65)-0.115*v+0.08*Math.pow(edge,9)*v,
+        0.53*Math.cos(a)+0.055+0.15*(1-v)+0.012*Math.sin(u*19)*v];
     }
-    function addHatPatch(name, texture, width, height, centerY, rows, cols) {
-      var positions = [], uvs = [], indices = [];
-      for (var py = 0; py <= rows; py++) {
-        var v = py / rows, rowY = centerY + height / 2 - v * height;
-        for (var px = 0; px <= cols; px++) {
-          var u = px / cols;
-          var isBrow = name === '219白地花绣冠饰';
-          var y = rowY - (isBrow ? 0.040 * Math.sin(Math.PI * u) * v : 0);
-          var rise = Math.max(0, (y - 1.13) / 0.24);
-          var radius = 0.75 * Math.sqrt(Math.max(0.001, 1 - rise * rise));
-          var x = isBrow ? radius * Math.sin((u - 0.5) * 2.30) : (u - 0.5) * width;
-          positions.push(x, y, hatSurfaceZ(x, y));
-          uvs.push(u, (isBrow ? 0.09 : 0.04) + (1-v) * (isBrow ? 0.82 : 0.90));
-        }
-      }
-      for (var pr = 0; pr < rows; pr++) for (var pc = 0; pc < cols; pc++) {
-        var pi = pr * (cols + 1) + pc;
-        indices.push(pi, pi+1, pi+cols+1, pi+1, pi+cols+2, pi+cols+1);
-      }
-      var geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-      geo.setIndex(indices); geo.computeVertexNormals();
-      return addMesh(g, THREE, name, geo, material(THREE, 0xffffff, texture, 1, THREE.DoubleSide));
-    }
-    addHatPatch('219白地花绣冠饰', textures.huamaoTop, 1.44, 0.23, 1.165, 24, 56);
-    addHatPatch('219虎脸弯曲刺绣布片', textures.huamaoFace, 1.08, 0.52, 0.79, 26, 40);
-    var leftFlowers=addHatPatch('帽侧花卉绣片左', textures.huamaoSide, 0.80, 0.44, 0.84, 18, 32);
-    var rightFlowers=addHatPatch('帽侧花卉绣片右', textures.huamaoSide, 0.80, 0.44, 0.84, 18, 32);
-    leftFlowers.material.transparent=rightFlowers.material.transparent=true;
-    leftFlowers.material.alphaTest=rightFlowers.material.alphaTest=0.08;
-    leftFlowers.material.depthWrite=rightFlowers.material.depthWrite=false;
-    leftFlowers.rotation.y=-Math.PI/2;
-    rightFlowers.rotation.y=Math.PI/2;
-    var tigerEdge=[];
-    for (var edge=0;edge<=64;edge++) {
-      var angle=edge/64*Math.PI*2, ex=Math.cos(angle)*0.535, ey=0.79+Math.sin(angle)*0.255;
-      tigerEdge.push([ex,ey,hatSurfaceZ(ex,ey)+0.005]);
-    }
-    addTube(g, THREE, '虎脸绣片粉色锁边', tigerEdge, 0.008, 0xc65b91, 64);
-    function drapePoint(u, v) {
-      var angle = (0.5 + u) * Math.PI;
-      var folds = (0.016 * Math.sin(u * Math.PI * 5 + 0.4) + 0.008 * Math.sin(u * Math.PI * 9 + v * 1.1)) * Math.pow(v, 1.3);
-      var radius = 0.741 + 0.025 * v + folds;
-      var x = Math.sin(angle) * radius * (1 + 0.045 * v);
-      var y = 0.548 - v * 0.80 + 0.070 * Math.pow(Math.abs(u * 2 - 1), 3) * v * v;
-      var z = Math.cos(angle) * radius * (1 - 0.24 * v) - 0.05 * v;
-      return [x, y, z];
-    }
-    var drapeVertices = [], drapeUvs = [], drapeIndices = [], dr = 22, dc = 40;
-    for (var dy = 0; dy <= dr; dy++) for (var dx = 0; dx <= dc; dx++) {
-      var du = dx / dc, dv = dy / dr;
-      var point = drapePoint(du, dv);
-      drapeVertices.push(point[0], point[1], point[2]);
-      drapeUvs.push(du, 1 - dv);
-    }
-    for (var dy2 = 0; dy2 < dr; dy2++) for (var dx2 = 0; dx2 < dc; dx2++) {
-      var di = dy2 * (dc + 1) + dx2;
-      drapeIndices.push(di, di+1, di+dc+1, di+1, di+dc+2, di+dc+1);
-    }
-    var drapeGeo = new THREE.BufferGeometry();
-    drapeGeo.setAttribute('position', new THREE.Float32BufferAttribute(drapeVertices, 3));
-    drapeGeo.setAttribute('uv', new THREE.Float32BufferAttribute(drapeUvs, 2));
-    drapeGeo.setIndex(drapeIndices); drapeGeo.computeVertexNormals();
-    addMesh(g, THREE, '219后垂红花布帘', drapeGeo, material(THREE, 0xffffff, textures.huamaoDrape, 1, THREE.DoubleSide));
-    var drapeHem=[];
-    for(var he=0;he<=40;he++)drapeHem.push(drapePoint(he/40,1));
-    addTube(g, THREE, '红花布帘下摆', drapeHem, 0.005, 0x6b272e, 40);
-    [0,1].forEach(function(side){
-      var edge=[];
-      for(var i=0;i<=24;i++)edge.push(drapePoint(side,i/24));
-      addTube(g,THREE,'红花布帘侧边'+side,edge,0.004,0x6b272e,24);
+    var brimMat = material(THREE, 0xffffff, textures.huamaoTop, 1, THREE.DoubleSide);
+    addMesh(g, THREE, '223向外翻起的红金绣檐', clothGrid(THREE, 96, 20, function(u,v) {
+      var p = brimPoint(u,1-v); return [p[0],p[1],p[2],u,v];
+    }), brimMat);
+    addMesh(g, THREE, '绣檐红布底衬', clothGrid(THREE, 96, 20, function(u,v) {
+      var p = brimPoint(u,1-v); return [p[0],p[1]+0.012,p[2]-0.008];
+    }), material(THREE,0x681e1c,null,1,THREE.DoubleSide));
+    [0,1].forEach(function(v) {
+      var points=[]; for(var i=0;i<=96;i++)points.push(brimPoint(i/96,v));
+      addTube(g,THREE,'绣檐红线锁边'+v,points,v?0.006:0.009,0xb3422c,96);
     });
-    addTube(g,THREE,'帽顶红线结',[[-0.025,1.380,-0.020],[0.013,1.385,-0.024],[0.018,1.365,-0.030],[0.001,1.350,-0.046],[0.045,1.340,-0.055]],0.006,0x9b2435,20);
-    return setEvidence(g, [219], 'photo-textured');
+
+    var brass = new THREE.MeshStandardMaterial({color:0xa88b52,roughness:0.50,metalness:0.65,envMapIntensity:1.1});
+    var photoBrass = new THREE.MeshStandardMaterial({color:0xffffff,map:textures.huamaoMetal,roughness:0.53,metalness:0.45,envMapIntensity:0.6});
+    function castRelief() {
+      var data = root.Huamao223Relief, w = data.width, h = data.height;
+      var field = atob(data.heights), vertices=[], uvs=[], faces=[], backs=[], edges=[], border=new Map();
+      for(var y=0;y<h;y++)for(var x=0;x<w;x++) {
+        var u=x/(w-1),v=y/(h-1), px=-0.68+u*1.36*530/560;
+        var py=0.40+(615-(370+v*218))*0.88/370, z=frontZ(px)+0.021;
+        var rise=field.charCodeAt(y*w+x)/255*0.075;
+        vertices.push(px,py,z+rise, px,py,z-0.004);
+        uvs.push(u,1-v,u,1-v);
+      }
+      function edge(a,b) {
+        var key=Math.min(a,b)+','+Math.max(a,b);
+        if(border.has(key))border.delete(key);else border.set(key,[a,b]);
+      }
+      function triangle(a,b,c) {
+        faces.push(a*2,b*2,c*2); backs.push(a*2+1,c*2+1,b*2+1);
+        edge(a,b);edge(b,c);edge(c,a);
+      }
+      for(var r=0;r<h-1;r++)for(var c=0;c<w-1;c++) {
+        var a=r*w+c,b=a+1,d=a+w,e=d+1;
+        if(field.charCodeAt(a)&&field.charCodeAt(b)&&field.charCodeAt(d))triangle(a,d,b);
+        if(field.charCodeAt(b)&&field.charCodeAt(d)&&field.charCodeAt(e))triangle(b,d,e);
+      }
+      border.forEach(function(pair) {
+        var a=pair[0]*2,b=pair[1]*2; edges.push(a,b,a+1,b,b+1,a+1);
+      });
+      var geo=new THREE.BufferGeometry();
+      geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+      geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+      geo.setIndex(faces.concat(backs,edges));
+      geo.addGroup(0,faces.length,0);geo.addGroup(faces.length,backs.length+edges.length,1);
+      geo.computeVertexNormals();
+      return geo;
+    }
+    addMesh(g,THREE,'223七尊人物金属浮雕',castRelief(),[photoBrass,brass]);
+
+    var rosetteMat = new THREE.MeshStandardMaterial({color:0xffffff,map:textures.huamaoRosette,roughness:0.52,metalness:0.48,envMapIntensity:0.55});
+    function rosette(x,y,z,size,angle) {
+      var flower=new THREE.Group();flower.position.set(x,y,z);flower.rotation.y=angle||0;g.add(flower);
+      var shape=new THREE.Shape(),n=64;
+      for(var i=0;i<=n;i++) {
+        var a=i/n*Math.PI*2,r=size*(0.88+0.12*Math.cos(a*6)),px=Math.cos(a)*r,py=Math.sin(a)*r;
+        if(i)shape.lineTo(px,py);else shape.moveTo(px,py);
+      }
+      addMesh(flower,THREE,'花形金属饰片厚边',new THREE.ExtrudeGeometry(shape,{depth:0.012,bevelEnabled:true,bevelSegments:2,steps:1,bevelSize:0.002,bevelThickness:0.002}),brass);
+      var face=clothGrid(THREE,20,20,function(u,v) {
+        var a=u*Math.PI*2,r=v*size*(0.88+0.12*Math.cos(a*6));
+        return [Math.cos(a)*r,Math.sin(a)*r,0.017+0.006*(1-v*v),0.5+Math.cos(a)*v*0.5,0.5+Math.sin(a)*v*0.5];
+      },true);
+      addMesh(flower,THREE,'原图花形饰片正面',face,rosetteMat);
+    }
+    for(var f=0;f<10;f++) {
+      var x=-0.55+f*0.119;
+      rosette(x,0.415+0.035*Math.pow(x/0.60,2),frontZ(x)+0.04,0.047+(f===5?0.005:0),Math.asin(x/0.70)*0.7);
+    }
+
+    function sidePoint(sign,u,v) {
+      var a=sign*(1.12+u*0.43), radius=0.70+0.035*v;
+      return [Math.sin(a)*radius,0.83-v*0.76+0.06*Math.sin(u*Math.PI)*v,
+        Math.cos(a)*0.518+0.025*Math.sin(v*8+u*3)*v];
+    }
+    [-1,1].forEach(function(sign) {
+      addMesh(g,THREE,'223侧垂绣片'+sign,clothGrid(THREE,20,44,function(u,v) {
+        var p=sidePoint(sign,u,1-v);return [p[0],p[1],p[2],sign===1?u:1-u,v];
+      }),material(THREE,0xffffff,sign<0?textures.huamaoSideLeft:textures.huamaoSide,1,THREE.DoubleSide));
+      for(var j=0;j<3;j++) {
+        var p=sidePoint(sign,0.18,0.65+j*0.15);
+        rosette(p[0]+sign*0.016,p[1],p[2]+0.016,0.029,sign*1.14);
+      }
+    });
+
+    function drapePoint(u,v) {
+      var a=(0.5+u)*Math.PI,fold=(0.027*Math.sin(u*27)+0.015*Math.sin(u*47+v))*Math.pow(v,0.65);
+      var radius=0.69+0.08*v+fold;
+      return [Math.sin(a)*radius,0.415-1.12*v+0.105*Math.pow(Math.abs(u*2-1),4)*v,
+        Math.cos(a)*(0.51+0.02*v+fold)-0.025*v,Math.abs(u*2-1),1-v];
+    }
+    // The drape wraps behind the open head passage. Its two front side edges are
+    // visible, but there is no board or fabric plane stretched across the opening.
+    var drapeMat=material(THREE,0xffffff,textures.huamaoDrape,1,THREE.DoubleSide);
+    addMesh(g,THREE,'223深红褶皱后披',clothGrid(THREE,112,64,drapePoint),drapeMat);
+    var hem=[];for(var k=0;k<=112;k++)hem.push(drapePoint(k/112,1));
+    addTube(g,THREE,'后披软布下摆',hem,0.005,0x702523,112);
+    [0,1].forEach(function(u) {
+      var edge=[];for(var k=0;k<=40;k++)edge.push(drapePoint(u,k/40));
+      addTube(g,THREE,'后披侧缝'+u,edge,0.004,0x84221f,40);
+    });
+
+    var linkGeo=new THREE.TorusGeometry(0.010,0.0023,5,10);
+    var links=new THREE.InstancedMesh(linkGeo,brass,72),dummy=new THREE.Object3D();links.name='两侧金属垂链';
+    for(var side=0;side<2;side++)for(var link=0;link<36;link++) {
+      var t=link/35,sign=side?1:-1;
+      dummy.position.set(sign*(0.724+0.012*Math.sin(t*6)),1.18-0.80*t,0.24+0.016*Math.sin(t*4));
+      dummy.rotation.set(0,link%2?Math.PI/2:0,sign*0.07);dummy.updateMatrix();links.setMatrixAt(side*36+link,dummy.matrix);
+    }
+    links.castShadow=true;g.add(links);
+    [-1,1].forEach(function(sign) {
+      var bell=addMesh(g,THREE,'侧链垂铃'+sign,new THREE.SphereGeometry(0.031,16,12),brass,[sign*0.73,0.33,0.24]);
+      bell.scale.y=1.25;
+      var p=drapePoint(sign<0?1:0,0.99);
+      var charm=addMesh(g,THREE,'后披角金属坠饰'+sign,new THREE.BoxGeometry(0.052,0.071,0.025),brass,[p[0],p[1]-0.022,p[2]]);
+      charm.rotation.z=sign*0.13;
+      addMesh(g,THREE,'坠饰凸纹'+sign,new THREE.TorusGeometry(0.015,0.0025,6,12),brass,[p[0],p[1]-0.022,p[2]+0.016]);
+    });
+    return setEvidence(g,[223],'photo-textured');
   }
 
   function buildZhidai(THREE, textures) {

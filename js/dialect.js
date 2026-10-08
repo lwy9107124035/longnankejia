@@ -60,15 +60,104 @@
     });
   }
 
+  function initRhyme() {
+    var button = document.getElementById('rhymePlay'), seek = document.getElementById('rhymeSeek');
+    var time = document.getElementById('rhymeTime'), status = document.getElementById('rhymeAudioStatus');
+    var AudioContext = window.AudioContext || window.webkitAudioContext;
+    var context, buffer, source, startedAt = 0, offset = 0, animation = 0;
+    if (!AudioContext) {
+      button.disabled = true;
+      status.textContent = '当前浏览器不支持童谣播放，请使用新版浏览器。';
+      return;
+    }
+    function clock(seconds) {
+      return Math.floor(seconds / 60) + ':' + String(Math.floor(seconds % 60)).padStart(2, '0');
+    }
+    function position() {
+      return source ? Math.min(buffer.duration, offset + context.currentTime - startedAt) : offset;
+    }
+    function display() {
+      var current = position();
+      seek.value = current;
+      seek.setAttribute('aria-valuetext', clock(current) + (buffer ? '，共 ' + clock(buffer.duration) : ''));
+      time.textContent = clock(current) + ' / ' + (buffer ? clock(buffer.duration) : '—');
+      button.textContent = source ? 'Ⅱ 暂停' : '▶ 播放';
+      button.setAttribute('aria-label', source ? '暂停童谣' : '播放童谣');
+      button.setAttribute('aria-pressed', String(!!source));
+    }
+    function tick() {
+      display();
+      if (source) animation = requestAnimationFrame(tick);
+    }
+    function stop() {
+      offset = position();
+      if (source) {
+        source.onended = null;
+        source.stop();
+        source.disconnect();
+        source = null;
+      }
+      cancelAnimationFrame(animation);
+      display();
+    }
+    function start() {
+      if (offset >= buffer.duration) offset = 0;
+      source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.onended = function () {
+        source.disconnect();
+        source = null;
+        offset = buffer.duration;
+        cancelAnimationFrame(animation);
+        display();
+        status.textContent = '童谣播放结束，点击播放可重新收听。';
+      };
+      startedAt = context.currentTime;
+      source.start(0, offset);
+      status.textContent = '正在播放《月光光》。';
+      tick();
+    }
+    button.addEventListener('click', async function () {
+      if (source) {
+        stop();
+        status.textContent = '已暂停，点击播放继续收听。';
+        return;
+      }
+      button.disabled = true;
+      status.textContent = buffer ? '准备播放…' : '正在加载童谣录音…';
+      try {
+        if (!context) context = new AudioContext();
+        await context.resume();
+        if (!buffer) {
+          // Decode a binary recording in memory rather than exposing a native media element
+          // that download-manager extensions attach their floating controls to.
+          var response = await fetch('assets/audio/yueguangguang.bin');
+          if (!response.ok) throw new Error('Audio HTTP ' + response.status);
+          buffer = await context.decodeAudioData(await response.arrayBuffer());
+          seek.max = buffer.duration;
+          seek.disabled = false;
+        }
+        start();
+      } catch (error) {
+        console.error('童谣播放失败', error);
+        status.textContent = '童谣未能播放，请检查网络后再次点击播放。';
+      } finally {
+        button.disabled = false;
+        display();
+      }
+    });
+    seek.addEventListener('input', function () {
+      var next = Number(seek.value), wasPlaying = !!source;
+      stop();
+      offset = next;
+      if (wasPlaying && next < buffer.duration) start();
+      else display();
+    });
+  }
+
   function init() {
-    var rhyme = document.getElementById('rhymeAudio');
-    var rhymeStatus = document.getElementById('rhymeAudioStatus');
-    rhyme.addEventListener('error', function () {
-      rhymeStatus.textContent = '童谣音频未能加载，请检查网络后刷新页面重试。';
-    });
-    rhyme.addEventListener('loadedmetadata', function () {
-      rhymeStatus.textContent = '▶ 点击播放收听童谣，可拖动进度条选择位置。';
-    });
+    initRhyme();
     listEl = document.getElementById('dlTracks');
     frameEl = document.getElementById('dlFrame');
     nowIdx = document.getElementById('dlNowIdx');

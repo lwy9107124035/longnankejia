@@ -5,8 +5,8 @@ import vm from 'node:vm';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const context={window:{},console};vm.createContext(context);
-for(const file of ['vendor/three.min.js','models-textiles.js','models-crafts.js','models-place.js','model-references.js'])
+const context={window:{},console,atob};vm.createContext(context);
+for(const file of ['vendor/three.min.js','huamao-223-relief.js','models-textiles.js','models-crafts.js','models-place.js','model-references.js'])
   vm.runInContext(fs.readFileSync(path.join(root,'js',file),'utf8'),context);
 const T=context.THREE,W=context.window;
 const ids=['hutoumao','weiwu','zhidai','dongtoupa','dajinshan','zisundai','bowei','landye','boji','liangmao','zhiji','zhiyi'];
@@ -101,13 +101,25 @@ test('shirt collar and bag mouth are open, and hat has visible inside fabric',()
  const hat=build('hutoumao');hat.updateMatrixWorld(true);
  ray.set(new T.Vector3(0,-0.2,0),new T.Vector3(0,1,0));assert.equal(ray.intersectObject(hat,true)[0]?.object.name,'帽内衬');
 });
-test('hat embroidery stays on the crown without spikes above its cloth shell',()=>{
- const hat=build('hutoumao'),patch=hat.getObjectByName('219白地花绣冠饰');
- const crownBounds=new T.Box3().setFromObject(hat.getObjectByName('黑布帽冠'));
- const brimBounds=new T.Box3().setFromObject(hat.getObjectByName('帽檐红色包边'));
- const patchBounds=new T.Box3().setFromObject(patch);
- assert.ok(patchBounds.max.y<=crownBounds.max.y+0.015,'embroidered panel protrudes above the crown');
- assert.ok(patchBounds.min.y>brimBounds.max.y,'embroidered panel should stay above the brim');
+test('223 hat ornaments have closed thickness, separated silhouettes and an open neck passage',()=>{
+ const hat=build('hutoumao');hat.updateMatrixWorld(true);
+ assert.equal(hat.userData.referenceIds.join(','),'223');
+ const ornament=hat.getObjectByName('223七尊人物金属浮雕'),p=ornament.geometry.attributes.position;
+ let relief=0;
+ for(let i=0;i<p.count;i+=2)relief=Math.max(relief,p.getZ(i)-p.getZ(i+1));
+ assert.ok(relief>0.04,'cast figures must have rounded relief, not a photograph plane');
+ const index=ornament.geometry.index,edges=new Map();
+ for(let i=0;i<index.count;i+=3)for(let j=0;j<3;j++){
+  const a=index.getX(i+j),b=index.getX(i+(j+1)%3),key=a<b?`${a},${b}`:`${b},${a}`;
+  edges.set(key,(edges.get(key)||0)+1);
+ }
+ for(const count of edges.values())assert.equal(count,2,'metal silhouettes must have closed sides and backs');
+ const ray=new T.Raycaster(new T.Vector3(0,0.0,2),new T.Vector3(0,0,-1));
+ const hit=ray.intersectObject(hat,true)[0];
+ assert.ok(hit&&hit.point.z<0,'the neck passage must stay open across the front');
+ const drape=hat.getObjectByName('223深红褶皱后披');
+ const size=new T.Box3().setFromObject(drape).getSize(new T.Vector3());
+ assert.ok(size.z>0.45,'back cloth must wrap around the wearer');
 });
 test('shirt shoulders form a connected cloth surface and cuffs remain covered',()=>{
  const shirt=build('dajinshan');shirt.updateMatrixWorld(true);

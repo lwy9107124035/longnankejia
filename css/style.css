@@ -826,12 +826,12 @@ input { font-family: inherit; }
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }
-.dl-rhyme-audio {
-  display: block;
-  width: 100%;
-  height: 40px;
-  outline: none;
-}
+.dl-rhyme-player { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.dl-rhyme-play { flex: 0 0 auto; min-width: 76px; min-height: 40px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--primary-soft); color: var(--primary-deep); font: inherit; cursor: pointer; }
+.dl-rhyme-play:disabled { opacity: 0.65; cursor: wait; }
+.dl-rhyme-seek { flex: 1; min-width: 40px; accent-color: var(--primary-deep); cursor: pointer; }
+.dl-rhyme-time { flex: 0 0 auto; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.dl-rhyme-play:focus-visible, .dl-rhyme-seek:focus-visible { outline: 2px solid var(--primary-deep); outline-offset: 3px; }
 .dl-rhyme-audio-caption {
   margin-top: 6px;
   font-size: 11px;

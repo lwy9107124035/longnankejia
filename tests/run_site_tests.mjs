@@ -1267,25 +1267,31 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   async function sectionRhyme() {
     console.log('\n9b2a. 月光光真实音频播放');
     await page.evaluate(`document.querySelector('[data-panel="viewDialect"]').click()`);
-    const sources = await page.evaluate(`[...document.querySelectorAll('#rhymeAudio source')].map(s=>({src:s.src,type:s.type}))`);
-    for (const source of sources) {
-      const result = await page.evaluate(`fetch(${JSON.stringify(source.src)}).then(async r=>({ok:r.ok,type:r.headers.get('content-type'),size:(await r.arrayBuffer()).byteLength}))`, true);
-      check('童谣文件可下载且为音频：'+source.type, result.ok && /^audio\//.test(result.type) && result.size>100000, JSON.stringify(result));
-    }
-    const played = await page.send('Runtime.evaluate', {
-      expression: `document.getElementById('rhymeAudio').play().then(()=>true).catch(e=>e.name+': '+e.message)`,
-      userGesture: true, awaitPromise: true, returnByValue: true,
+    check('童谣使用页面内控件，不暴露原生音频或下载入口', await page.evaluate(`!!document.getElementById('rhymePlay') && !document.querySelector('.dl-rhyme-card audio, .dl-rhyme-card video, .dl-rhyme-card [download]')`));
+    const resource = await page.evaluate(`fetch('assets/audio/yueguangguang.bin').then(async r=>({ok:r.ok,type:r.headers.get('content-type'),size:(await r.arrayBuffer()).byteLength}))`, true);
+    check('录音二进制资源完整，未返回HTML或音视频类型', resource.ok && !/html|audio|video/.test(resource.type) && resource.size>100000, JSON.stringify(resource));
+    await page.send('Runtime.evaluate', {
+      expression: `document.getElementById('rhymePlay').click()`, userGesture:true,
     });
-    check('浏览器解码并开始播放童谣', played.result?.value === true, String(played.result?.value));
-    check('童谣播放进度实际前进', await until(page, `(()=>{const a=document.getElementById('rhymeAudio');return !a.paused&&!a.error&&a.currentTime>0.5&&Number.isFinite(a.duration)&&a.duration>30;})()`, 15000));
-    await page.evaluate(`document.getElementById('rhymeAudio').pause()`);
-    const pausedAt = await page.evaluate(`document.getElementById('rhymeAudio').currentTime`);
+    check('Web Audio解码录音且播放进度实际前进', await until(page, `document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true' && +document.getElementById('rhymeSeek').value>0.5 && +document.getElementById('rhymeSeek').max>30`,15000));
+    await page.evaluate(`document.getElementById('rhymePlay').click()`);
+    const pausedAt=await page.evaluate(`+document.getElementById('rhymeSeek').value`);
     await sleep(400);
-    check('童谣暂停后进度保持', await page.evaluate(`document.getElementById('rhymeAudio').paused && Math.abs(document.getElementById('rhymeAudio').currentTime-${pausedAt})<0.05`));
-    await page.evaluate(`document.getElementById('rhymeAudio').currentTime=10`);
-    check('童谣可跳转到指定进度', await until(page, `Math.abs(document.getElementById('rhymeAudio').currentTime-10)<0.2`, 5000));
-    await shot(page, 'rhyme-playback');
-    await page.evaluate(`document.getElementById('rhymeAudio').currentTime=0`);
+    check('童谣暂停后进度保持',await page.evaluate(`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='false' && Math.abs(+document.getElementById('rhymeSeek').value-${pausedAt})<0.05`));
+    await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=10;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    check('暂停状态可拖动到指定时间',await until(page,`+document.getElementById('rhymeSeek').value===10 && document.getElementById('rhymeTime').textContent.startsWith('0:10 /')`));
+    await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
+    check('从指定时间继续播放',await until(page,`+document.getElementById('rhymeSeek').value>10.5 && document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true'`,5000));
+    await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=20;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    check('播放中拖动进度仍继续播放',await until(page,`+document.getElementById('rhymeSeek').value>20.5 && document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true'`,5000));
+    await page.evaluate(`document.getElementById('rhymePlay').click()`);
+    await shot(page,'rhyme-playback');
+    await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=+s.max-0.25;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
+    check('录音结束后播放器回到可重播状态',await until(page,`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='false' && /播放结束/.test(document.getElementById('rhymeAudioStatus').textContent)`,5000));
+    await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
+    check('结束后重播从头开始',await until(page,`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true' && +document.getElementById('rhymeSeek').value>0 && +document.getElementById('rhymeSeek').value<5`,5000));
+    await page.evaluate(`document.getElementById('rhymePlay').click()`);
   }
   await sectionRhyme();
 

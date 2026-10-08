@@ -1,4 +1,4 @@
-"""Rectify small, material-only crops from the six textile reference photos."""
+"""Rectify material-only textile crops; the selected hat uses build_huamao_223.py."""
 from pathlib import Path
 
 import cv2
@@ -14,28 +14,6 @@ OUT.mkdir(parents=True, exist_ok=True)
 # They target the cloth itself; perspective correction removes the camera angle without
 # introducing the display case, table, mannequin, or unrelated adjacent objects.
 CROPS = {
-    "cloth-huamao-face.jpg": (
-        "花帽/微信图片_20260928203744_219_964.jpg",
-        [(0.20, 0.32), (0.89, 0.32), (0.89, 0.58), (0.20, 0.58)],
-        (900, 620),
-    ),
-    "cloth-huamao-top.jpg": (
-        "花帽/微信图片_20260928203744_219_964.jpg",
-        # Broad white embroidered crown band, including its red and magenta
-        # borders. This is the sewn-on upper piece above the tiger face.
-        [(0.025, 0.115), (0.975, 0.115), (0.975, 0.345), (0.025, 0.345)],
-        (1200, 290),
-    ),
-    "cloth-huamao-side.png": (
-        "花帽/微信图片_20260928203744_217_964.jpg",
-        [(0.08, 0.00), (0.39, 0.00), (0.39, 0.18), (0.08, 0.18)],
-        (700, 700),
-    ),
-    "cloth-huamao-drape.jpg": (
-        "花帽/微信图片_20260928203744_219_964.jpg",
-        [(0.08, 0.60), (0.90, 0.60), (0.90, 0.78), (0.08, 0.78)],
-        (1100, 400),
-    ),
     "cloth-zhidai-band.jpg": (
         "织带/微信图片_20260928203852_255_964.jpg",
         None,
@@ -121,19 +99,6 @@ def rectify_ribbon(source: Path, size):
 for output, (relative, quad, size) in CROPS.items():
     source = REF / relative
     rgb = rectify_ribbon(source, size) if quad is None else rectify(source, quad, size)
-    if output == "cloth-huamao-side.png":
-        height, width = rgb.shape[:2]
-        xx, yy = np.meshgrid(np.linspace(0, 1, width), np.linspace(0, 1, height))
-        edge = np.minimum.reduce([xx, 1 - xx, yy, 1 - yy])
-        color = rgb.astype(np.float32) / 255
-        chroma = color.max(axis=2) - color.min(axis=2)
-        embroidery = np.maximum(
-            np.clip((chroma - 0.08) / 0.15, 0, 1),
-            np.clip((color.min(axis=2) - 0.40) / 0.18, 0, 1),
-        )
-        alpha = np.uint8(embroidery * np.clip(edge / 0.09, 0, 1) * 255)
-        Image.fromarray(np.dstack([rgb, alpha])).save(OUT / output, optimize=True)
-    else:
-        Image.fromarray(rgb).save(OUT / output, quality=94, optimize=True)
+    Image.fromarray(rgb).save(OUT / output, quality=94, optimize=True)
     detail = "eight-segment ribbon rectification" if quad is None else f"quad={quad}"
     print(f"{output}: {relative} {detail} pixels={size[0]}x{size[1]}")
