@@ -14,15 +14,89 @@
 .hm-filter { flex-wrap: wrap; }
 .hm-filter button { padding: 5px 12px; font-size: 11px; }
 .hm-filter button.is-active { border-color: var(--primary); background: var(--primary); color: #fff; }
-.hm-place-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.hm-place-link { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; }
-.hm-place-link span { font-size: 12px; }
-.hm-place-link small { color: var(--muted); font-size: 10px; }
-.hm-place-link.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.hm-place-list {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  gap: 8px;
+  padding: 4px 2px 6px;
+  margin: 2px 0 6px;
+}
+.hm-place-list::-webkit-scrollbar { height: 4px; }
+.hm-place-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+.hm-place-link {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  white-space: nowrap;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.hm-place-link span { font-size: 12px; font-weight: 500; }
+.hm-place-link small {
+  color: var(--muted);
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 999px;
+}
+.hm-place-link.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(47, 93, 80, 0.25);
+}
+.hm-place-link.is-active span { color: #fff; }
+.hm-place-link.is-active small {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.2);
+}
 .hm-place-link[hidden] { display: none; }
 .hm-kind-site.hm-place-link { border-color: var(--accent-soft); }
 .hm-kind-seat.hm-place-link { border-color: var(--primary-soft); }
-.hm-viewport { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); }
+.hm-desc-title { font-size: 12px; font-weight: 700; color: var(--primary-deep); margin-bottom: 6px; }
+.hm-desc-text { margin: 0; font-size: 13px; line-height: 1.85; color: var(--ink); }
+.hm-viewport { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); }
+.hm-floating-controls {
+  position: absolute; right: 12px; bottom: 14px; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: rgba(255, 253, 248, 0.94); backdrop-filter: blur(8px);
+  padding: 6px; border: 1px solid var(--line); border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(31,66,56,0.14);
+}
+.hm-float-btn {
+  width: 38px; height: 38px; min-height: 38px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--card);
+  color: var(--primary-deep); font-size: 18px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s ease; touch-action: manipulation;
+}
+.hm-float-btn:hover { background: var(--primary-faint); border-color: var(--primary); }
+.hm-float-btn:active { transform: scale(0.92); }
+.hm-float-badge {
+  font-size: 10px; font-weight: 600; color: var(--primary-deep);
+  padding: 2px 4px; text-align: center; user-select: none;
+}
+.hm-place-actions { margin: 8px 0 12px; }
+.hm-focus-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--primary); border-radius: 999px;
+  background: var(--primary-faint); color: var(--primary-deep);
+  cursor: pointer; transition: all 0.15s; touch-action: manipulation;
+}
+.hm-focus-btn:hover { background: var(--primary); color: #fff; }
+.hm-highlights { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.hm-tag { font-size: 11px; padding: 2px 8px; background: #E3EDE8; color: #1F4238; border-radius: 999px; }
+.hm-place.is-active .hm-dot {
+  filter: drop-shadow(0 0 4px rgba(180, 105, 43, 0.7));
+}
 .hm-world { transform-box: view-box; transform-origin: 0 0; }
 .hm-svg { width: 100%; height: auto; max-height: none; touch-action: none; cursor: grab; user-select: none; }
 .hm-svg:active { cursor: grabbing; }

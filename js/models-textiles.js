@@ -232,17 +232,73 @@
 
   function buildZhidai(THREE, textures) {
     var g = new THREE.Group(); g.name = '织带255·独立长带与穗';
-    createStrip(THREE, '单条蓝底织带255', textures.zhidaiBand, {
-      group: g, x: 0, yTop: 1.15, z: 0, width: 0.12, length: 1.95, wave: 0.055, steps: 64, phase: 0.25
+    // 传统木制绠瓠子展示挂轴（直径约2.8cm，两端穿小木棒）
+    var woodMat = new THREE.MeshStandardMaterial({ color: 0x8a5732, roughness: 0.82, metalness: 0.02 });
+    woodMat.userData.surface = 'wood';
+    var rod = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.36, 16), woodMat);
+    rod.rotation.z = Math.PI / 2;
+    rod.position.set(0, 1.18, 0.035);
+    rod.name = '绠瓠子展示木轴';
+    rod.castShadow = true;
+    g.add(rod);
+    [-0.175, 0.175].forEach(function (x) {
+      var peg = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.048, 8), woodMat);
+      peg.position.set(x, 1.18, 0.035);
+      peg.name = '挂棒两端木栓';
+      g.add(peg);
     });
-    // Short transverse hem and individually twisted yarns make the tassel readable at small scale.
-    addTube(g, THREE, '织带上端卷边', [[-0.06,1.15,0.04],[0,1.17,0.04],[0.06,1.15,0.04]], 0.012, 0x263f72, 12);
-    addTube(g, THREE, '穗根结', [[-0.045,-0.79,0.01],[0,-0.82,0.01],[0.045,-0.79,0.01]], 0.018, 0x9c4765, 12);
-    var colors = [0x394e82,0xb34f74,0xd1c4b1,0x31436e,0x9b4361];
+    // 红色挂绳
+    addTube(g, THREE, '挂架红丝提线', [[-0.12, 1.18, 0.035], [0, 1.28, 0.02], [0.12, 1.18, 0.035]], 0.0038, 0xbb2535, 16);
+
+    // 主织带：微偏左呈现，优美垂荡波浪
+    createStrip(THREE, '单条蓝底织带255', textures.zhidaiBand, {
+      group: g, x: -0.065, yTop: 1.15, z: 0.01, width: 0.11, length: 1.95, wave: 0.055, steps: 64, phase: 0.25
+    });
+    // 配对次织带：微偏右呈现，展现“成双成对、带带相传”的客家婚俗与头饰织带形态
+    createStrip(THREE, '配对挑花织带255_右', textures.zhidaiBand, {
+      group: g, x: 0.065, yTop: 1.15, z: -0.01, width: 0.11, length: 1.92, wave: 0.048, steps: 64, phase: 0.75
+    });
+
+    // 织带顶部卷边与固定结
+    addTube(g, THREE, '织带上端卷边', [[-0.12, 1.15, 0.04], [0, 1.17, 0.04], [0.12, 1.15, 0.04]], 0.012, 0x263f72, 16);
+    addTube(g, THREE, '左带顶端彩绳结', [[-0.09, 1.14, 0.045], [-0.04, 1.14, 0.045]], 0.008, 0x9c4765, 8);
+    addTube(g, THREE, '右带顶端彩绳结', [[0.04, 1.14, 0.045], [0.09, 1.14, 0.045]], 0.008, 0x2d6850, 8);
+
+    // 左右两条带子的底部穗根结（多色彩结与包线环）
+    addTube(g, THREE, '穗根结', [[-0.11, -0.79, 0.01], [-0.065, -0.82, 0.01], [-0.02, -0.79, 0.01]], 0.016, 0x9c4765, 12);
+    addTube(g, THREE, '右穗根结', [[0.02, -0.76, 0.00], [0.065, -0.79, 0.00], [0.11, -0.76, 0.00]], 0.016, 0x2e4a82, 12);
+
+    // 彩珠饰
+    var beadMat = new THREE.MeshStandardMaterial({ color: 0x8b2500, roughness: 0.35, metalness: 0.1 });
+    beadMat.userData.surface = 'mineral';
+    [-0.065, 0.065].forEach(function (bx, bi) {
+      var bead = new THREE.Mesh(new THREE.SphereGeometry(0.011, 10, 8), beadMat);
+      bead.position.set(bx, bi === 0 ? -0.83 : -0.80, bi === 0 ? 0.012 : 0.002);
+      bead.name = '流苏彩珠饰_' + bi;
+      g.add(bead);
+    });
+
+    // 丰满多色的下垂真丝带穗
+    var colors = [0x394e82, 0xb34f74, 0xd1c4b1, 0x2d6850, 0x9b4361, 0xc28535];
     for (var i = 0; i < 11; i++) {
-      var x = -0.045 + i * 0.009;
-      addTube(g, THREE, '穗线-' + (i + 1), [[x,-0.80,0.005],[x + 0.008,-0.90,0.025],[x - 0.010,-1.00,0.045],[x + (i % 2 ? 0.012 : -0.014),-1.10,0.035]], 0.0045, colors[i % colors.length], 10);
+      var x = -0.105 + i * 0.008;
+      addTube(g, THREE, '穗线-' + (i + 1), [
+        [x, -0.80, 0.005],
+        [x + 0.008, -0.90, 0.025],
+        [x - 0.010, -1.00, 0.045],
+        [x + (i % 2 ? 0.012 : -0.014), -1.10, 0.035]
+      ], 0.0042, colors[i % colors.length], 10);
     }
+    for (var j = 0; j < 11; j++) {
+      var rx = 0.025 + j * 0.008;
+      addTube(g, THREE, '右带穗线-' + (j + 1), [
+        [rx, -0.77, 0.00],
+        [rx - 0.006, -0.87, 0.018],
+        [rx + 0.008, -0.97, 0.038],
+        [rx + (j % 2 ? -0.010 : 0.012), -1.07, 0.028]
+      ], 0.0042, colors[(j + 2) % colors.length], 10);
+    }
+
     return setEvidence(g, [255], 'photo-textured');
   }
 

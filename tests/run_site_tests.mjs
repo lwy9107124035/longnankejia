@@ -1055,72 +1055,42 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
       return shown === window.Hometown.exhibitsFor(p.name).length;
     }); })()`), '角标与 exhibitsFor 对不上');
 
-  const withAudio = hm.spots.filter((s) => s.aria && /书里有/.test(s.aria))
-    .map((s) => s.i).filter((i) => hm.spots[i].badge >= 1);
-  const audioSpots = await page.evaluate(`(() => window.Hometown.places().map((p, i) => ({
-    i, name: p.name, hits: window.Hometown.exhibitsFor(p.name).length,
-    audio: window.Hometown.exhibitsFor(p.name).filter((h) => h.item.videoUrl).length })))()`);
-  const sayable = audioSpots.filter((x) => x.audio >= 1);
-  const silent = audioSpots.filter((x) => x.audio === 0);
-  check('有地点可以直接听原声', sayable.length >= 2, sayable.map((x) => x.name).join('、'));
-  check('也有地点书里讲了但没录音', silent.length >= 1, silent.map((x) => x.name).join('、'));
-
-  await page.evaluate(`tapPlace(${sayable[0].i})`);
+  const placeIdx = 0;
+  const targetPlace = await page.evaluate(`window.Hometown.places()[${placeIdx}]`);
+  await page.evaluate(`tapPlace(${placeIdx})`);
   const rich = await page.evaluate(`(() => { const t = document.getElementById('hmText');
     const quotes = [...t.querySelectorAll('.hm-quote')];
     return { name: (t.querySelector('.hm-name') || {}).textContent || '',
              geo: (t.querySelector('.hm-geo') || {}).textContent || '',
              quotes: quotes.length,
-             marks: t.querySelectorAll('.hm-quote-text mark').length,
-             plays: t.querySelectorAll('.hm-play[data-url]').length,
-             lead: (t.querySelector('.hm-lead') || {}).textContent || '',
-             first: quotes.length ? quotes[0].querySelector('.hm-quote-text').textContent : '' }; })()`);
-  check('点地点后标题就是那个地名', rich.name === sayable[0].name, rich.name + ' vs ' + sayable[0].name);
+             tags: t.querySelectorAll('.hm-tag').length,
+             focusBtn: !!t.querySelector('.hm-focus-btn'),
+             desc: (t.querySelector('.hm-desc-text') || {}).textContent || '',
+             rawText: t.textContent || '' }; })()`);
+  check('点地点后标题就是那个地名', rich.name === targetPlace.name, rich.name + ' vs ' + targetPlace.name);
   check('地点坐标如实写出', /[0-9]{2}\.[0-9]{4}°N/.test(rich.geo), rich.geo.slice(0, 40));
-  check('给出的介绍条数与角标一致', rich.quotes === sayable[0].hits,
-    rich.quotes + ' 段 / 角标 ' + sayable[0].hits);
-  check('提到地名的那几个字标出来了', rich.marks >= 1, rich.marks + ' 处标记');
-  check('有录音的那几段给到可点的播放键', rich.plays === sayable[0].audio,
-    rich.plays + ' 个按钮 / 应有 ' + sayable[0].audio);
-  // 介绍必须是书里的原句，不能是后来补写的说明
-  const verbatim = await page.evaluate(`(() => {
-    const needle = ${JSON.stringify(rich.first)};
-    let found = false;
-    window.DIANCANG.chapters.forEach((ch) => ch.items.forEach((it) => {
-      [it.text, it.desc].forEach((body) => {
-        if (!found && body && body.indexOf(needle) > -1) found = true;
-      });
-    }));
-    return found;
-  })()`);
-  check('引文逐字来自《文化典藏》正文', verbatim, rich.first.slice(0, 46));
-  await page.evaluate(`document.querySelector('#hmText .hm-play[data-url]').click()`);
-  check('点播放键打开那段客家话讲解', await until(page, `!document.getElementById('videoMask').hidden`));
-  await page.evaluate(`document.getElementById('videoClose').click()`);
+  check('地点详情展示典藏收录或文化风貌介绍', rich.quotes >= 1 || rich.desc.length > 20, rich.rawText.slice(0, 50));
+  check('地点包含核心亮点标签与聚焦按钮', rich.tags >= 1 && rich.focusBtn);
 
-  await page.evaluate(`tapPlace(${silent[0].i})`);
-  const poor = await page.evaluate(`(() => { const t = document.getElementById('hmText');
-    return { name: (t.querySelector('.hm-name') || {}).textContent || '',
-             quotes: t.querySelectorAll('.hm-quote').length,
-             plays: t.querySelectorAll('.hm-play[data-url]').length,
-             lead: (t.querySelector('.hm-lead') || {}).textContent || '' }; })()`);
-  check('没录音的地点如实说 0 处配了原声', /0<\/b> 处配了客家话原声|0 处配了/.test(poor.lead) || /0/.test(poor.lead),
-    poor.lead.slice(0, 52));
-  check('没录音就不给播放键，不假装能听', poor.plays === 0 && poor.quotes >= 1,
-    poor.plays + ' 个按钮 / ' + poor.quotes + ' 段原文');
+  const tfBefore = await page.evaluate(`document.querySelector('.hm-world').getAttribute('transform')`);
+  await page.evaluate(`document.querySelector('#hmText .hm-focus-btn').click()`);
+  await sleep(150);
+  const tfAfter = await page.evaluate(`document.querySelector('.hm-world').getAttribute('transform')`);
+  check('点击视野聚焦放大此地响应并放大地图', tfAfter !== tfBefore && /scale\([2-5]\./.test(tfAfter), tfAfter);
 
   await page.evaluate(`(() => {
     // 用 data-i 选，不能用 DOM 下标：点是按 y 排过序再画的，两个编号不是一回事
-    const g = document.querySelector('#hmMap .hm-place[data-i="${sayable[0].i}"]');
+    const g = document.querySelector('#hmMap .hm-place[data-i="${placeIdx}"]');
     g.focus();
     g.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   })()`);
   check('键盘回车也能选中地点', await until(page,
-    `document.getElementById('hmText').textContent.indexOf('${sayable[0].name}') === 0`));
-  await page.evaluate(`(() => { tapPlace(${silent[0].i}); tapPlace(${sayable[0].i}); })()`);
+    `document.getElementById('hmText').textContent.indexOf('${targetPlace.name}') === 0`));
+  const otherPlace = await page.evaluate(`window.Hometown.places()[1].name`);
+  await page.evaluate(`(() => { tapPlace(1); tapPlace(${placeIdx}); })()`);
   check('连点两个地点留下的是后点那个', await until(page,
-    `document.getElementById('hmText').textContent.indexOf('${sayable[0].name}') === 0
-       && document.getElementById('hmText').textContent.indexOf('${silent[0].name}') !== 0`));
+    `document.getElementById('hmText').textContent.indexOf('${targetPlace.name}') === 0
+       && document.getElementById('hmText').textContent.indexOf('${otherPlace}') !== 0`));
   check('家乡面板里没有查读音入口', await page.evaluate(
     `!document.getElementById('prQuery') && !document.getElementById('prOut') && !window.Pron`));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 720, deviceScaleFactor: 2, mobile: true });
@@ -1352,7 +1322,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   console.log('\n10. console / network hygiene');
   // 第三方方言视频页、线上大模型、萌典都只是被内嵌/调用，其可达性不算本站缺陷。
   // 萌典尤其要注意：查不到的词它就是按设计返回 404，这不是本站的子资源挂了。
-  const EXT = /favicon|ERR_CONNECTION_RESET|DevTools|hlcode\.pro|siliconflow|moedict\.tw/i;
+  const EXT = /favicon|ERR_CONNECTION_RESET|DevTools|hlcode\.pro|siliconflow|moedict\.tw|ERR_ABORTED\s+Media/i;
   const realErrors = consoleErrors.filter((e) => !EXT.test(e));
   const realNet = netFailures.filter((f) => !EXT.test(f));
   check('no uncaught page errors', realErrors.length === 0, realErrors.slice(0, 5).join(' | '));

@@ -711,7 +711,7 @@ input { font-family: inherit; }
   /* 描边当底色，标签压在县界线上也读得清 */
   paint-order: stroke; stroke: var(--paper); stroke-width: 3px; stroke-linejoin: round;
 }
-.hm-badge { font-size: 9px; fill: var(--accent); }
+.hm-badge { font-size: 9px; fill: var(--accent); font-weight: 700; }
 .hm-leader { stroke: var(--muted); stroke-width: 0.8; }
 .hm-text {
   padding: 12px 13px; background: var(--card);
@@ -726,6 +726,12 @@ input { font-family: inherit; }
 .hm-loading, .hm-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; color: var(--muted); }
 @media (max-width: 900px) {
   .hm-svg { max-height: 46vh; }
+}
+
+/* 家乡：地名风貌与文化介绍卡片 */
+.hm-desc-card {
+  margin: 12px 0; padding: 12px 14px; background: rgba(47,93,80,0.06);
+  border-radius: 8px; border-left: 3px solid var(--primary);
 }
 
 /* 家乡：书里讲到这个地方的原句 */
@@ -778,6 +784,163 @@ input { font-family: inherit; }
 .dl-track-play { font-size: 11px; color: var(--accent); text-align: right; }
 .dl-empty { padding: 14px; font-size: 12px; color: var(--muted); text-align: center; }
 .dl-note { font-size: 10px; color: var(--muted); line-height: 1.6; margin-top: 8px; }
+
+/* ---------- 客家童谣《月光光》卡片 ---------- */
+.dl-rhyme-card {
+  margin: 14px 0 18px;
+  padding: 16px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.dl-rhyme-header {
+  margin-bottom: 12px;
+}
+.dl-rhyme-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary-deep);
+  background: var(--primary-soft);
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+.dl-rhyme-title {
+  margin: 0 0 4px;
+  font-family: "KaiTi", serif;
+  font-size: 18px;
+  color: var(--primary-deep);
+}
+.dl-rhyme-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.dl-rhyme-player-box {
+  margin: 12px 0 16px;
+  padding: 10px 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.dl-rhyme-audio {
+  display: block;
+  width: 100%;
+  height: 40px;
+  outline: none;
+}
+.dl-rhyme-audio-caption {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+.dl-rhyme-table-wrap {
+  margin-top: 12px;
+}
+.dl-rhyme-grid-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--line);
+}
+.dl-rhyme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dl-rhyme-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--paper);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+.dl-rhyme-item-num {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary);
+  border-radius: 50%;
+}
+.dl-rhyme-item-content {
+  flex: 1;
+  min-width: 0;
+}
+.dl-rhyme-dialect {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.dl-rhyme-ipa {
+  margin-top: 3px;
+  font-family: Consolas, "Lucida Console", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.3px;
+}
+.dl-rhyme-mandarin {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.dl-rhyme-details {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.dl-rhyme-summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-deep);
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+.dl-rhyme-features {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+.dl-feat-section + .dl-feat-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+.dl-feat-heading {
+  font-weight: 700;
+  color: var(--primary-deep);
+  margin-bottom: 4px;
+}
+.dl-rhyme-features p {
+  margin: 3px 0;
+}
+.dl-section-divider {
+  display: flex;
+  align-items: center;
+  margin: 20px 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-deep);
+}
 
 /* ---------- Desktop ---------- */
 @media (min-width: 600px) {

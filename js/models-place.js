@@ -74,7 +74,8 @@
     var timber = new THREE.MeshStandardMaterial({color:0x6a4830,roughness:0.96});
     var dark = new THREE.MeshStandardMaterial({color:0x352e26,roughness:1});
     var lime = new THREE.MeshStandardMaterial({color:0xe0d9c5,roughness:1});
-    [earth,brick,stone,paving,tile,tileFine,lime].forEach(function(m){m.userData.surface='mineral';});
+    var pondWater = new THREE.MeshStandardMaterial({color:0x365e57, roughness:0.18, metalness:0.15});
+    [earth,brick,stone,paving,tile,tileFine,lime,pondWater].forEach(function(m){m.userData.surface='mineral';});
     timber.userData.surface='wood';
     var W=5.2, D=5.2, wallH=0.61, towerH=0.88, foundation=0.075;
     function box(name,w,h,d,mat,x,y,z) {
@@ -137,10 +138,47 @@
       }else piece(axis==='x'?x:z,length);
       roof(name+'_wall_coping',x,z,length,0.12,foundation+wallH,0.028,axis==='x'?0:Math.PI/2);
     }
+    // 围屋整体扩展基台（禾坪晒谷场与后庭，保持严格 5.98 × 5.98 正方形对称包围盒）
+    var totalBase = 5.98;
+    box('granary_stone_platform', totalBase, foundation * 0.7, totalBase, stone, 0, foundation * 0.35, 0);
     box('stone_plinth',W+0.13,foundation,D+0.13,stone,0,foundation/2,0);
     box('courtyard_ground',W-0.16,0.018,D-0.16,paving,0,foundation+0.01,0);
     wall('north_wall',0,-D/2,W,'x',false);wall('south_wall',0,D/2,W,'x',false);
     wall('east_wall',W/2,0,D,'z',true);wall('west_wall',-W/2,0,D,'z',true);
+
+    // 南侧正门楼（“西林第”正大门楼与石额，客家围屋核心中轴大门）
+    var mainGate = new THREE.Group(); mainGate.name = 'south_main_gate';
+    box('main_gate_jamb_left', 0.08, 0.42, 0.14, brick, -0.22, foundation + 0.21, D / 2 + 0.06);
+    box('main_gate_jamb_right', 0.08, 0.42, 0.14, brick, 0.22, foundation + 0.21, D / 2 + 0.06);
+    box('main_gate_drum_left', 0.045, 0.12, 0.08, stone, -0.19, foundation + 0.06, D / 2 + 0.14);
+    box('main_gate_drum_right', 0.045, 0.12, 0.08, stone, 0.19, foundation + 0.06, D / 2 + 0.14);
+    box('main_gate_doors', 0.36, 0.32, 0.018, timber, 0, foundation + 0.16, D / 2 + 0.04);
+    box('main_gate_xilindi_plaque', 0.42, 0.075, 0.02, lime, 0, foundation + 0.38, D / 2 + 0.09);
+    roof('main_gate_roof', 0, D / 2 + 0.08, 0.62, 0.22, foundation + 0.44, 0.08, 0);
+    g.add(mainGate);
+
+    // 围前客家半月塘（月池）：客家围屋风水灵魂与蓄水防火之池
+    var pondRadius = 0.96;
+    var pondShape = new THREE.Shape();
+    pondShape.absarc(0, 0, pondRadius, 0, Math.PI, false);
+    pondShape.closePath();
+    var pondGeo = new THREE.ShapeGeometry(pondShape, 24);
+    var pondMesh = new THREE.Mesh(pondGeo, pondWater);
+    pondMesh.name = 'crescent_moon_pond_surface';
+    pondMesh.rotation.x = -Math.PI / 2;
+    pondMesh.position.set(0, foundation * 0.72 + 0.005, D / 2 + 0.38);
+    pondMesh.receiveShadow = true;
+    g.add(pondMesh);
+    var pondCurve = new THREE.EllipseCurve(0, 0, pondRadius + 0.03, pondRadius + 0.03, 0, Math.PI, false, 0);
+    var pondPts = pondCurve.getPoints(24).map(function (p) {
+      return new THREE.Vector3(p.x, foundation * 0.76, D / 2 + 0.38 - p.y);
+    });
+    var pondCoping = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pondPts), 24, 0.018, 6, false), stone);
+    pondCoping.name = 'moon_pond_stone_coping';
+    pondCoping.castShadow = true;
+    g.add(pondCoping);
+    // 北侧后庭对景地台（保持前后左右对称）
+    box('rear_dragon_terrace', 2.4, 0.03, 0.50, paving, 0, foundation * 0.72 + 0.015, -D / 2 - 0.14);
     var slits=[],towerSlits=[];
     for(var side=0;side<4;side++)for(var j=0;j<20;j++){
       var q=(j-9.5)*0.22;

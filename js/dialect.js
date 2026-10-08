@@ -38,7 +38,7 @@
 
   function render() {
     if (!tracks.length) {
-      listEl.innerHTML = '<li class="dl-empty">暂无讲解录音</li>';
+      listEl.innerHTML = '<li class="dl-empty">暂无讲解视频</li>';
       return;
     }
     countEl.textContent = tracks.length;

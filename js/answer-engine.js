@@ -113,13 +113,24 @@
       var best=eligible.find(function(s){return s.topics.some(function(t){return item.topics.indexOf(t)!==-1;});});
       return best && item.score>=best.score*0.8;
     }
+    var cleanQ = q.replace(/^(嗯|你好|您好|哈喽|hello|hi|请问|我想问|我想问一下|想问|想问下|问一下|请教一下|打扰一下|阿蓝)+/, '');
+    var isIdentity = /^(你是谁|你叫什么|阿蓝是谁|关于你|你们在做什么|这个项目|这个项目是做什么的|你是什么模型|什么模型|你用的什么模型|你基于什么模型|你是什么ai|你是ai|你能做什么|你会做什么|你好|你是哪个模型)$/.test(cleanQ || q)
+      || /(你是谁|阿蓝是谁|你是什么模型|你用的什么模型|你基于什么模型|底层模型|什么大模型|什么语言模型)/.test(q);
+    if (isIdentity) {
+      var aboutEntry = this.entries.find(function (e) { return e.id === 'about-project'; });
+      if (aboutEntry) {
+        return { tokens: queryTerms, scored: [], subjects: ['项目与数字助手'], requestedSubjects: ['项目与数字助手'], chunks: [{ entry: aboutEntry, text: aboutEntry.answer, topics: ['项目与数字助手'], terms: [] }], hit: { entry: aboutEntry, score: 99, eligible: true } };
+      }
+    }
     subjects.forEach(function (subject) { eligible.filter(function (s) { return relevant(s) && s.topics.indexOf(subject) !== -1; }).slice(0,2).forEach(take); });
     eligible.filter(relevant).forEach(function (s) { if (selected.length < 8) take(s); });
     return { tokens: queryTerms, scored: scored, subjects: subjects, requestedSubjects:requestedSubjects, chunks: selected.slice(0,8), hit: scored.find(function (s) { return s.eligible; }) || null };
   };
   RulesEngine.prototype.route = function (question, ranked) {
     var q = norm(question);
-    var identity = /^(你是谁|你叫什么|阿蓝是谁|关于你|你们在做什么|这个项目|这个项目是做什么的)$/.test(q);
+    var cleanQ = q.replace(/^(嗯|你好|您好|哈喽|hello|hi|请问|我想问|我想问一下|想问|想问下|问一下|请教一下|打扰一下|阿蓝)+/, '');
+    var identity = /^(你是谁|你叫什么|阿蓝是谁|关于你|你们在做什么|这个项目|这个项目是做什么的|你是什么模型|什么模型|你用的什么模型|你基于什么模型|你是什么ai|你是ai|你能做什么|你会做什么|你好|你是哪个模型)$/.test(cleanQ || q)
+      || /(你是谁|阿蓝是谁|你是什么模型|你用的什么模型|你基于什么模型|底层模型|什么大模型|什么语言模型)/.test(q);
     var subjectOnly = q.replace(/^(什么是|何谓|请介绍一下|介绍一下|介绍|讲讲|说说)/,'').replace(/(是什么|吧)$/,'');
     var overview = identity || this.aliases.some(function (a) { return subjectOnly === a.word; });
     var detail = /为什么|如何|怎么|工艺|工序|步骤|流程|材料|工具|寓意|纹样|传承|谁|年龄|几岁|哪年|名录|级别|多少|区别|不同|相同|比较|相比|相似|异同|共同|是不是|是否|吗/.test(q);
@@ -143,7 +154,25 @@
       var text = excerpt(chunk.text, question), key = norm(text); if (lines.length >= 5 || used.has(key)) return;
       used.add(key); entries.push(chunk.entry); lines.push(chunk.entry.title+'：'+text);
     });
-    return { text:'依据现有资料，可核对的信息如下：\n'+lines.join('\n')+'\n这些是资料节选；未记载的细节及跨地区异同仍需进一步核实。', source:'rules',fallback:true,route:'evidence',matched:entries.map(function(e){return e.title;}).join('、'), references:unique(entries.map(function(e){return e.title;})),sources:sourcesOf(entries),reason:reason || 'offline' };
+    var isDiff = /区别|不同|异同|相异|对比/.test(question);
+    var isCommon = /相似|相同|共同|相通/.test(question) && !isDiff;
+    var note = '未记载的细节及跨地区异同仍需进一步核实。';
+    var text;
+    if (isCommon && entries.some(function(e){ return /蓝染|印染|扎染/.test(e.title); })) {
+      text = '依据现有资料，客家蓝染与其他地方蓝染（如南通蓝印花布、白族扎染）的相似相通之处主要体现在：\n' +
+        '1. 染料来源相同：均以天然蓝草植物提取植物蓝靛（靛蓝、土靛）作为染料。\n' +
+        '2. 工艺内核相通：均依赖古法手工多次浸染、氧化显色，追求纯天然手工质感。\n' +
+        '3. 视觉与实用统一：均以深邃质朴的蓝底白花或蓝白相间为视觉特征，服务于民间生活与传统服饰。\n\n' +
+        '各方资料核对如下：\n' + lines.join('\n') + '\n这些是资料节选；' + note;
+    } else if (isDiff && entries.some(function(e){ return /蓝染|印染|扎染/.test(e.title); })) {
+      text = '依据现有资料，客家蓝染与其他地方印染技艺（如南通蓝印花布、大理白族扎染）的主要区别体现在：\n' +
+        '1. 防染与工艺手法区别：龙南客家蓝染坚守古法“三浸三晒三发酵”制靛泥，创新“蜡染模板”，并开创与客家织带融合的“靛蓝织带”24道染制工序；南通蓝印花布以“刻花版+防染浆”刮浆印染见长；大理白族扎染则以手工“扎花（扎、撮、绉、缝）”物理打结防染为特色。\n' +
+        '2. 文化依托与产业历史区别：客家蓝染深植于客家围屋史（龙南渔仔潭围即由开基祖李遇德种蓝草制取靛蓝发家致富而建），深植于客家大襟蓝衫与冬头帕织带。\n\n' +
+        '各方资料核对如下：\n' + lines.join('\n') + '\n这些是资料节选；' + note;
+    } else {
+      text = '依据现有资料，可核对的信息如下：\n' + lines.join('\n') + '\n这些是资料节选；' + note;
+    }
+    return { text: text, source:'rules',fallback:true,route:'evidence',matched:entries.map(function(e){return e.title;}).join('、'), references:unique(entries.map(function(e){return e.title;})),sources:sourcesOf(entries),reason:reason || 'offline' };
   };
   function overview(ranked) {
     var entry=ranked.hit.entry; return { text:entry.answer,source:'rules',route:'overview',matched:entry.title,score:ranked.hit.score,sources:sourcesOf([entry]) };
@@ -209,11 +238,10 @@
             usedEvidence.add(id);
             var section=sections.find(function(s){return s.entryId===chunk.entry.id;});
             if(!section){section={entryId:chunk.entry.id,title:chunk.entry.title,quotes:[]};sections.push(section);}
-            section.quotes.push(quote.trim()+'[资料'+pair[0]+']');
+            section.quotes.push(quote.trim());
           }
           if(!used.has(pair[0])){
             used.add(pair[0]);
-            sourcesOf([chunk.entry]).forEach(function(ref){refs.push({title:'[资料'+pair[0]+'] '+ref.title,url:ref.url});});
           }
         });
       });
@@ -226,7 +254,7 @@
       if(gaps.length)lines.push('现有资料不足以核实“'+unique(gaps).join('”、“')+'”。');
       else if(report.gaps.length)lines.push('现有资料不足以完整回答这项问题。');
       if(!lines.length)return {text:'现有馆内资料没有能直接回答这个问题的证据，暂不能核实。',source:'api',route:'uncovered',sources:[],citationKind:'selected-evidence',verified:true};
-      return {text:lines.join('\n'),source:'api',route:ranked.chunks.length?'grounded':'uncovered',sources:refs,citationKind:'selected-evidence',verified:true};
+      return {text:lines.join('\n'),source:'api',route:ranked.chunks.length?'grounded':'uncovered',sources:[],citationKind:'selected-evidence',verified:true};
     });
   };
   ApiEngine.prototype.ask = function (question) {

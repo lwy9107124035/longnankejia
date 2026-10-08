@@ -329,26 +329,47 @@
   }
 
   /**
-   * 找出该挂哪件展品的客家话讲解。分两档，宁可不挂也不硬凑：
-   *  问题里点了名（展品名或别名）→ 挂；
-   *  问题没点、但答复里出现了展品全名 → 挂；
-   *  只在答复里出现"织带""米果"这类门类别名 → 不挂（自我介绍里顺带提到
-   *  客家织带，就挂一段花带的讲解，那是硬塞）。
+   * 找出该挂哪件展品的客家话讲解。宁可不挂也不硬凑：
+   * 仅在高度相关时推荐：
+   *  1. 问题或回答明确点名展品全名或专有别名；
+   *  2. 若问题属于概念对比类（如区别、异同、不同），且未主动询问方言/视频/录音，则不挂视频；
+   *  3. 单字展品名（如'衫'）不参与纯单字模糊匹配，必须命中完整别名；
+   *  4. 自我介绍、兜底答复或顺带提到门类通用词不挂视频。
    */
   function findRelatedVideos() {
     var args = Array.prototype.slice.call(arguments);
-    var q = String(args[0] || '');
+    var q = String(args[0] || '').trim();
     var rest = args.slice(1).join(' ');
     var hits = [];
     if (!data || (!q && !rest)) return hits;
+
+    // 对比类问题，用户意在比较概念，若未提及方言/发音/视频/原声则不推荐视频
+    var isComparative = /对比|区别|异同|不同|相似|相同|共同/.test(q);
+    var hasDialectIntent = /方言|客家话|客家语|原声|语音|视频|录音|听听|发音|怎么读|怎么说/.test(q);
+    if (isComparative && !hasDialectIntent) {
+      return hits;
+    }
+
     var triggers = window.VIDEO_TRIGGERS || {};
     data.chapters.forEach(function (ch) {
       (ch.items || []).forEach(function (it) {
         if (!it.videoUrl) return;
         var alias = (triggers[it.name] || []).concat([it.name]);
-        var inQ = q && (q.indexOf(it.name) !== -1
-          || alias.some(function (w) { return q.indexOf(w) !== -1; }));
-        var namedInA = rest && rest.indexOf(it.name) !== -1;
+        // 单字名不参与单字全词检索，必须命中2字及以上别名
+        var inQ = false;
+        if (q) {
+          if (it.name.length >= 2 && q.indexOf(it.name) !== -1) inQ = true;
+          else {
+            inQ = alias.some(function (w) { return w.length >= 2 && q.indexOf(w) !== -1; });
+          }
+        }
+        var namedInA = false;
+        if (rest) {
+          if (it.name.length >= 2 && rest.indexOf(it.name) !== -1) namedInA = true;
+          else {
+            namedInA = alias.some(function (w) { return w.length >= 2 && rest.indexOf(w) !== -1; });
+          }
+        }
         if (inQ || namedInA) hits.push(it);
       });
     });

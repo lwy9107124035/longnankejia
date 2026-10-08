@@ -14,20 +14,20 @@
   var autoRotate = true, idleTimer = null, textures = {}, generatedTextures = [];
   var touchMode = null, pinchDist = 0, pinchMidX = 0, pinchMidY = 0;
   var SEAT_CACHE = {}, defaultZoom = 4.5, userPaused = false;
-  var booted = false, booting = null, pendingShow = null, activeId = 'hutoumao';
+  var booted = false, booting = null, pendingShow = null, activeId = 'landye';
   var ITEMS = [
-    {id:'hutoumao',name:'花帽',subtitle:'黑布彩绣童帽',icon:'🌺',angle:0.18,desc:'依据黑底花帽近照重做帽体、虎脸绣片、红色滚边与布帘，保留原图刺绣纹样。照片未展示的背面按黑布处理。'},
-    {id:'weiwu',name:'关西新围',subtitle:'客家围屋',icon:'🏯',angle:0.65,desc:'参照官方实景与形制介绍，修正长墙与炮楼比例，补充瓦面、围内厅堂和天井，采用东西侧门与连续墙顶。内部开间按对称布局表达，尚无测绘尺寸。'},
+    {id:'landye',name:'蓝染样布',subtitle:'双环与放射纹',icon:'🔵',angle:0.15,desc:'双环与放射两种纹样均提取自同一张实物近照，经透视校正映射到布面；保留靛蓝晕染、留白、折痕与锁边。'},
     {id:'zhidai',name:'客家织带',subtitle:'彩色挑花与带穗',icon:'🧵',angle:0.18,desc:'依据桌面上独立长织带的照片还原窄长轮廓、彩色边线、挑花纹样与末端穗线，可放大查看原图纹样。'},
     {id:'dongtoupa',name:'冬头帕',subtitle:'红底条纹首服',icon:'🧣',angle:0.20,desc:'对应展柜中的矩形冬头帕，保留红底、中央密排竖条与浅色边沿。与独立织带分别展示。'},
     {id:'dajinshan',name:'大襟衫',subtitle:'靛蓝布衫',icon:'👘',angle:0.15,desc:'按实物衣衫的宽袖、立领、右侧大襟与袖口色带构建，补充布面起伏和衣缘。模型比例由照片估计。'},
+    {id:'zhiji',name:'传统织机',subtitle:'木架与经纬纱',icon:'🪵',angle:0.36,desc:'依据织机实物照片还原木架、横梁、踏板、坐凳、纱线和蓝色布面，展示构件关系。'},
     {id:'zisundai',name:'子孙袋',subtitle:'拼布与绣面',icon:'🪡',angle:0.18,desc:'按参考照片的袋身比例、蓝色侧片、红色上下边和中央绣面制作，绣面取自实物照片。'},
-    {id:'bowei',name:'脖围',subtitle:'四瓣绣花围领',icon:'🌸',angle:0.55,desc:'依据四分花绣脖围照片重做外缘、中心圆孔、黑色分隔与白底花绣，中心孔贯通。'},
-    {id:'landye',name:'蓝染样布',subtitle:'双环与放射纹',icon:'🔵',angle:0.15,desc:'双环与放射两种纹样均提取自同一张实物近照，经透视校正映射到布面；保留靛蓝晕染、留白、折痕与锁边。'},
     {id:'boji',name:'竹编圆筛',subtitle:'细篾交织与圈口',icon:'🧺',angle:0.85,desc:'参照大圆竹器与浅口竹盘照片重做细密篾条、浅边与圈口。器物名称用于展示分类，具体用途以馆方说明为准。'},
     {id:'liangmao',name:'竹编斗笠',subtitle:'锥形开放编织',icon:'👒',angle:0.40,desc:'对应墙面悬挂的锥形竹编帽，以开放篾网、锥顶与圈口表达照片形制。'},
-    {id:'zhiji',name:'传统织机',subtitle:'木架与经纬纱',icon:'🪵',angle:0.36,desc:'依据织机照片及实物视频还原木架、横梁、踏板、坐凳、纱线和蓝色布面，展示构件关系。'},
-    {id:'zhiyi',name:'客家纸艺',subtitle:'橙花盆景',icon:'🌼',angle:0.23,desc:'依据纸艺盆景多角度照片构建弯曲树干、分枝、橙色花簇与多边盆，花朵分布按照片概括。'}
+    {id:'bowei',name:'脖围',subtitle:'四瓣绣花围领',icon:'🌸',angle:0.55,desc:'依据四分花绣脖围照片重做外缘、中心圆孔、黑色分隔与白底花绣，中心孔贯通。'},
+    {id:'zhiyi',name:'客家纸艺',subtitle:'橙花盆景',icon:'🌼',angle:0.23,desc:'依据纸艺盆景多角度照片构建弯曲树干、分枝、橙色花簇与多边盆，花朵分布按照片概括。'},
+    {id:'hutoumao',name:'花帽',subtitle:'黑布彩绣童帽',icon:'🌺',angle:0.18,desc:'以《世界客家非物质文化遗产馆文化典藏》219号展品为依据，贴图映射顶檐白地花绣、虎脸与后垂红花布帘，展示儿童风帽形制。'},
+    {id:'weiwu',name:'关西新围',subtitle:'客家围屋',icon:'🏯',angle:0.65,desc:'参照官方实景与形制介绍，修正长墙与炮楼比例，补充瓦面、围内厅堂和天井，采用东西侧门与连续墙顶。内部开间按对称布局表达，尚无测绘尺寸。'}
   ];
 
   function loadThree() {
@@ -212,7 +212,7 @@
     var vertical=camera.fov*Math.PI/360, horizontal=Math.atan(Math.tan(vertical)*camera.aspect);
     var angle=Math.abs(ITEMS.find(function(item){return item.id===activeId;}).angle);
     var elevation=halfHeight*Math.cos(angle)+radial*Math.sin(angle),depth=halfHeight*Math.sin(angle)+radial*Math.cos(angle);
-    defaultZoom=(Math.max(radial/Math.tan(horizontal),elevation/Math.tan(vertical))+depth)*1.07;
+    defaultZoom=(Math.max(radial/Math.tan(horizontal),elevation/Math.tan(vertical))+depth)*1.10;
     targetZoom=defaultZoom;
   }
 
@@ -365,10 +365,11 @@
     currentModel.position.y += -1.15 - lo2.y;
     currentModel.updateMatrixWorld(true);
     cameraFocusY = -1.15 + (hi2.y - lo2.y) / 2;
-    targetRotX = spec.angle;
+    rotX = targetRotX = spec.angle;
     targetRotY = rotY + shortestTurnTo(rotY, 0.4);
-    targetPanX = 0; targetPanY = 0;
+    panX = targetPanX = 0; panY = targetPanY = 0;
     fitCurrentModel();
+    zoom = defaultZoom;
     updateItemInfo(spec);
 
   }
