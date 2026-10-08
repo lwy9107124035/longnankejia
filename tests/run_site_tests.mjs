@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = path.join(ROOT, '.cache', 'test-shots');
 const PORT = 8931;
 const CDP_PORT = 9333;
-const BASE = `http://127.0.0.1:${PORT}`;
+const BASE = process.env.SITE_TEST_URL || `http://127.0.0.1:${PORT}`;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 // --only=7c,7d,4e 只跑指定小节（反向用例逐个变异时要跑几十遍，整套一遍 4 分钟跑不起）
 const ONLY = ((process.argv.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '')
@@ -46,6 +46,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml',
   '.pdf': 'application/pdf', '.npy': 'application/octet-stream',
+  '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.mp4': 'video/mp4',
 };
 
 function startServer() {
@@ -59,8 +60,21 @@ function startServer() {
     }
     fs.readFile(file, (err, buf) => {
       if (err) { res.writeHead(404).end('not found'); return; }
-      res.writeHead(200, { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream' });
-      res.end(buf);
+      const headers = { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'accept-ranges': 'bytes' };
+      if (req.headers.range) {
+        const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
+        const start = range?.[1] ? Number(range[1]) : Math.max(0, buf.length-Number(range?.[2]));
+        const end = range?.[1] && range[2] ? Math.min(Number(range[2]),buf.length-1) : buf.length-1;
+        if (!range || start>end || start>=buf.length) {
+          res.writeHead(416, { 'content-range': 'bytes */'+buf.length }).end(); return;
+        }
+        headers['content-range'] = `bytes ${start}-${end}/${buf.length}`;
+        res.writeHead(206, { ...headers, 'content-length': end-start+1 });
+        res.end(buf.subarray(start,end+1));
+      } else {
+        res.writeHead(200, { ...headers, 'content-length': buf.length });
+        res.end(buf);
+      }
     });
   });
   return new Promise((resolve, reject) => {
@@ -237,6 +251,7 @@ async function run() {
     if (ONLY.includes('4e')) { await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`); await sectionVoice(); }
     if (ONLY.includes('3d')) { await section3dModels(); await sectionCloth(); }
     if (ONLY.includes('8')) await sectionAccess();
+    if (ONLY.includes('rhyme')) await sectionRhyme();
     return { passed, failed, results };
   }
 
@@ -408,6 +423,8 @@ async function run() {
   async function sectionVoice() {
   console.log('\n4e. 问答框的语音输入');
   await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`);
+  if (!await until(page, `!document.getElementById('sendBtn').disabled`, 20000))
+    throw new Error('previous chat response did not finish before the voice-input test');
   const vb = await page.evaluate(`(() => { const b = document.getElementById('micBtn');
     const svg = b && b.querySelector('svg');
     return { present: !!b, label: b ? b.getAttribute('aria-label') : '',
@@ -1246,6 +1263,31 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     await page.evaluate(`window.Dialect.count()`) + ' / ' + dataVids);
   check('方言面板不再自带一套视频检索', await page.evaluate(
     `!document.getElementById('dlQuery') && !document.getElementById('dlSentence')`));
+
+  async function sectionRhyme() {
+    console.log('\n9b2a. 月光光真实音频播放');
+    await page.evaluate(`document.querySelector('[data-panel="viewDialect"]').click()`);
+    const sources = await page.evaluate(`[...document.querySelectorAll('#rhymeAudio source')].map(s=>({src:s.src,type:s.type}))`);
+    for (const source of sources) {
+      const result = await page.evaluate(`fetch(${JSON.stringify(source.src)}).then(async r=>({ok:r.ok,type:r.headers.get('content-type'),size:(await r.arrayBuffer()).byteLength}))`, true);
+      check('童谣文件可下载且为音频：'+source.type, result.ok && /^audio\//.test(result.type) && result.size>100000, JSON.stringify(result));
+    }
+    const played = await page.send('Runtime.evaluate', {
+      expression: `document.getElementById('rhymeAudio').play().then(()=>true).catch(e=>e.name+': '+e.message)`,
+      userGesture: true, awaitPromise: true, returnByValue: true,
+    });
+    check('浏览器解码并开始播放童谣', played.result?.value === true, String(played.result?.value));
+    check('童谣播放进度实际前进', await until(page, `(()=>{const a=document.getElementById('rhymeAudio');return !a.paused&&!a.error&&a.currentTime>0.5&&Number.isFinite(a.duration)&&a.duration>30;})()`, 15000));
+    await page.evaluate(`document.getElementById('rhymeAudio').pause()`);
+    const pausedAt = await page.evaluate(`document.getElementById('rhymeAudio').currentTime`);
+    await sleep(400);
+    check('童谣暂停后进度保持', await page.evaluate(`document.getElementById('rhymeAudio').paused && Math.abs(document.getElementById('rhymeAudio').currentTime-${pausedAt})<0.05`));
+    await page.evaluate(`document.getElementById('rhymeAudio').currentTime=10`);
+    check('童谣可跳转到指定进度', await until(page, `Math.abs(document.getElementById('rhymeAudio').currentTime-10)<0.2`, 5000));
+    await shot(page, 'rhyme-playback');
+    await page.evaluate(`document.getElementById('rhymeAudio').currentTime=0`);
+  }
+  await sectionRhyme();
 
 
   // 深链：直接带 hash 打开，应落到对应视图（分享链接的前提）

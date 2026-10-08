@@ -97,7 +97,7 @@ jobs:
           rm -rf _site && mkdir -p _site/assets
           cp index.html _site/
           cp -r css js _site/
-          cp -r assets/avatar assets/pdf-imgs assets/textures assets/model-references assets/model-textures _site/assets/
+          cp -r assets/avatar assets/pdf-imgs assets/textures assets/model-references assets/model-textures assets/audio _site/assets/
           printf 'window.APP_SECRETS={apiKey:""};' > _site/js/secrets.js
           echo "上线 $(du -sh _site | cut -f1)，$(find _site -type f | wc -l) 个文件；浏览器密钥为空，API 由 Pages Functions 代理。"
 

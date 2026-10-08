@@ -385,16 +385,16 @@ def check_deploy_workflow():
         fail("pages.yml 不得读取或写入 API secret；GitHub Pages 仅通过 main 服务端代理调用")
     # 发布集必须是白名单：pack() 里从源码目录搬的每一项都得是页面真正加载的东西
     allow = {"index.html", "css", "js", "assets/avatar", "assets/pdf-imgs", "assets/textures",
-             "assets/model-references", "assets/model-textures"}
+             "assets/model-references", "assets/model-textures", "assets/audio"}
     moved = set(re.findall(r'"\$src/([A-Za-z0-9_./-]+)"', ptxt))
     for m in sorted(moved - allow):
         fail("pages.yml 把 %s 也搬进了上线目录；白名单只有 %s" % (m, "、".join(sorted(allow))))
     if not moved:
         fail("pages.yml 里找不到 pack() 的 $src/... 搬运语句，白名单守卫失效")
-    required_assets = {"assets/model-references", "assets/model-textures"}
+    required_assets = {"assets/model-references", "assets/model-textures", "assets/audio"}
     for m in sorted(required_assets - moved):
         fail("pages.yml 没有把 %s 搬进上线目录" % m)
-    for asset in ("model-references", "model-textures"):
+    for asset in ("model-references", "model-textures", "audio"):
         copy = re.escape('if [ -d "$src/assets/%s" ]; then cp -r "$src/assets/%s" "$dest/assets/"; fi' % (asset, asset))
         if not re.search(copy, ptxt):
             fail("pages.yml 必须仅在 $src/assets/%s 存在时复制它" % asset)

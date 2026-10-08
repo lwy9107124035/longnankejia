@@ -68,14 +68,13 @@ test('uncertainty stays public; reasoning and nonexistent citations cannot be an
  s.setResponse(undefined);s.setAudit({parts:[{evidence:['99.1']}],gaps:[]});
  assert.equal((await e.ask('竹编怎么做？')).source,'rules');
 });
-test('sources correspond to selected sentences and complete long quotes are retained',async()=>{
+test('selected evidence remains complete without document labels in public answers',async()=>{
  const s=setup(),e=s.api();
  const q='客家蓝染和其他地方蓝染的共同点和区别是什么？',ranked=e._fallback.rank(q);
  s.setAudit({parts:ranked.chunks.slice(0,3).map((chunk,i)=>({evidence:(chunk.text.match(/[^。！？!?]+[。！？!?]?/g)||[]).slice(0,3).map((_,j)=>(i+1)+'.'+(j+1))})),gaps:[]});
  const long=await e.ask(q);assert.ok(long.text.length>300);assert.match(long.text,/蓝底白花/);
- s.setAudit({parts:[{evidence:['1.1']}],gaps:[]});
- const a=await e.ask('门榜有什么文化意义？');assert.equal(a.citationKind,'selected-evidence');assert.ok(a.sources.every(ref=>ref.title.includes('罗勇')));
- assert.match(a.sources[0].title,/PDF/);
+ assert.equal(long.citationKind,'selected-evidence');assert.equal(long.verified,true);
+ assert.equal(long.sources.length,0);assert.doesNotMatch(long.text,/\[资料\d+\]|PDF/);
 });
 test('model-written claims and gap explanations cannot introduce unsupported facts',async()=>{
  const s=setup(),e=s.api();s.setAudit({parts:[{text:'织带需高温染色。',evidence:['1.99']}],gaps:[]});

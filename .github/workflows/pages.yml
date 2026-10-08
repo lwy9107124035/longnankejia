@@ -56,6 +56,7 @@ jobs:
             cp -r "$src/assets/avatar" "$src/assets/pdf-imgs" "$src/assets/textures" "$dest/assets/"
             if [ -d "$src/assets/model-references" ]; then cp -r "$src/assets/model-references" "$dest/assets/"; fi
             if [ -d "$src/assets/model-textures" ]; then cp -r "$src/assets/model-textures" "$dest/assets/"; fi
+            if [ -d "$src/assets/audio" ]; then cp -r "$src/assets/audio" "$dest/assets/"; fi
           }
           rm -rf site
           pack site src-prod

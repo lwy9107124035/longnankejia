@@ -61,6 +61,14 @@
   }
 
   function init() {
+    var rhyme = document.getElementById('rhymeAudio');
+    var rhymeStatus = document.getElementById('rhymeAudioStatus');
+    rhyme.addEventListener('error', function () {
+      rhymeStatus.textContent = '童谣音频未能加载，请检查网络后刷新页面重试。';
+    });
+    rhyme.addEventListener('loadedmetadata', function () {
+      rhymeStatus.textContent = '▶ 点击播放收听童谣，可拖动进度条选择位置。';
+    });
     listEl = document.getElementById('dlTracks');
     frameEl = document.getElementById('dlFrame');
     nowIdx = document.getElementById('dlNowIdx');
