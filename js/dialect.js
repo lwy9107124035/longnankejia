@@ -92,10 +92,7 @@
         });
         activeLine = line;
       }
-      var text = !buffer ? '点击播放，字幕将随录音切换。'
-        : current >= buffer.duration ? '童谣播放结束。'
-        : cue ? (cue.text || lines[cue.line].text) : current < cues[0].start ? '♪ 前奏'
-        : current >= cues[cues.length-1].end ? '♪ 尾声' : '♪ 间奏';
+      var text = (cue && buffer && current < buffer.duration) ? (cue.text || lines[cue.line].text) : '';
       if (subtitle.textContent !== text) subtitle.textContent = text;
     }
     function loadCaptions() {
@@ -124,7 +121,7 @@
         }).catch(function (error) {
           console.error('童谣字幕加载失败', error);
           captionState = 'error';
-          subtitle.textContent = '字幕暂未加载，可继续收听录音。';
+          subtitle.textContent = '';
           lyricList.textContent = '唱词暂未加载，点击播放可重试。';
         });
     }

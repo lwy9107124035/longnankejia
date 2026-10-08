@@ -32,12 +32,31 @@
     });
     return unique(result);
   }
+  function sanitizeTitle(title) {
+    if (!title || typeof title !== 'string') return '';
+    return title
+      .replace(/非遗\.docx/gi, '《龙南客家非遗调查资料》')
+      .replace(/[\w\u4e00-\u9fa5_-]+\.(docx|pdf|txt|doc)\b/gi, function (m) {
+        return m.replace(/\.(docx|pdf|txt|doc)$/i, '');
+      })
+      .replace(/·?用户下载PDF[，、·]?/g, '');
+  }
+  function sanitizeAnswer(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text
+      .replace(/非遗\.docx/gi, '非遗调查资料')
+      .replace(/[\w\u4e00-\u9fa5_-]+\.(docx|pdf|txt|doc)\b/gi, function (m) {
+        return m.replace(/\.(docx|pdf|txt|doc)$/i, '');
+      })
+      .replace(/·?用户下载PDF[，、·]?/g, '');
+  }
   function sourcesOf(entries) {
     var refs = [];
     entries.forEach(function (entry) {
       (entry.sources || []).forEach(function (source) {
-        if (!source.title && !source.url) return;
-        if (!refs.some(function (ref) { return ref.title === source.title && ref.url === (source.url || ''); })) refs.push({ title: source.title || source.url, url: source.url || '' });
+        var title = sanitizeTitle(source.title || source.url);
+        if (!title && !source.url) return;
+        if (!refs.some(function (ref) { return ref.title === title && ref.url === (source.url || ''); })) refs.push({ title: title || source.url, url: source.url || '' });
       });
     }); return refs;
   }
@@ -202,10 +221,10 @@
     } else {
       text = '依据现有资料，可核对的信息如下：\n' + lines.join('\n') + '\n这些是资料节选；' + note;
     }
-    return { text: text, source:'rules',fallback:true,route:'evidence',matched:entries.map(function(e){return e.title;}).join('、'), references:unique(entries.map(function(e){return e.title;})),sources:sourcesOf(entries),reason:reason || 'offline' };
+    return { text: sanitizeAnswer(text), source:'rules',fallback:true,route:'evidence',matched:entries.map(function(e){return e.title;}).join('、'), references:unique(entries.map(function(e){return e.title;})),sources:sourcesOf(entries),reason:reason || 'offline' };
   };
   function overview(ranked) {
-    var entry=ranked.hit.entry; return { text:entry.answer,source:'rules',route:'overview',matched:entry.title,score:ranked.hit.score,sources:sourcesOf([entry]) };
+    var entry=ranked.hit.entry; return { text:sanitizeAnswer(entry.answer),source:'rules',route:'overview',matched:entry.title,score:ranked.hit.score,sources:sourcesOf([entry]) };
   }
   RulesEngine.prototype.ask = function (question) {
     var self=this,conversation=this.converse(question);
@@ -220,7 +239,7 @@
     if(!ranked.chunks.length)return '本轮没有检索到能支持问题的馆内资料。不要用相近话题替代答案。';
     return ranked.chunks.map(function(chunk,index){var refs=sourcesOf([chunk.entry]);
       var sentences=chunk.text.match(/[^。！？!?]+[。！？!?]?/g)||[chunk.text];
-      return '[资料'+(index+1)+'] '+chunk.entry.title+'\n'+sentences.map(function(sentence,n){return '[证据'+(index+1)+'.'+(n+1)+'] '+sentence;}).join('\n')
+      return '[资料'+(index+1)+'] '+chunk.entry.title+'\n'+sentences.map(function(sentence,n){return '[证据'+(index+1)+'.'+(n+1)+'] '+sanitizeAnswer(sentence);}).join('\n')
         +'\n出处：'+(refs.length?refs.map(function(ref){return ref.title;}).join('；'):'项目原型的介绍性资料，未经独立来源核验');
     }).join('\n\n');
   }
@@ -286,7 +305,7 @@
       if(gaps.length)lines.push('现有资料不足以核实“'+unique(gaps).join('”、“')+'”。');
       else if(report.gaps.length)lines.push('现有资料不足以完整回答这项问题。');
       if(!lines.length)return {text:'现有馆内资料没有能直接回答这个问题的证据，暂不能核实。',source:'api',route:'uncovered',sources:[],citationKind:'selected-evidence',verified:true};
-      return {text:lines.join('\n'),source:'api',route:sections.length?'grounded':'uncovered',sources:[],citationKind:'selected-evidence',verified:true};
+      return {text:sanitizeAnswer(lines.join('\n')),source:'api',route:sections.length?'grounded':'uncovered',sources:[],citationKind:'selected-evidence',verified:true};
     });
   };
   ApiEngine.prototype.ask = function (question) {

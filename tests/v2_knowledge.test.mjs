@@ -139,3 +139,16 @@ test('downloaded article is ingested; excluded material and contradictory ages s
  const process=window.KNOWLEDGE_BASE.find(e=>e.id==='indigo-process');assert.match(process.answer,/没有逐道列明/);
  assert.doesNotMatch(window.KNOWLEDGE_BASE.find(e=>e.id==='weave-people').answer,/76岁|78岁/);
 });
+test('knowledge base, answers and sources contain no file extensions or internal doc names',async()=>{
+ const {window}=setup();
+ const text=JSON.stringify(window.KNOWLEDGE_BASE);
+ assert.doesNotMatch(text,/非遗\.docx|\.docx|\.pdf|用户下载PDF/i);
+ const r=new window.AnswerEngine.RulesEngine();
+ for(const q of ['什么是客家织带？','杨村竹编有什么工具？','客家蓝染有什么历史？','冬头帕有哪些组成？','子孙袋的结构是什么？']){
+  const a=await r.ask(q);
+  assert.doesNotMatch(a.text,/非遗\.docx|\.docx|\.pdf|用户下载PDF/i);
+  for(const src of (a.sources||[])){
+   assert.doesNotMatch(src.title,/非遗\.docx|\.docx|\.pdf|用户下载PDF/i);
+  }
+ }
+});
