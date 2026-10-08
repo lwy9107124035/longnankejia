@@ -64,9 +64,11 @@
     var button = document.getElementById('rhymePlay'), seek = document.getElementById('rhymeSeek');
     var time = document.getElementById('rhymeTime'), status = document.getElementById('rhymeAudioStatus');
     var subtitle = document.getElementById('rhymeSubtitle'), captionToggle = document.getElementById('rhymeCaptionToggle');
+    var lyricList = document.getElementById('rhymeLyrics');
     var AudioContext = window.AudioContext || window.webkitAudioContext;
     var context, buffer, source, startedAt = 0, offset = 0, animation = 0;
-    var cues = [], captionState = 'loading';
+    var cues = [], lines = [], lyricRows = [], activeLine = -1, captionState = 'loading';
+    loadCaptions();
     if (!AudioContext) {
       button.disabled = true;
       status.textContent = '当前浏览器不支持童谣播放，请使用新版浏览器。';
@@ -81,29 +83,51 @@
     function showCaption(current) {
       if (captionState !== 'ready') return;
       var cue = cues.find(function (item) { return current >= item.start && current < item.end; });
+      var line = buffer && current < buffer.duration && cue ? cue.line : -1;
+      if (activeLine !== line) {
+        lyricRows.forEach(function (row, index) {
+          row.classList.toggle('is-current', index === line);
+          if (index === line) row.setAttribute('aria-current', 'true');
+          else row.removeAttribute('aria-current');
+        });
+        activeLine = line;
+      }
       var text = !buffer ? '点击播放，字幕将随录音切换。'
         : current >= buffer.duration ? '童谣播放结束。'
-        : cue ? cue.text : current < cues[0].start ? '♪ 前奏'
+        : cue ? lines[cue.line].text : current < cues[0].start ? '♪ 前奏'
         : current >= cues[cues.length-1].end ? '♪ 尾声' : '♪ 间奏';
       if (subtitle.textContent !== text) subtitle.textContent = text;
     }
     function loadCaptions() {
       captionState = 'loading';
-      fetch('assets/audio/yueguangguang-captions.json?v=20261008-no-outro')
+      fetch('assets/audio/yueguangguang-captions.json?v=20261008-unified-lyrics')
         .then(function (response) {
           if (!response.ok) throw new Error('Captions HTTP ' + response.status);
           return response.json();
         }).then(function (data) {
-          cues = data.cues;
+          if (!Array.isArray(data.lines) || !data.lines.length || !Array.isArray(data.cues) || !data.cues.length
+              || data.lines.some(function (line) { return typeof line.text !== 'string' || typeof line.meaning !== 'string'; })
+              || data.cues.some(function (cue) { return !Number.isInteger(cue.line) || !data.lines[cue.line] || !Number.isFinite(cue.start) || !Number.isFinite(cue.end) || cue.end <= cue.start; })) {
+            throw new Error('童谣唱词和时间段不完整');
+          }
+          cues = data.cues; lines = data.lines;
+          lyricList.innerHTML = lines.map(function (line, index) {
+            return '<div class="dl-rhyme-item"><div class="dl-rhyme-item-num">' + String(index+1).padStart(2, '0')
+              + '</div><div class="dl-rhyme-item-content"><div class="dl-rhyme-dialect">' + esc(line.text) + '</div>'
+              + (line.ipa ? '<div class="dl-rhyme-ipa">IPA参考：' + esc(line.ipa) + '</div>' : '')
+              + '<div class="dl-rhyme-mandarin">普通话释义：' + esc(line.meaning) + '</div></div></div>';
+          }).join('');
+          lyricRows = Array.from(lyricList.children);
+          activeLine = -1;
           captionState = 'ready';
           showCaption(position());
         }).catch(function (error) {
           console.error('童谣字幕加载失败', error);
           captionState = 'error';
           subtitle.textContent = '字幕暂未加载，可继续收听录音。';
+          lyricList.textContent = '唱词暂未加载，点击播放可重试。';
         });
     }
-    loadCaptions();
     captionToggle.addEventListener('change', function () {
       subtitle.hidden = !captionToggle.checked;
     });
@@ -185,7 +209,10 @@
       stop();
       offset = next;
       if (wasPlaying && next < buffer.duration) start();
-      else display();
+      else {
+        display();
+        status.textContent = next >= buffer.duration ? '童谣播放结束，点击播放可重新收听。' : '已暂停，点击播放继续收听。';
+      }
     });
   }
 

@@ -42,7 +42,8 @@ test('followups retain real conversation; a new subject clears stale retrieval c
  assert.equal(msgs.length,4);assert.equal(msgs[1].role,'user');assert.match(msgs[1].content,/杨村竹编/);
  assert.equal(msgs.at(-1).content,'那制作步骤呢？');assert.match(msgs[0].content,/起底/);
  await e.ask('潮汕工夫茶怎样冲泡？');assert.doesNotMatch(s.calls[2].body.messages[0].content,/度篾齿|起底/);
- await e.ask('那有哪些器具？');assert.doesNotMatch(s.calls[3].body.messages[0].content,/杨村|度篾齿/);
+ const followup=await e.ask('那有哪些器具？');assert.equal(followup.route,'clarify');
+ assert.doesNotMatch(followup.text,/杨村|度篾齿/);assert.equal(s.calls.length,3);
  assert.ok(e._fallback.history.length<=8);
 });
 test('out-of-domain and shared generic words do not become confident local answers',async()=>{
@@ -52,6 +53,47 @@ test('out-of-domain and shared generic words do not become confident local answe
  const model=r.rank('大襟衫的背面纹样是否有实际照片？');assert.ok(model.chunks.length);assert.ok(model.chunks.every(c=>c.topics.includes('大襟衫')));
  assert.equal(r.route('介绍日本蓝染',r.rank('介绍日本蓝染')),'grounded');
  assert.equal(r.route('什么是福建土楼？',r.rank('什么是福建土楼？')),'uncovered');
+});
+test('social turns and unfinished questions bypass evidence checking in both modes',async()=>{
+ for(const mode of ['rules','api']){
+  const s=setup(),e=s[mode]();s.fail();
+  for(const q of ['嗯。','嗯嗯，好呀。','你好！','你在吗？','谢谢你','明白了','再见']){
+   const answer=await e.ask(q);assert.equal(answer.route,'conversation',q);
+   assert.doesNotMatch(answer.text,/不足|核实|未覆盖|没有覆盖/,q);
+  }
+  for(const q of ['请问','我想问一下','怎么做呢？','继续']){
+   const answer=await e.ask(q);assert.equal(answer.route,'clarify',q);
+   assert.match(answer.text,/补充|名称/,q);assert.doesNotMatch(answer.text,/不足|核实/,q);
+  }
+  for(const q of ['你是','你是谁？','嗯，你是哪个模型？','阿蓝是谁？']){
+   const answer=await e.ask(q);assert.equal(answer.route,'overview',q);assert.match(answer.text,/我是「阿蓝」/,q);
+  }
+  assert.equal(s.calls.length,0,'normal conversation works even if the API is unavailable');
+ }
+});
+test('acknowledgments preserve context while greetings cannot hide factual requests',async()=>{
+ const s=setup(),e=s.api();
+ await e.ask('杨村竹编常用哪些工具？');await e.ask('嗯。');await e.ask('谢谢');
+ await e.ask('怎么做呢？');assert.match(s.calls[1].body.messages[0].content,/起底/);
+ assert.equal(s.calls[1].body.messages.at(-1).content,'怎么做呢？');
+ assert.match(s.calls[1].body.messages.map(m=>m.content).join('\n'),/嗯。/);
+ const about=await e.ask('这个项目是做什么的？');assert.equal(about.route,'overview');assert.match(about.text,/南昌大学/);
+ assert.equal(s.calls.length,2,'project identity does not inherit a craft topic');
+ await e.ask('你好，潮汕工夫茶怎么冲泡？');
+ assert.doesNotMatch(s.calls[2].body.messages[0].content,/起底|度篾齿/);
+ await e.ask('你是谁，蓝染需要99摄氏度吗？');
+ assert.equal(s.calls.length,4);assert.match(s.calls[3].body.messages[0].content,/蓝染/);
+ assert.doesNotMatch(s.calls[3].body.messages[0].content,/我是「阿蓝」/);
+});
+test('a named new topic following 那 does not borrow stale craft evidence',async()=>{
+ const s=setup(),e=s.api();await e.ask('杨村竹编有哪些工具？');
+ await e.ask('那潮汕工夫茶怎么冲泡？');
+ assert.doesNotMatch(s.calls[1].body.messages[0].content,/起底|度篾齿/);
+});
+test('an empty evidence selection is labelled uncovered even when retrieval found candidates',async()=>{
+ const s=setup();s.setAudit({parts:[],gaps:['具体温度']});
+ const answer=await s.api().ask('蓝染的具体温度是多少？');
+ assert.equal(answer.route,'uncovered');assert.match(answer.text,/不足以核实/);
 });
 test('unavailable API gives sourced excerpts and marks partial coverage',async()=>{
  const s=setup(),e=s.api();s.fail();

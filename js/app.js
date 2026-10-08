@@ -18,7 +18,7 @@
    *  竹编的染架"这类套话，按它挂视频等于硬塞。 */
   function attachVideos(bubble, question, answer, result) {
     if (!window.Diancang || !window.Diancang.findRelatedVideos) return;
-    if (result && (result.fallback || result.topics)) return;
+    if (result && (result.fallback || result.topics || result.route === 'conversation' || result.route === 'clarify')) return;
     var items = window.Diancang.findRelatedVideos(question, answer).slice(0, 2);
     if (!items.length) return;
     var wrap = document.createElement('div');
@@ -69,7 +69,11 @@
         var statusEl = document.getElementById('engineStatus');
         if (statusEl) {
           var label = engine.label || engine.name;
-          if (result.source === 'api') {
+          if (result.route === 'conversation') {
+            statusEl.textContent = '回答方式：日常交流';
+          } else if (result.route === 'clarify') {
+            statusEl.textContent = '回答方式：请补充问题';
+          } else if (result.source === 'api') {
             statusEl.textContent = result.route === 'grounded' ? '回答方式：参考资料 · AI整理' : '回答方式：现有资料未覆盖';
           } else if (result.matched) {
             statusEl.textContent = result.fallback ? '回答方式：馆内资料节选' : '回答方式：馆内资料';

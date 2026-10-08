@@ -252,6 +252,7 @@ async function run() {
     if (ONLY.includes('3d')) { await section3dModels(); await sectionCloth(); }
     if (ONLY.includes('8')) await sectionAccess();
     if (ONLY.includes('rhyme')) await sectionRhyme();
+    if (ONLY.includes('dialogue')) await sectionConversation();
     return { passed, failed, results };
   }
 
@@ -419,6 +420,21 @@ async function run() {
   check('馆外问题不误命中',!routing.unknown);
   check('接口失败明确资料缺口',routing.weak.fallback&&routing.weak.route==='uncovered'&&/没有覆盖/.test(routing.weak.text));
   check('缺少证据时不编造相关事实',!/染架|堂屋|蓝染|竹编/.test(routing.weak.text));
+  await sectionConversation();
+
+  async function sectionConversation() {
+    console.log('\n4d2. 日常交流与补充问题的界面分流');
+    await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`);
+    for(const [question,status,expected] of [['嗯。','日常交流','好的'],['请问','请补充问题','补充完整'],['你是','馆内资料','我是「阿蓝」']]){
+      await until(page,`!document.getElementById('sendBtn').disabled`,20000);
+      const count=await page.evaluate(`document.querySelectorAll('.msg-bot').length`);
+      await page.evaluate(`(()=>{const i=document.getElementById('chatInput');i.value=${JSON.stringify(question)};i.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('sendBtn').click();})()`);
+      check('正常回应 '+question,await until(page,`document.querySelectorAll('.msg-bot').length>${count} && !document.getElementById('sendBtn').disabled && [...document.querySelectorAll('.msg-bot .msg-bubble')].pop().textContent.includes(${JSON.stringify(expected)})`,20000));
+      check('回应状态不误报资料未覆盖 '+question,await page.evaluate(`document.getElementById('engineStatus').textContent===${JSON.stringify('回答方式：'+status)} && !/核实|资料不足/.test([...document.querySelectorAll('.msg-bot .msg-bubble')].pop().textContent)`));
+      check('日常交流不附加展品视频 '+question,await page.evaluate(`![...document.querySelectorAll('.msg-bot')].pop().querySelector('.msg-video-chip')`));
+    }
+    await shot(page,'conversation-routing');
+  }
 
   async function sectionVoice() {
   console.log('\n4e. 问答框的语音输入');
@@ -1270,6 +1286,12 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     check('童谣使用页面内控件，不暴露原生音频或下载入口', await page.evaluate(`!!document.getElementById('rhymePlay') && !document.querySelector('.dl-rhyme-card audio, .dl-rhyme-card video, .dl-rhyme-card [download]')`));
     const resource = await page.evaluate(`fetch('assets/audio/yueguangguang.bin').then(async r=>({ok:r.ok,type:r.headers.get('content-type'),size:(await r.arrayBuffer()).byteLength}))`, true);
     check('录音二进制资源完整，未返回HTML或音视频类型', resource.ok && !/html|audio|video/.test(resource.type) && resource.size>100000, JSON.stringify(resource));
+    check('唱词列表从字幕同一数据源加载完整续唱和释义',await until(page,`document.querySelectorAll('#rhymeLyrics .dl-rhyme-item').length===15 && [...document.querySelectorAll('#rhymeLyrics .dl-rhyme-item')].every(row=>row.querySelector('.dl-rhyme-mandarin').textContent.length>8)`));
+    check('页面唱词逐句等于字幕索引，时间段全部有效',await page.evaluate(`fetch('assets/audio/yueguangguang-captions.json').then(r=>r.json()).then(data=>{
+      const rows=[...document.querySelectorAll('#rhymeLyrics .dl-rhyme-dialect')].map(row=>row.textContent);
+      return JSON.stringify(rows)===JSON.stringify(data.lines.map(line=>line.text)) && data.cues.every(cue=>Number.isInteger(cue.line) && rows[cue.line] && cue.start<cue.end && cue.end<=data.duration);
+    })`,true));
+    check('已移除不同唱词版本及不对应的音标',await page.evaluate(`!document.querySelector('.dl-rhyme-version-note') && !/讨妇娘|鲤嫲|种韭菜|一口塘，|长嘅/.test(document.querySelector('.dl-rhyme-card').textContent) && document.querySelectorAll('#rhymeLyrics .dl-rhyme-ipa').length===4`));
     await page.send('Runtime.evaluate', {
       expression: `document.getElementById('rhymePlay').click()`, userGesture:true,
     });
@@ -1285,6 +1307,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
       [58.1,'做个学堂四四方，'],[60.8,'两个姐妹拜月光。'],[64.3,'拜得月光。'],[67.2,'马又走，马又走，'],[71.2,'追的马来天又光。'],[74.5,'天又光。']]){
       await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=${second};s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
       check('拖动至 '+second+' 秒显示该段实际唱词',await until(page,`document.getElementById('rhymeSubtitle').textContent===${JSON.stringify(lyric)}`));
+      check('该段字幕与高亮唱词相同 '+second+' 秒',await page.evaluate(`document.querySelectorAll('#rhymeLyrics [aria-current="true"]').length===1 && document.querySelector('#rhymeLyrics [aria-current="true"] .dl-rhyme-dialect').textContent===document.getElementById('rhymeSubtitle').textContent`));
     }
     await page.evaluate(`document.getElementById('rhymeCaptionToggle').click()`);
     check('字幕可关闭，不改变暂停位置',await page.evaluate(`document.getElementById('rhymeSubtitle').hidden && +document.getElementById('rhymeSeek').value===74.5`));
@@ -1304,6 +1327,10 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
     check('录音结束后播放器回到可重播状态',await until(page,`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='false' && /播放结束/.test(document.getElementById('rhymeAudioStatus').textContent)`,5000));
     check('播放结束清除上一句字幕',await page.evaluate(`document.getElementById('rhymeSubtitle').textContent==='童谣播放结束。'`));
+    check('播放结束清除唱词高亮',await page.evaluate(`!document.querySelector('#rhymeLyrics [aria-current="true"]')`));
+    await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=9.8;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    check('结束后拖回正文恢复暂停提示与对应唱词',await page.evaluate(`document.getElementById('rhymeAudioStatus').textContent.startsWith('已暂停') && document.getElementById('rhymeSubtitle').textContent==='莲塘背，栽韭菜。' && document.querySelector('#rhymeLyrics [aria-current="true"] .dl-rhyme-dialect').textContent==='莲塘背，栽韭菜。'`));
+    await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=s.max;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
     check('结束后重播从头开始',await until(page,`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true' && +document.getElementById('rhymeSeek').value>0 && +document.getElementById('rhymeSeek').value<5`,5000));
     check('重播时字幕恢复前奏',await page.evaluate(`document.getElementById('rhymeSubtitle').textContent==='♪ 前奏'`));

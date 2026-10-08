@@ -2,10 +2,21 @@
 (function () {
   'use strict';
   function norm(text) { return String(text || '').toLowerCase().replace(/[\s？?！!。，,；;：:、"“”‘’（）()《》]/g, ''); }
+  function cleanQuestion(text) {
+    return norm(text).replace(/^(嗯+|你好|您好|哈喽|hello|hi|请问|我想问一下|我想问|想问下|想问|问一下|请教一下|打扰一下|阿蓝(?!是谁))+/, '');
+  }
+  function isIdentity(question) {
+    return /^(你是|你是什么|你是谁|你叫什么|你叫什么名字|介绍一下你自己|介绍下你自己|阿蓝是谁|关于你|你们在做什么|这个项目|这个项目是做什么的|你是什么模型|什么模型|你用的什么模型|你基于什么模型|你是什么ai|你是ai|你能做什么|你会做什么|你是哪个模型|底层模型|什么大模型|什么语言模型)(呢|呀|啊|吗|吧)?$/.test(cleanQuestion(question));
+  }
+  function contextQuery(question) {
+    var q = norm(question).replace(/^(那|那么)/, '').replace(/(呢|呀|啊|吧|吗)+$/, '');
+    return /^(它们|它|这个|这项|两者|上述|刚才|其)/.test(q)
+      || /^(怎么做|如何制作|怎么制作|制作步骤|制作流程|步骤|工序|流程|材料|有哪些材料|原料|用什么做|工具|有哪些工具|有哪些器具|用什么器具|用什么工具|寓意|文化寓意|有什么寓意|有什么特点|有什么意义|有什么用|有什么用途|传承人|谁在传承|哪年入选|是什么级别)$/.test(q);
+  }
   function unique(values) { return Array.from(new Set(values)); }
   var genericWords = /^(介绍|工艺|步骤|材料|工具|纹样|寓意|传承人|非遗|客家|龙南|江西|编织|建筑|比较|婚俗)$/;
   var facets = [
-    {query:/工具|用什么器具/,words:/工具|锯子|篾刀|带尺|度篾齿/},
+    {query:/工具|器具/,words:/工具|锯子|篾刀|带尺|度篾齿/},
     {query:/材料|原料|选材|用什么做/,words:/材料|原料|选材|竹材|丝线|染料/},
     {query:/步骤|工序|流程|怎么做|如何制作/,words:/步骤|工序|流程|加工|成型|架线|下架/},
     {query:/谁|传承人|教学|学艺|年龄|几岁/,words:/传承人|传习|教学|年龄|岁/},
@@ -71,8 +82,32 @@
     }); return unique(subjects);
   };
   RulesEngine.prototype.resolve = function (question) {
-    var subjects = this.subjects(question), followup = /^(那|它|它们|这个|这项|两者|上述|刚才|其)/.test(norm(question));
+    if (isIdentity(question)) return String(question || '');
+    var subjects = this.subjects(question), followup = contextQuery(question);
     return !subjects.length && followup && this.lastTopics.length ? this.lastTopics.join('、')+'：'+question : String(question || '');
+  };
+  RulesEngine.prototype.converse = function (question) {
+    var q = norm(question), text, route = 'conversation';
+    var acknowledgment = q.replace(/嗯+|哦+|噢+|好的|好吧|好哒|好|行|可以|明白了|懂了|知道了|了解了|收到|没问题|ok|谢谢你|谢谢/g, '');
+    // Match the whole social turn: a greeting attached to a factual question still needs evidence.
+    if (/^(你好|您好|哈喽|嗨|hello|hi|早上好|下午好|晚上好|阿蓝|在吗|你在吗)(阿蓝|呢|呀|啊)?$/.test(q)) {
+      text = '你好，我是阿蓝。想了解哪件展品，或哪项客家非遗？';
+    } else if (/^(谢谢|谢谢你|谢谢阿蓝|多谢|感谢|辛苦了|辛苦你了)(啦|了|啊|呀|哦)?$/.test(q)) {
+      text = '不客气，还有想了解的可以继续问我。';
+    } else if (acknowledgment !== q && /^[呢呀啊啦]*$/.test(acknowledgment)) {
+      text = '好的，想继续了解哪一方面，随时问我。';
+    } else if (/^(再见|拜拜|回头见|bye)(啦|了|啊|呀)?$/.test(q)) {
+      text = '再见，欢迎下次再来逛逛。';
+    } else if (/^(继续|接着说|展开讲讲|详细一点|详细点|还有|还有呢)(吧|呢|呀|啊)?$/.test(q)
+        || (!this.lastTopics.length && contextQuery(question))) {
+      route = 'clarify';
+      text = this.lastTopics.length ? '关于'+this.lastTopics.join('、')+'，你还想了解材料、制作工序，还是文化寓意？'
+        : '你想了解哪件展品或哪项工艺？告诉我名称，我就能接着讲。';
+    } else if (!q || /^(请问|我想问|我想问一下|想问|问一下|我想知道|我想了解|介绍一下|介绍|为什么|怎么|如何|你|我|我是|帮我)(呢|呀|啊)?$/.test(q)) {
+      route = 'clarify';
+      text = '我在。你想问什么？可以把问题补充完整。';
+    }
+    return text ? {text:text,source:'rules',route:route,sources:[]} : null;
   };
   RulesEngine.prototype.rank = function (question) {
     var self = this, q = norm(question), queryTerms = tokens(question), subjects = this.subjects(question);
@@ -113,10 +148,7 @@
       var best=eligible.find(function(s){return s.topics.some(function(t){return item.topics.indexOf(t)!==-1;});});
       return best && item.score>=best.score*0.8;
     }
-    var cleanQ = q.replace(/^(嗯|你好|您好|哈喽|hello|hi|请问|我想问|我想问一下|想问|想问下|问一下|请教一下|打扰一下|阿蓝)+/, '');
-    var isIdentity = /^(你是谁|你叫什么|阿蓝是谁|关于你|你们在做什么|这个项目|这个项目是做什么的|你是什么模型|什么模型|你用的什么模型|你基于什么模型|你是什么ai|你是ai|你能做什么|你会做什么|你好|你是哪个模型)$/.test(cleanQ || q)
-      || /(你是谁|阿蓝是谁|你是什么模型|你用的什么模型|你基于什么模型|底层模型|什么大模型|什么语言模型)/.test(q);
-    if (isIdentity) {
+    if (isIdentity(question)) {
       var aboutEntry = this.entries.find(function (e) { return e.id === 'about-project'; });
       if (aboutEntry) {
         return { tokens: queryTerms, scored: [], subjects: ['项目与数字助手'], requestedSubjects: ['项目与数字助手'], chunks: [{ entry: aboutEntry, text: aboutEntry.answer, topics: ['项目与数字助手'], terms: [] }], hit: { entry: aboutEntry, score: 99, eligible: true } };
@@ -128,9 +160,7 @@
   };
   RulesEngine.prototype.route = function (question, ranked) {
     var q = norm(question);
-    var cleanQ = q.replace(/^(嗯|你好|您好|哈喽|hello|hi|请问|我想问|我想问一下|想问|想问下|问一下|请教一下|打扰一下|阿蓝)+/, '');
-    var identity = /^(你是谁|你叫什么|阿蓝是谁|关于你|你们在做什么|这个项目|这个项目是做什么的|你是什么模型|什么模型|你用的什么模型|你基于什么模型|你是什么ai|你是ai|你能做什么|你会做什么|你好|你是哪个模型)$/.test(cleanQ || q)
-      || /(你是谁|阿蓝是谁|你是什么模型|你用的什么模型|你基于什么模型|底层模型|什么大模型|什么语言模型)/.test(q);
+    var identity = isIdentity(question);
     var subjectOnly = q.replace(/^(什么是|何谓|请介绍一下|介绍一下|介绍|讲讲|说说)/,'').replace(/(是什么|吧)$/,'');
     var overview = identity || this.aliases.some(function (a) { return subjectOnly === a.word; });
     var detail = /为什么|如何|怎么|工艺|工序|步骤|流程|材料|工具|寓意|纹样|传承|谁|年龄|几岁|哪年|名录|级别|多少|区别|不同|相同|比较|相比|相似|异同|共同|是不是|是否|吗/.test(q);
@@ -138,7 +168,7 @@
     return ranked.hit && overview && (identity || !detail) && !ambiguous ? 'overview' : (ranked.chunks.length ? 'grounded' : 'uncovered');
   };
   RulesEngine.prototype.remember = function (question, resolved, answer) {
-    this.lastTopics = this.subjects(resolved);
+    if (answer.route !== 'conversation' && answer.route !== 'clarify') this.lastTopics = this.subjects(resolved);
     this.history.push({ role:'user',content:String(question) },{ role:'assistant',content:answer.text }); this.history = this.history.slice(-8);
   };
   function excerpt(text, question) {
@@ -178,7 +208,9 @@
     var entry=ranked.hit.entry; return { text:entry.answer,source:'rules',route:'overview',matched:entry.title,score:ranked.hit.score,sources:sourcesOf([entry]) };
   }
   RulesEngine.prototype.ask = function (question) {
-    var self=this,resolved=this.resolve(question),ranked=this.rank(resolved);
+    var self=this,conversation=this.converse(question);
+    if(conversation){this.remember(question,question,conversation);return delay().then(function(){return conversation;});}
+    var resolved=this.resolve(question),ranked=this.rank(resolved);
     return delay().then(function(){var answer=self.route(resolved,ranked)==='overview'?overview(ranked):self.nearest(ranked,resolved);self.remember(question,resolved,answer);return answer;});
   };
   function ApiEngine() {
@@ -254,11 +286,13 @@
       if(gaps.length)lines.push('现有资料不足以核实“'+unique(gaps).join('”、“')+'”。');
       else if(report.gaps.length)lines.push('现有资料不足以完整回答这项问题。');
       if(!lines.length)return {text:'现有馆内资料没有能直接回答这个问题的证据，暂不能核实。',source:'api',route:'uncovered',sources:[],citationKind:'selected-evidence',verified:true};
-      return {text:lines.join('\n'),source:'api',route:ranked.chunks.length?'grounded':'uncovered',sources:[],citationKind:'selected-evidence',verified:true};
+      return {text:lines.join('\n'),source:'api',route:sections.length?'grounded':'uncovered',sources:[],citationKind:'selected-evidence',verified:true};
     });
   };
   ApiEngine.prototype.ask = function (question) {
-    var self=this,local=this._fallback,resolved=local.resolve(question),ranked=local.rank(resolved),route=local.route(resolved,ranked),response;
+    var self=this,local=this._fallback,conversation=local.converse(question);
+    if(conversation){local.remember(question,question,conversation);return delay().then(function(){return conversation;});}
+    var resolved=local.resolve(question),ranked=local.rank(resolved),route=local.route(resolved,ranked),response;
     if(route==='overview')response=delay().then(function(){return overview(ranked);});
     else if(!(this.cfg.apiKey || this.cfg.proxyUrl))response=delay().then(function(){return local.nearest(ranked,resolved,'unconfigured');});
     else response=this.callApi(String(question || ''),ranked).catch(function(err){console.warn('[answer-engine] 资料整理请求失败：',err.message);return local.nearest(ranked,resolved,err.name==='AbortError'?'timeout':'api-error');});

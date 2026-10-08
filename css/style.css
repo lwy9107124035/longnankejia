@@ -843,7 +843,7 @@ input { font-family: inherit; }
 .dl-rhyme-subtitle-toolbar input { accent-color: var(--primary-deep); }
 .dl-rhyme-subtitle { min-height: 64px; margin: 0; padding: 16px 8px; border-top: 1px solid var(--line); text-align: center; font-size: 20px; font-weight: 700; line-height: 1.6; color: var(--primary-deep); }
 .dl-rhyme-subtitle[hidden] { display: none; }
-.dl-rhyme-version-note { margin: 0 0 10px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.dl-rhyme-note { margin: 0 0 10px; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .dl-rhyme-table-wrap {
   margin-top: 12px;
 }
@@ -881,6 +881,7 @@ input { font-family: inherit; }
   background: var(--primary);
   border-radius: 50%;
 }
+.dl-rhyme-item.is-current { border-color: var(--primary-deep); box-shadow: inset 3px 0 var(--primary-deep); }
 .dl-rhyme-item-content {
   flex: 1;
   min-width: 0;
