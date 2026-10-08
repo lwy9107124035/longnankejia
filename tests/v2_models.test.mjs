@@ -103,7 +103,7 @@ test('shirt collar and bag mouth are open, and hat has visible inside fabric',()
 });
 test('223 hat ornaments have closed thickness, separated silhouettes and an open neck passage',()=>{
  const hat=build('hutoumao');hat.updateMatrixWorld(true);
- assert.equal(hat.userData.referenceIds.join(','),'223');
+ assert.equal(hat.userData.referenceIds.join(','),'223,224');
  const ornament=hat.getObjectByName('223七尊人物金属浮雕'),p=ornament.geometry.attributes.position;
  let relief=0;
  for(let i=0;i<p.count;i+=2)relief=Math.max(relief,p.getZ(i)-p.getZ(i+1));
@@ -120,6 +120,30 @@ test('223 hat ornaments have closed thickness, separated silhouettes and an open
  const drape=hat.getObjectByName('223深红褶皱后披');
  const size=new T.Box3().setFromObject(drape).getSize(new T.Vector3());
  assert.ok(size.z>0.45,'back cloth must wrap around the wearer');
+});
+test('hat brim sewn edge meets the crown and side wall throughout its arc',()=>{
+ const hat=build('hutoumao');hat.updateMatrixWorld(true);
+ const brim=hat.getObjectByName('223向外翻起的红金绣檐').geometry.attributes.position;
+ const cap=[hat.getObjectByName('黑布帽冠'),hat.getObjectByName('连续黑布帽体')];
+ for(let i=0;i<97;i++){
+  const edge=new T.Vector3().fromBufferAttribute(brim,i),direction=new T.Vector3(edge.x,0,edge.z).normalize();
+  const ray=new T.Raycaster(edge.clone().addScaledVector(direction,2),direction.clone().negate());
+  const hit=ray.intersectObjects(cap)[0];
+  assert.ok(hit,`brim has no cap behind its sewn edge at vertex ${i}`);
+  assert.ok(hit.point.distanceTo(edge)<0.006,`floating brim: ${hit.point.distanceTo(edge).toFixed(4)} gap at vertex ${i}`);
+ }
+});
+test('hat neck cloth is shorter and flares outward into a soft scalloped hem',()=>{
+ const cloth=build('hutoumao').getObjectByName('223深红褶皱后披'),p=cloth.geometry.attributes.position;
+ const last=p.count-113;let topWidth=0,hemWidth=0,hemLow=Infinity,hemHigh=-Infinity;
+ for(let i=0;i<113;i++){
+  topWidth=Math.max(topWidth,Math.abs(p.getX(i)));
+  hemWidth=Math.max(hemWidth,Math.abs(p.getX(last+i)));
+  hemLow=Math.min(hemLow,p.getY(last+i));hemHigh=Math.max(hemHigh,p.getY(last+i));
+ }
+ assert.ok(hemWidth/topWidth>1.25,'hem must flare visibly beyond the head opening');
+ assert.ok(p.getY(56)-hemLow<0.95,'neck cloth must not hang as a long rectangle');
+ assert.ok(hemHigh-hemLow>0.08,'hem must have a soft shaped edge');
 });
 test('shirt shoulders form a connected cloth surface and cuffs remain covered',()=>{
  const shirt=build('dajinshan');shirt.updateMatrixWorld(true);

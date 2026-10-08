@@ -148,6 +148,11 @@ try {
         await turnTo(0.42);await shot('desktop-dajinshan-top-oblique');
         await tiltTo(0.15);
       }
+      if(id==='hutoumao'){
+        await turnTo(0);await tiltTo(1.20);await shot('desktop-hutoumao-top');
+        await turnTo(0.55);await shot('desktop-hutoumao-top-oblique');
+        await tiltTo(0.08);await turnTo(0);
+      }
     }
   }
   for(const id of (mapOnly?[]:['weiwu','zhidai','zhiji','boji','dajinshan'])){

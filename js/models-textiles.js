@@ -7,7 +7,7 @@
     huamaoTop: 'assets/model-textures/cloth-huamao-223-brim.jpg',
     huamaoSide: 'assets/model-textures/cloth-huamao-223-side.jpg',
     huamaoSideLeft: 'assets/model-textures/cloth-huamao-223-side-left.jpg',
-    huamaoDrape: 'assets/model-textures/cloth-huamao-223-red.jpg',
+    huamaoDrape: 'assets/model-textures/cloth-huamao-224-red.jpg',
     huamaoMetal: 'assets/model-textures/metal-huamao-223-figures.jpg',
     huamaoRosette: 'assets/model-textures/metal-huamao-223-rosette.jpg',
     zhidaiBand: 'assets/model-textures/cloth-zhidai-band.jpg',
@@ -147,7 +147,7 @@
 
   function buildHutoumao(THREE, textures) {
     var g = new THREE.Group(); g.name = '花帽223·红金绣檐与人物饰件';
-    var black = material(THREE, 0x332d28), red = material(THREE, 0x82201d);
+    var black = material(THREE, 0x332d28);
     var liningMat = material(THREE, 0x30201d, null, 1, THREE.BackSide);
     var crown = addMesh(g, THREE, '黑布帽冠', new THREE.SphereGeometry(0.70, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2), black, [0, 1.32, 0]);
     crown.scale.set(1, 0.20, 0.74);
@@ -170,16 +170,21 @@
 
     function brimPoint(u,v) {
       var a = (u-0.5)*2.85, edge = Math.abs(u*2-1);
-      return [0.85*Math.sin(a)*(1+0.035*(1-v)),
-        1.50-0.30*Math.pow(edge,1.65)-0.115*v+0.08*Math.pow(edge,9)*v,
-        0.53*Math.cos(a)+0.055+0.15*(1-v)+0.012*Math.sin(u*19)*v];
+      var rootY = 1.36-0.24*Math.pow(edge,1.65)+0.035*Math.pow(edge,9);
+      // The sewn edge follows the crown above its equator and the side wall below it.
+      var radius = rootY > 1.32 ? 0.70*Math.sqrt(1-Math.pow((rootY-1.32)/0.14,2))
+        : 0.69+0.01*(rootY-0.40)/0.92;
+      var out = 1-v;
+      return [(radius-0.002+0.17*out)*Math.sin(a),
+        rootY+0.13*(1-0.66*edge)*out+0.025*Math.pow(edge,12)*out,
+        (radius*0.74-0.002+0.18*out)*Math.cos(a)+0.004*Math.sin(u*19)*out];
     }
     var brimMat = material(THREE, 0xffffff, textures.huamaoTop, 1, THREE.DoubleSide);
     addMesh(g, THREE, '223向外翻起的红金绣檐', clothGrid(THREE, 96, 20, function(u,v) {
       var p = brimPoint(u,1-v); return [p[0],p[1],p[2],u,v];
     }), brimMat);
     addMesh(g, THREE, '绣檐红布底衬', clothGrid(THREE, 96, 20, function(u,v) {
-      var p = brimPoint(u,1-v); return [p[0],p[1]+0.012,p[2]-0.008];
+      var p = brimPoint(u,1-v); return [p[0],p[1]+0.006*v,p[2]-0.008*v];
     }), material(THREE,0x681e1c,null,1,THREE.DoubleSide));
     [0,1].forEach(function(v) {
       var points=[]; for(var i=0;i<=96;i++)points.push(brimPoint(i/96,v));
@@ -261,16 +266,17 @@
 
     function drapePoint(u,v) {
       var a=(0.5+u)*Math.PI,fold=(0.027*Math.sin(u*27)+0.015*Math.sin(u*47+v))*Math.pow(v,0.65);
-      var radius=0.69+0.08*v+fold;
-      return [Math.sin(a)*radius,0.415-1.12*v+0.105*Math.pow(Math.abs(u*2-1),4)*v,
-        Math.cos(a)*(0.51+0.02*v+fold)-0.025*v,Math.abs(u*2-1),1-v];
+      var flare=v*v*(3-2*v),radius=0.69+0.23*flare+fold;
+      var scallop=0.025*(1-Math.cos(u*Math.PI*8))*v*v;
+      return [Math.sin(a)*radius,0.415-0.86*v+0.095*Math.pow(Math.abs(u*2-1),4)*v+scallop,
+        Math.cos(a)*(0.51+0.075*flare+fold)-0.025*v,Math.abs(u*2-1),1-v];
     }
     // The drape wraps behind the open head passage. Its two front side edges are
     // visible, but there is no board or fabric plane stretched across the opening.
     var drapeMat=material(THREE,0xffffff,textures.huamaoDrape,1,THREE.DoubleSide);
     addMesh(g,THREE,'223深红褶皱后披',clothGrid(THREE,112,64,drapePoint),drapeMat);
     var hem=[];for(var k=0;k<=112;k++)hem.push(drapePoint(k/112,1));
-    addTube(g,THREE,'后披软布下摆',hem,0.005,0x702523,112);
+    addTube(g,THREE,'后披软布下摆',hem,0.005,0x922b22,112);
     [0,1].forEach(function(u) {
       var edge=[];for(var k=0;k<=40;k++)edge.push(drapePoint(u,k/40));
       addTube(g,THREE,'后披侧缝'+u,edge,0.004,0x84221f,40);
@@ -292,7 +298,7 @@
       charm.rotation.z=sign*0.13;
       addMesh(g,THREE,'坠饰凸纹'+sign,new THREE.TorusGeometry(0.015,0.0025,6,12),brass,[p[0],p[1]-0.022,p[2]+0.016]);
     });
-    return setEvidence(g,[223],'photo-textured');
+    return setEvidence(g,[223,224],'photo-textured');
   }
 
   function buildZhidai(THREE, textures) {

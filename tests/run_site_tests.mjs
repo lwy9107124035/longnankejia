@@ -1274,23 +1274,39 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
       expression: `document.getElementById('rhymePlay').click()`, userGesture:true,
     });
     check('Web Audio解码录音且播放进度实际前进', await until(page, `document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true' && +document.getElementById('rhymeSeek').value>0.5 && +document.getElementById('rhymeSeek').max>30`,15000));
+    check('录音在广告语开始之前结束，保留完整童谣收尾',await page.evaluate(`Math.abs(+document.getElementById('rhymeSeek').max-78.4)<0.05`));
+    check('前奏显示伴奏提示，不提前显示歌词',await until(page,`document.getElementById('rhymeSubtitle').textContent==='♪ 前奏'`));
     await page.evaluate(`document.getElementById('rhymePlay').click()`);
     const pausedAt=await page.evaluate(`+document.getElementById('rhymeSeek').value`);
     await sleep(400);
     check('童谣暂停后进度保持',await page.evaluate(`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='false' && Math.abs(+document.getElementById('rhymeSeek').value-${pausedAt})<0.05`));
+    for(const [second,lyric] of [[4.3,'月光光，秀才郎。'],[6.6,'骑白马，过莲塘。'],[9.8,'莲塘背，栽韭菜。'],
+      [22.2,'短的拿来做学堂。'],[26.8,'月光光，秀才郎。'],[38.0,'结亲家。'],[42.8,'亲家门前一眼塘，'],
+      [58.1,'做个学堂四四方，'],[60.8,'两个姐妹拜月光。'],[64.3,'拜得月光。'],[67.2,'马又走，马又走，'],[71.2,'追的马来天又光。'],[74.5,'天又光。']]){
+      await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=${second};s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+      check('拖动至 '+second+' 秒显示该段实际唱词',await until(page,`document.getElementById('rhymeSubtitle').textContent===${JSON.stringify(lyric)}`));
+    }
+    await page.evaluate(`document.getElementById('rhymeCaptionToggle').click()`);
+    check('字幕可关闭，不改变暂停位置',await page.evaluate(`document.getElementById('rhymeSubtitle').hidden && +document.getElementById('rhymeSeek').value===74.5`));
+    await page.evaluate(`document.getElementById('rhymeCaptionToggle').click()`);
+    check('重新显示字幕保留当前句',await page.evaluate(`!document.getElementById('rhymeSubtitle').hidden && document.getElementById('rhymeSubtitle').textContent==='天又光。'`));
     await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=10;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     check('暂停状态可拖动到指定时间',await until(page,`+document.getElementById('rhymeSeek').value===10 && document.getElementById('rhymeTime').textContent.startsWith('0:10 /')`));
     await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
     check('从指定时间继续播放',await until(page,`+document.getElementById('rhymeSeek').value>10.5 && document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true'`,5000));
+    check('播放跨过歌词间隔自动切换下一句',await until(page,`+document.getElementById('rhymeSeek').value>=11.5 && document.getElementById('rhymeSubtitle').textContent==='韭菜花，结亲家。'`,5000));
     await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=20;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     check('播放中拖动进度仍继续播放',await until(page,`+document.getElementById('rhymeSeek').value>20.5 && document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true'`,5000));
+    check('播放中跳转后字幕同步更新',await page.evaluate(`document.getElementById('rhymeSubtitle').textContent==='长的拿来伴酒食，'`));
     await page.evaluate(`document.getElementById('rhymePlay').click()`);
     await shot(page,'rhyme-playback');
     await page.evaluate(`(()=>{const s=document.getElementById('rhymeSeek');s.value=+s.max-0.25;s.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
     check('录音结束后播放器回到可重播状态',await until(page,`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='false' && /播放结束/.test(document.getElementById('rhymeAudioStatus').textContent)`,5000));
+    check('播放结束清除上一句字幕',await page.evaluate(`document.getElementById('rhymeSubtitle').textContent==='童谣播放结束。'`));
     await page.send('Runtime.evaluate',{expression:`document.getElementById('rhymePlay').click()`,userGesture:true});
     check('结束后重播从头开始',await until(page,`document.getElementById('rhymePlay').getAttribute('aria-pressed')==='true' && +document.getElementById('rhymeSeek').value>0 && +document.getElementById('rhymeSeek').value<5`,5000));
+    check('重播时字幕恢复前奏',await page.evaluate(`document.getElementById('rhymeSubtitle').textContent==='♪ 前奏'`));
     await page.evaluate(`document.getElementById('rhymePlay').click()`);
   }
   await sectionRhyme();

@@ -63,8 +63,10 @@
   function initRhyme() {
     var button = document.getElementById('rhymePlay'), seek = document.getElementById('rhymeSeek');
     var time = document.getElementById('rhymeTime'), status = document.getElementById('rhymeAudioStatus');
+    var subtitle = document.getElementById('rhymeSubtitle'), captionToggle = document.getElementById('rhymeCaptionToggle');
     var AudioContext = window.AudioContext || window.webkitAudioContext;
     var context, buffer, source, startedAt = 0, offset = 0, animation = 0;
+    var cues = [], captionState = 'loading';
     if (!AudioContext) {
       button.disabled = true;
       status.textContent = '当前浏览器不支持童谣播放，请使用新版浏览器。';
@@ -76,6 +78,35 @@
     function position() {
       return source ? Math.min(buffer.duration, offset + context.currentTime - startedAt) : offset;
     }
+    function showCaption(current) {
+      if (captionState !== 'ready') return;
+      var cue = cues.find(function (item) { return current >= item.start && current < item.end; });
+      var text = !buffer ? '点击播放，字幕将随录音切换。'
+        : current >= buffer.duration ? '童谣播放结束。'
+        : cue ? cue.text : current < cues[0].start ? '♪ 前奏'
+        : current >= cues[cues.length-1].end ? '♪ 尾声' : '♪ 间奏';
+      if (subtitle.textContent !== text) subtitle.textContent = text;
+    }
+    function loadCaptions() {
+      captionState = 'loading';
+      fetch('assets/audio/yueguangguang-captions.json?v=20261008-no-outro')
+        .then(function (response) {
+          if (!response.ok) throw new Error('Captions HTTP ' + response.status);
+          return response.json();
+        }).then(function (data) {
+          cues = data.cues;
+          captionState = 'ready';
+          showCaption(position());
+        }).catch(function (error) {
+          console.error('童谣字幕加载失败', error);
+          captionState = 'error';
+          subtitle.textContent = '字幕暂未加载，可继续收听录音。';
+        });
+    }
+    loadCaptions();
+    captionToggle.addEventListener('change', function () {
+      subtitle.hidden = !captionToggle.checked;
+    });
     function display() {
       var current = position();
       seek.value = current;
@@ -84,6 +115,7 @@
       button.textContent = source ? 'Ⅱ 暂停' : '▶ 播放';
       button.setAttribute('aria-label', source ? '暂停童谣' : '播放童谣');
       button.setAttribute('aria-pressed', String(!!source));
+      showCaption(current);
     }
     function tick() {
       display();
@@ -125,6 +157,7 @@
         return;
       }
       button.disabled = true;
+      if (captionState === 'error') loadCaptions();
       status.textContent = buffer ? '准备播放…' : '正在加载童谣录音…';
       try {
         if (!context) context = new AudioContext();
@@ -132,7 +165,7 @@
         if (!buffer) {
           // Decode a binary recording in memory rather than exposing a native media element
           // that download-manager extensions attach their floating controls to.
-          var response = await fetch('assets/audio/yueguangguang.bin');
+          var response = await fetch('assets/audio/yueguangguang.bin?v=20261008-no-outro');
           if (!response.ok) throw new Error('Audio HTTP ' + response.status);
           buffer = await context.decodeAudioData(await response.arrayBuffer());
           seek.max = buffer.duration;

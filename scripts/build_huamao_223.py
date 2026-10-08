@@ -13,6 +13,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "3D模型参考原图/花帽/微信图片_20260928203744_223_964.jpg"
+DRAPE_SOURCE = ROOT / "3D模型参考原图/花帽/微信图片_20260928203744_224_964.jpg"
 OUT = ROOT / "assets/model-textures"
 rgb = np.array(Image.open(SOURCE).convert("RGB"))
 
@@ -56,8 +57,13 @@ Image.fromarray(side).save(OUT / "cloth-huamao-223-side.jpg", quality=94, optimi
 left_quad = np.float32([(247,408),(326,433),(293,745),(244,758)])
 left = cv2.warpPerspective(rgb, cv2.getPerspectiveTransform(left_quad,target), (280,800), flags=cv2.INTER_CUBIC)
 Image.fromarray(left).save(OUT / "cloth-huamao-223-side-left.jpg", quality=94, optimize=True)
-# This red swatch is cloth only: it excludes the wooden display stand.
-Image.fromarray(rgb[760:978, 676:799]).save(OUT / "cloth-huamao-223-red.jpg", quality=94, optimize=True)
+# Correct the museum photograph's exposure before using its red cloth as albedo:
+# keeping the baked-in shadow would darken it a second time under the 3D lights.
+# This patch excludes the wooden stand, embroidery and metal ornaments.
+drape = np.array(Image.open(DRAPE_SOURCE).convert("RGB"))[960:1080, 650:730].astype(np.float32)
+median = np.median(drape, axis=(0, 1))
+drape = np.clip(drape * np.array([151, 38, 30]) / median, 0, 255).astype(np.uint8)
+Image.fromarray(drape).save(OUT / "cloth-huamao-224-red.jpg", quality=94, optimize=True)
 
 metal = rgb[370:588, 300:830]
 Image.fromarray(metal).save(OUT / "metal-huamao-223-figures.jpg", quality=95, optimize=True)
@@ -74,4 +80,4 @@ heightmap = np.where(small_mask, 32 + 170 * np.clip(distance/7,0,1) + 35*gray, 0
 data = {"width":width,"height":height,"heights":base64.b64encode(heightmap.tobytes()).decode("ascii")}
 (ROOT / "js/huamao-223-relief.js").write_text(
     "// Photo 223: traced cast-ornament silhouettes and estimated relief depth.\nwindow.Huamao223Relief = " + json.dumps(data, separators=(",",":")) + ";\n", encoding="utf-8")
-print("223: seven material textures and seven cast silhouettes extracted; no display stand included")
+print("223: embroidery and seven cast silhouettes; 224: exposure-corrected red cloth; no display stand included")
