@@ -1291,7 +1291,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
       const rows=[...document.querySelectorAll('#rhymeLyrics .dl-rhyme-dialect')].map(row=>row.textContent);
       return JSON.stringify(rows)===JSON.stringify(data.lines.map(line=>line.text)) && data.cues.every(cue=>Number.isInteger(cue.line) && rows[cue.line] && cue.start<cue.end && cue.end<=data.duration);
     })`,true));
-    check('唱词严格对照权威文本与全部8句国际音标',await page.evaluate(`/讨妇娘/.test(document.querySelector('.dl-rhyme-card').textContent) && /鲤嫲/.test(document.querySelector('.dl-rhyme-card').textContent) && /种韭菜/.test(document.querySelector('.dl-rhyme-card').textContent) && /一口塘/.test(document.querySelector('.dl-rhyme-card').textContent) && /长嘅/.test(document.querySelector('.dl-rhyme-card').textContent) && document.querySelectorAll('#rhymeLyrics .dl-rhyme-ipa').length===8`));
+    check('唱词对照民间传唱整理与全部8句国际音标',await page.evaluate(`/讨妇娘/.test(document.querySelector('.dl-rhyme-card').textContent) && /鲤嫲/.test(document.querySelector('.dl-rhyme-card').textContent) && /种韭菜/.test(document.querySelector('.dl-rhyme-card').textContent) && /一口塘/.test(document.querySelector('.dl-rhyme-card').textContent) && /长嘅/.test(document.querySelector('.dl-rhyme-card').textContent) && document.querySelectorAll('#rhymeLyrics .dl-rhyme-ipa').length===8`));
     await page.send('Runtime.evaluate', {
       expression: `document.getElementById('rhymePlay').click()`, userGesture:true,
     });
