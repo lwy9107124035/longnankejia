@@ -111,7 +111,7 @@
           lyricList.innerHTML = lines.map(function (line, index) {
             return '<div class="dl-rhyme-item"><div class="dl-rhyme-item-num">' + String(index+1).padStart(2, '0')
               + '</div><div class="dl-rhyme-item-content"><div class="dl-rhyme-dialect">' + esc(line.text) + '</div>'
-              + (line.ipa ? '<div class="dl-rhyme-ipa">IPA参考：' + esc(line.ipa) + '</div>' : '')
+              + (line.ipa ? '<div class="dl-rhyme-ipa"><span class="dl-rhyme-ipa-label">注音：</span><span class="dl-rhyme-ipa-text">' + esc(line.ipa) + '</span></div>' : '')
               + '<div class="dl-rhyme-mandarin">普通话释义：' + esc(line.meaning) + '</div></div></div>';
           }).join('');
           lyricRows = Array.from(lyricList.children);
