@@ -81,6 +81,12 @@
     setTimeout(function () { input.focus(); }, 100);
   }
 
+  function doLogout() {
+    authenticated = false;
+    currentUser = null;
+    showLogin();
+  }
+
   /* ==================== 主工作台面板 ==================== */
   function showMain() {
     var panel = $('#adminPanel');
@@ -95,7 +101,10 @@
       '    <div class="admin-header-title">⚙️ 非遗数智管理工作台</div>' +
       '    ' + userBadge +
       '  </div>' +
-      '  <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
+      '  <div class="admin-header-right">' +
+      '    <button class="admin-btn-logout" id="adminHeaderLogoutBtn" title="退出当前登录状态">🚪 退出登录</button>' +
+      '    <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
+      '  </div>' +
       '</div>' +
       '<div class="admin-tabs">' +
       '  <button class="admin-tab active" data-tab="kb">📚 知识库</button>' +
@@ -109,6 +118,7 @@
       '<div class="admin-body" id="adminBody"></div>';
 
     $('#adminCloseBtn').addEventListener('click', close);
+    $('#adminHeaderLogoutBtn').addEventListener('click', doLogout);
 
     var tabs = panel.querySelectorAll('.admin-tab');
     tabs.forEach(function (t) {
@@ -284,9 +294,9 @@
       };
 
       if (editingId) {
-        window.Store.updateEntry(editingId, data);
+        window.Store.updateEntry(editingId, data, currentUser);
       } else {
-        window.Store.addEntry(data);
+        window.Store.addEntry(data, currentUser);
       }
       form.style.display = 'none';
       editingId = null;
@@ -405,7 +415,7 @@
       if (editingKepuId) {
         window.Store.updateHeritageCard(editingKepuId, data);
       } else {
-        window.Store.addHeritageCard(data);
+        window.Store.addHeritageCard(data, currentUser);
       }
       if (window.Heritage && window.Heritage.render) window.Heritage.render();
       form.style.display = 'none';
@@ -509,7 +519,7 @@
         id: 'dl-' + Date.now(),
         chapter: chapter,
         item: { name: name, page: page, videoUrl: url }
-      });
+      }, currentUser);
       if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
       form.style.display = 'none';
       renderTab();
@@ -567,7 +577,7 @@
           keywords: draft.keywords,
           answer: draft.answer,
           sources: draft.sources
-        });
+        }, currentUser);
       });
       alert('成功批量入库 ' + parsedDrafts.length + ' 条非遗知识！');
       parsedDrafts = [];
@@ -806,10 +816,12 @@
   /* ==================== 6. 邀请令牌权限管理 (仅超级管理员) ==================== */
   function renderToken(body) {
     var tokens = window.Store.getInviteTokens();
+    var auditLogs = window.Store.getAuditLogs();
+
     body.innerHTML =
       '<div class="admin-form-box">' +
-      '  <div class="admin-form-title">🔑 管理员邀请令牌签发与管理</div>' +
-      '  <div class="admin-hint">为龙南文旅、文化馆专员签发专属受邀令牌。凭令牌可登录工作台录入非遗资料，但无权修改主密码或撤销他人令牌。</div>' +
+      '  <div class="admin-form-title">🔑 管理员邀请令牌签发与治理</div>' +
+      '  <div class="admin-hint">为龙南文旅、文化馆专员签发专属受邀令牌。超级管理员可随时监控活跃状态、暂停/恢复授权、彻底销毁，或一键撤销某个令牌录入的所有数据。</div>' +
       '  <div class="admin-form-row" style="margin-top:10px">' +
       '    <div style="flex:2">' +
       '      <label class="admin-label">使用人单位 / 备注 *</label>' +
@@ -828,15 +840,39 @@
       '  <button class="admin-btn admin-btn-primary" id="tokGenBtn" style="margin-top:10px">＋ 签发新邀请令牌</button>' +
       '  <div id="tokNewDisplay" class="admin-token-display" style="display:none"></div>' +
       '</div>' +
-      '<div class="admin-section-subtitle" style="margin-top:16px">已签发的管理员令牌列表 (' + tokens.length + ')</div>' +
-      '<div class="admin-token-list" id="tokenList"></div>';
+      '<div class="admin-section-subtitle" style="margin-top:16px">已签发的管理员令牌与监控列表 (' + tokens.length + ')</div>' +
+      '<div class="admin-token-list" id="tokenList"></div>' +
+      '<div class="admin-audit-box">' +
+      '  <div class="admin-audit-header">' +
+      '    <div class="admin-audit-title">📊 令牌活动与安全审计流水 (' + auditLogs.length + ')</div>' +
+      '    <div style="display:flex;gap:4px">' +
+      '      <button class="admin-btn-sm" id="refreshAuditBtn">🔄 刷新流水</button>' +
+      '      <button class="admin-btn-sm admin-btn-del" id="clearAuditBtn">🧹 清空日志</button>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="admin-audit-list" id="auditList">' +
+      (auditLogs.length ? auditLogs.map(function (log) {
+        var d = new Date(log.time);
+        var timeStr = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+        return '<div class="admin-audit-item">' +
+          '<span class="admin-audit-time">' + timeStr + '</span>' +
+          '<span class="admin-audit-actor" title="' + esc(log.actor) + '">' + esc(log.actor) + '</span>' +
+          '<span class="admin-audit-action">' + esc(log.action) + '</span>' +
+          '<span class="admin-audit-detail">' + esc(log.detail) + '</span>' +
+          '</div>';
+      }).join('') : '<div class="admin-empty-sm">暂无审计流水记录</div>') +
+      '  </div>' +
+      '</div>';
 
     var list = $('#tokenList');
     if (!tokens.length) {
       list.innerHTML = '<div class="admin-empty-sm">暂未签发邀请令牌，请在上方签发</div>';
     } else {
       list.innerHTML = tokens.map(function (t) {
-        var statusCls = t.revoked ? 'revoked' : (t.isExpired ? 'expired' : 'active');
+        var statusCls = t.statusCode;
+        var activeText = t.lastActiveAt ? new Date(t.lastActiveAt).toLocaleString() : '尚未登录';
+        var clientText = t.lastClient || '无记录';
+
         return '<div class="admin-token-card ' + statusCls + '">' +
           '<div class="admin-token-card-top">' +
           '  <span class="admin-token-code">' + esc(t.token) + '</span>' +
@@ -844,10 +880,22 @@
           '</div>' +
           '<div class="admin-token-user">受邀人员：' + esc(t.name) + '</div>' +
           '<div class="admin-token-dates">签发时间：' + new Date(t.createdAt).toLocaleDateString() + ' · 到期：' + (t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : '长期') + '</div>' +
+          '<div class="admin-token-stats-row">' +
+          '  <div class="admin-token-stat-item">📱 登录：<strong>' + t.loginCount + ' 次</strong></div>' +
+          '  <div class="admin-token-stat-item">🕒 活跃：' + activeText + '</div>' +
+          '  <div class="admin-token-stat-item">💻 终端：' + clientText + '</div>' +
+          '  <div class="admin-token-stat-item">📊 录入：<strong>知识 ' + t.kbCount + ' · 科普 ' + t.kepuCount + ' · 方言 ' + t.dialectCount + '</strong></div>' +
+          '</div>' +
           '<div class="admin-token-actions">' +
           '  <button class="admin-btn-sm admin-btn-copy" data-copy-token="' + esc(t.token) + '">📋 复制</button>' +
-          (t.revoked ? '' : '  <button class="admin-btn-sm admin-btn-del" data-revoke-token="' + esc(t.id) + '">撤销授权</button>') +
-          '  <button class="admin-btn-sm admin-btn-del" data-del-token="' + esc(t.id) + '">删除记录</button>' +
+          (t.isPaused
+            ? '  <button class="admin-btn-sm admin-btn-resume" data-resume-token="' + esc(t.id) + '">▶ 恢复授权</button>'
+            : (!t.isRevoked ? '  <button class="admin-btn-sm admin-btn-pause" data-pause-token="' + esc(t.id) + '">⏸ 暂停授权</button>' : '')) +
+          (t.totalContributions > 0
+            ? '  <button class="admin-btn-sm admin-btn-rollback" data-rollback-token="' + esc(t.id) + '" data-name="' + esc(t.name) + '" data-count="' + t.totalContributions + '">↩️ 撤销所做修改 (' + t.totalContributions + ')</button>'
+            : '') +
+          (!t.isRevoked ? '  <button class="admin-btn-sm admin-btn-del" data-revoke-token="' + esc(t.id) + '">🔥 销毁令牌</button>' : '') +
+          '  <button class="admin-btn-sm admin-btn-del" data-del-token="' + esc(t.id) + '">🗑 删除记录</button>' +
           '</div>' +
           '</div>';
       }).join('');
@@ -860,10 +908,44 @@
         });
       });
 
+      list.querySelectorAll('[data-pause-token]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-pause-token');
+          if (confirm('确定暂停该令牌授权？暂停期间对方将暂时无法登录。')) {
+            window.Store.pauseInviteToken(id);
+            renderTab();
+          }
+        });
+      });
+
+      list.querySelectorAll('[data-resume-token]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-resume-token');
+          window.Store.resumeInviteToken(id);
+          renderTab();
+        });
+      });
+
+      list.querySelectorAll('[data-rollback-token]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-rollback-token');
+          var name = btn.getAttribute('data-name');
+          var count = btn.getAttribute('data-count');
+          if (confirm('确定撤销受邀人员「' + name + '」录入的全部修改？\n将清除其录入的全部 ' + count + ' 项数据（知识库、科普卡片、方言语音）。此操作不可撤销。')) {
+            var res = window.Store.rollbackTokenChanges(id);
+            if (window.Heritage && window.Heritage.render) window.Heritage.render();
+            if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+            if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+            alert('已成功撤销该令牌录入的修改，共回滚清除 ' + res.totalRemoved + ' 项数据！');
+            renderTab();
+          }
+        });
+      });
+
       list.querySelectorAll('[data-revoke-token]').forEach(function (btn) {
         btn.addEventListener('click', function () {
           var id = btn.getAttribute('data-revoke-token');
-          if (confirm('确定撤销该管理员令牌？撤销后对方将无法登录。')) {
+          if (confirm('确定销毁该管理员令牌？销毁后对方将永久无法登录。')) {
             window.Store.revokeInviteToken(id);
             renderTab();
           }
@@ -880,6 +962,17 @@
         });
       });
     }
+
+    $('#refreshAuditBtn').addEventListener('click', function () {
+      renderTab();
+    });
+
+    $('#clearAuditBtn').addEventListener('click', function () {
+      if (confirm('确定清空所有操作审计日志？')) {
+        window.Store.clearAuditLogs();
+        renderTab();
+      }
+    });
 
     $('#tokGenBtn').addEventListener('click', function () {
       var name = $('#tokName').value.trim();

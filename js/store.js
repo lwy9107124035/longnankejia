@@ -23,7 +23,8 @@
     kepu_edited:    'nfyj_kepu_edited',
     dialect_custom: 'nfyj_dialect_custom',
     dialect_deleted:'nfyj_dialect_deleted',
-    workflow:       'nfyj_workflow_config'
+    workflow:       'nfyj_workflow_config',
+    audit_logs:     'nfyj_audit_logs'
   };
 
   function read(key, fallback) {
@@ -35,6 +36,32 @@
 
   function write(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }
+
+  /* ---------- 操作审计日志 ---------- */
+
+  function addAuditLog(actor, action, detail) {
+    try {
+      var logs = read(LS.audit_logs, []);
+      var now = Date.now();
+      logs.unshift({
+        id: 'log-' + now + '-' + Math.floor(Math.random() * 1000),
+        time: now,
+        actor: String(actor || '超级管理员'),
+        action: String(action || '操作'),
+        detail: String(detail || '')
+      });
+      if (logs.length > 200) logs = logs.slice(0, 200);
+      write(LS.audit_logs, logs);
+    } catch (e) {}
+  }
+
+  function getAuditLogs() {
+    return read(LS.audit_logs, []);
+  }
+
+  function clearAuditLogs() {
+    write(LS.audit_logs, []);
   }
 
   /* ---------- 权限与邀请令牌体系 ---------- */
@@ -53,11 +80,40 @@
   function getInviteTokens() {
     var list = read(LS.tokens, []);
     var now = Date.now();
+    var customKb = read(LS.custom, []);
+    var customKepu = read(LS.kepu_custom, []);
+    var customDialect = read(LS.dialect_custom, []);
+
     return list.map(function (item) {
       var isExpired = item.expiresAt && item.expiresAt > 0 && now > item.expiresAt;
+      var isRevoked = !!item.revoked;
+      var isPaused = !!item.paused && !isRevoked;
+      var statusCode = isRevoked ? 'revoked' : (isPaused ? 'paused' : (isExpired ? 'expired' : 'active'));
+      var statusText = isRevoked ? '已销毁' : (isPaused ? '已暂停' : (isExpired ? '已过期' : '生效中'));
+
+      var kbCount = customKb.filter(function (e) {
+        return e.creatorTokenId === item.id || e.creatorTokenId === item.token;
+      }).length;
+      var kepuCount = customKepu.filter(function (c) {
+        return c.creatorTokenId === item.id || c.creatorTokenId === item.token;
+      }).length;
+      var dialectCount = customDialect.filter(function (d) {
+        return d.creatorTokenId === item.id || d.creatorTokenId === item.token;
+      }).length;
+
       return Object.assign({}, item, {
         isExpired: isExpired,
-        statusText: item.revoked ? '已撤销' : (isExpired ? '已过期' : '生效中')
+        isPaused: isPaused,
+        isRevoked: isRevoked,
+        statusCode: statusCode,
+        statusText: statusText,
+        loginCount: item.loginCount || 0,
+        lastActiveAt: item.lastActiveAt || 0,
+        lastClient: item.lastClient || '',
+        kbCount: kbCount,
+        kepuCount: kepuCount,
+        dialectCount: dialectCount,
+        totalContributions: kbCount + kepuCount + dialectCount
       });
     });
   }
@@ -79,33 +135,123 @@
       role: 'editor',
       createdAt: now,
       expiresAt: days > 0 ? (now + days * 86400000) : 0,
-      revoked: false
+      revoked: false,
+      paused: false,
+      loginCount: 0,
+      lastActiveAt: 0,
+      lastClient: ''
     };
     var list = read(LS.tokens, []);
     list.unshift(tokenObj);
     write(LS.tokens, list);
+    addAuditLog('超级管理员', '签发令牌', '签发新邀请令牌：' + tokenStr + ' (' + name + ')');
     return tokenObj;
+  }
+
+  function pauseInviteToken(tokenId) {
+    var list = read(LS.tokens, []);
+    var found = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === tokenId || list[i].token === tokenId) {
+        list[i].paused = true;
+        found = list[i];
+        break;
+      }
+    }
+    if (found) {
+      write(LS.tokens, list);
+      addAuditLog('超级管理员', '暂停令牌', '暂停了受邀令牌：' + found.token + ' (' + found.name + ')');
+    }
+    return !!found;
+  }
+
+  function resumeInviteToken(tokenId) {
+    var list = read(LS.tokens, []);
+    var found = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === tokenId || list[i].token === tokenId) {
+        list[i].paused = false;
+        found = list[i];
+        break;
+      }
+    }
+    if (found) {
+      write(LS.tokens, list);
+      addAuditLog('超级管理员', '恢复令牌', '恢复了受邀令牌：' + found.token + ' (' + found.name + ')');
+    }
+    return !!found;
   }
 
   function revokeInviteToken(tokenId) {
     var list = read(LS.tokens, []);
-    var found = false;
+    var found = null;
     for (var i = 0; i < list.length; i++) {
       if (list[i].id === tokenId || list[i].token === tokenId) {
         list[i].revoked = true;
-        found = true;
+        found = list[i];
         break;
       }
     }
-    if (found) write(LS.tokens, list);
-    return found;
+    if (found) {
+      write(LS.tokens, list);
+      addAuditLog('超级管理员', '销毁令牌', '销毁/撤销了受邀令牌：' + found.token + ' (' + found.name + ')');
+    }
+    return !!found;
   }
 
   function deleteInviteToken(tokenId) {
     var list = read(LS.tokens, []);
+    var target = list.find(function (t) { return t.id === tokenId || t.token === tokenId; });
     var filtered = list.filter(function (t) { return t.id !== tokenId && t.token !== tokenId; });
     write(LS.tokens, filtered);
+    if (target) {
+      addAuditLog('超级管理员', '删除令牌', '删除了令牌记录：' + target.token + ' (' + target.name + ')');
+    }
     return filtered.length < list.length;
+  }
+
+  function rollbackTokenChanges(tokenIdOrStr) {
+    var tokens = read(LS.tokens, []);
+    var tokObj = tokens.find(function (t) { return t.id === tokenIdOrStr || t.token === tokenIdOrStr; });
+    var tokId = tokObj ? tokObj.id : tokenIdOrStr;
+    var tokCode = tokObj ? tokObj.token : tokenIdOrStr;
+    var tokName = tokObj ? tokObj.name : '受邀管理员';
+
+    var customKb = read(LS.custom, []);
+    var beforeKb = customKb.length;
+    customKb = customKb.filter(function (e) {
+      return e.creatorTokenId !== tokId && e.creatorTokenId !== tokCode;
+    });
+    var removedKb = beforeKb - customKb.length;
+    write(LS.custom, customKb);
+
+    var customKepu = read(LS.kepu_custom, []);
+    var beforeKepu = customKepu.length;
+    customKepu = customKepu.filter(function (c) {
+      return c.creatorTokenId !== tokId && c.creatorTokenId !== tokCode;
+    });
+    var removedKepu = beforeKepu - customKepu.length;
+    write(LS.kepu_custom, customKepu);
+
+    var customDialect = read(LS.dialect_custom, []);
+    var beforeDialect = customDialect.length;
+    customDialect = customDialect.filter(function (d) {
+      return d.creatorTokenId !== tokId && d.creatorTokenId !== tokCode;
+    });
+    var removedDialect = beforeDialect - customDialect.length;
+    write(LS.dialect_custom, customDialect);
+
+    var totalRemoved = removedKb + removedKepu + removedDialect;
+    addAuditLog('超级管理员', '撤销修改', '回滚撤销了令牌 [' + tokCode + ' · ' + tokName + '] 录入的全部内容，共清除 ' + totalRemoved + ' 项数据');
+    return {
+      ok: true,
+      totalRemoved: totalRemoved,
+      removedKb: removedKb,
+      removedKepu: removedKepu,
+      removedDialect: removedDialect,
+      tokenName: tokName,
+      tokenCode: tokCode
+    };
   }
 
   function verifyLogin(inputStr) {
@@ -115,6 +261,7 @@
     }
     // 1. 匹配超级管理员主密码
     if (str === getAdminPassword()) {
+      addAuditLog('超级管理员', '主密登录', '超级管理员成功登录工作台');
       return {
         ok: true,
         role: 'super_admin',
@@ -129,17 +276,28 @@
       var item = tokens[i];
       if (item.token === str) {
         if (item.revoked) {
-          return { ok: false, error: '此邀请令牌已被撤销，请联系超级管理员' };
+          return { ok: false, error: '此邀请令牌已被销毁或撤销，请联系超级管理员' };
+        }
+        if (item.paused) {
+          return { ok: false, error: '此邀请令牌已被超级管理员临时暂停使用' };
         }
         if (item.expiresAt && item.expiresAt > 0 && now > item.expiresAt) {
           return { ok: false, error: '此邀请令牌已过期，请联系超级管理员重新签发' };
         }
+        // 更新活跃信息
+        item.loginCount = (item.loginCount || 0) + 1;
+        item.lastActiveAt = now;
+        item.lastClient = (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/其它';
+        write(LS.tokens, tokens);
+        addAuditLog(item.name + ' (' + item.token + ')', '令牌登录', '受邀管理员登录工作台');
+
         return {
           ok: true,
           role: 'editor',
           title: '受邀管理员 · ' + item.name,
           name: item.name,
-          tokenId: item.id
+          tokenId: item.id,
+          token: item.token
         };
       }
     }
@@ -161,20 +319,29 @@
     return merged.concat(custom);
   }
 
-  function addEntry(entry) {
+  function addEntry(entry, creatorInfo) {
     var custom = read(LS.custom, []);
     if (!entry.id) entry.id = 'custom-' + Date.now();
+    if (creatorInfo) {
+      entry.creatorName = creatorInfo.name || '受邀管理员';
+      entry.creatorTokenId = creatorInfo.tokenId || creatorInfo.token || '';
+    } else {
+      entry.creatorName = '超级管理员';
+    }
+    entry.createdAt = Date.now();
     custom.push(entry);
     write(LS.custom, custom);
+    addAuditLog(entry.creatorName, '新增知识', '新增知识条目「' + entry.title + '」');
     return entry;
   }
 
-  function updateEntry(id, patch) {
+  function updateEntry(id, patch, creatorInfo) {
     var custom = read(LS.custom, []);
     for (var i = 0; i < custom.length; i++) {
       if (custom[i].id === id) {
         custom[i] = Object.assign({}, custom[i], patch, { id: id });
         write(LS.custom, custom);
+        addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '更新知识', '更新了知识条目「' + custom[i].title + '」');
         return true;
       }
     }
@@ -183,15 +350,17 @@
     if (!base) return false;
     edited[id] = Object.assign({}, base, patch, { id: id });
     write(LS.edited, edited);
+    addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '更新知识', '编辑内置知识条目「' + edited[id].title + '」');
     return true;
   }
 
-  function deleteEntry(id) {
+  function deleteEntry(id, creatorInfo) {
     var custom = read(LS.custom, []);
     var before = custom.length;
     custom = custom.filter(function (e) { return e.id !== id; });
     if (custom.length < before) {
       write(LS.custom, custom);
+      addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除知识', '删除了自定义条目 ID:' + id);
       return true;
     }
     var deleted = read(LS.deleted, []);
@@ -202,6 +371,7 @@
     var edited = read(LS.edited, {});
     delete edited[id];
     write(LS.edited, edited);
+    addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除知识', '删除了内置条目 ID:' + id);
     return true;
   }
 
@@ -255,11 +425,19 @@
     return merged.concat(custom);
   }
 
-  function addHeritageCard(card) {
+  function addHeritageCard(card, creatorInfo) {
     if (!card.id) card.id = 'kepu-' + Date.now();
+    if (creatorInfo) {
+      card.creatorName = creatorInfo.name || '受邀管理员';
+      card.creatorTokenId = creatorInfo.tokenId || creatorInfo.token || '';
+    } else {
+      card.creatorName = '超级管理员';
+    }
+    card.createdAt = Date.now();
     var custom = read(LS.kepu_custom, []);
     custom.push(card);
     write(LS.kepu_custom, custom);
+    addAuditLog(card.creatorName, '新增科普', '新增非遗卡片「' + card.name + '」');
     return card;
   }
 
@@ -278,12 +456,13 @@
     return true;
   }
 
-  function deleteHeritageCard(id) {
+  function deleteHeritageCard(id, creatorInfo) {
     var custom = read(LS.kepu_custom, []);
     var before = custom.length;
     custom = custom.filter(function (c) { return c.id !== id; });
     if (custom.length < before) {
       write(LS.kepu_custom, custom);
+      addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除科普', '删除科普卡片 ID:' + id);
       return true;
     }
     var deleted = read(LS.kepu_deleted, []);
@@ -294,6 +473,7 @@
     var edited = read(LS.kepu_edited, {});
     delete edited[id];
     write(LS.kepu_edited, edited);
+    addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除科普', '删除科普卡片 ID:' + id);
     return true;
   }
 
@@ -303,18 +483,28 @@
     return read(LS.dialect_custom, []);
   }
 
-  function addDialectTrack(track) {
+  function addDialectTrack(track, creatorInfo) {
     if (!track.id) track.id = 'dialect-' + Date.now();
+    if (creatorInfo) {
+      track.creatorName = creatorInfo.name || '受邀管理员';
+      track.creatorTokenId = creatorInfo.tokenId || creatorInfo.token || '';
+    } else {
+      track.creatorName = '超级管理员';
+    }
+    track.createdAt = Date.now();
     var list = read(LS.dialect_custom, []);
     list.push(track);
     write(LS.dialect_custom, list);
+    var trackName = (track.item && track.item.name) || track.name || '';
+    addAuditLog(track.creatorName, '新增方言', '新增客家方言讲解「' + trackName + '」');
     return track;
   }
 
-  function deleteDialectTrack(id) {
+  function deleteDialectTrack(id, creatorInfo) {
     var list = read(LS.dialect_custom, []);
     var filtered = list.filter(function (t) { return (t.id || t.item && t.item.name) !== id; });
     write(LS.dialect_custom, filtered);
+    addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除方言', '删除方言展品语音 ID:' + id);
     return filtered.length < list.length;
   }
 
@@ -417,9 +607,15 @@
     setAdminPassword: setAdminPassword,
     getInviteTokens: getInviteTokens,
     generateInviteToken: generateInviteToken,
+    pauseInviteToken: pauseInviteToken,
+    resumeInviteToken: resumeInviteToken,
     revokeInviteToken: revokeInviteToken,
     deleteInviteToken: deleteInviteToken,
+    rollbackTokenChanges: rollbackTokenChanges,
     verifyLogin: verifyLogin,
+    getAuditLogs: getAuditLogs,
+    clearAuditLogs: clearAuditLogs,
+    addAuditLog: addAuditLog,
 
     // 知识库
     getEntries: getEntries,
