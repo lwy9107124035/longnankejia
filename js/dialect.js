@@ -228,12 +228,21 @@
       listEl.innerHTML = '<li class="dl-empty">讲解数据未能加载，请刷新页面重试</li>';
       return;
     }
-    tracks = window.Diancang.videoExhibits();
+    tracks = (window.Diancang.videoExhibits() || []).slice();
+    var custom = (window.Store && window.Store.getCustomDialectTracks) ? window.Store.getCustomDialectTracks() : [];
+    if (custom.length) tracks = tracks.concat(custom);
     render();
   }
 
   window.Dialect = {
     init: init,
+    refresh: function () {
+      if (!window.Diancang || !window.Diancang.videoExhibits) return;
+      tracks = (window.Diancang.videoExhibits() || []).slice();
+      var custom = (window.Store && window.Store.getCustomDialectTracks) ? window.Store.getCustomDialectTracks() : [];
+      if (custom.length) tracks = tracks.concat(custom);
+      render();
+    },
     select: select,
     count: function () { return tracks.length; },
     tracks: function () { return tracks; }

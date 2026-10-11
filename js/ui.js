@@ -391,29 +391,40 @@
       }
     ];
 
-    function init(onOpen) {
+    var onCardOpen = null;
+
+    function render() {
       var grid = document.getElementById('heritageGrid');
       if (!grid) return;
-      CARDS.forEach(function (card) {
+      grid.innerHTML = '';
+      var cards = (window.Store && window.Store.getHeritageCards) ? window.Store.getHeritageCards(CARDS) : CARDS;
+      cards.forEach(function (card) {
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'h-card';
-        btn.style.setProperty('--card-accent', card.accent);
-        btn.style.setProperty('--card-bg', card.bg);
+        btn.style.setProperty('--card-accent', card.accent || '#2F5D50');
+        btn.style.setProperty('--card-bg', card.bg || '#E4EFEA');
         btn.innerHTML =
-          '<div class="h-icon">' + card.icon + '</div>' +
-          '<div class="h-name">' + card.name + '</div>' +
-          '<div class="h-tag">' + card.tag + '</div>';
+          '<div class="h-icon">' + (card.icon || '🏮') + '</div>' +
+          '<div class="h-name">' + (card.name || '未命名') + '</div>' +
+          '<div class="h-tag">' + (card.tag || '客家非遗') + '</div>';
         btn.addEventListener('click', function () {
-          if (onOpen) onOpen(card);
+          if (onCardOpen) onCardOpen(card);
         });
         grid.appendChild(btn);
       });
     }
 
-    function list() { return CARDS; }
+    function init(onOpen) {
+      if (onOpen) onCardOpen = onOpen;
+      render();
+    }
 
-    return { init: init, list: list };
+    function list() {
+      return (window.Store && window.Store.getHeritageCards) ? window.Store.getHeritageCards(CARDS) : CARDS;
+    }
+
+    return { init: init, render: render, list: list };
   })();
 
   /* ================================================================

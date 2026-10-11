@@ -639,6 +639,60 @@ input { font-family: inherit; }
 .admin-mode-btn { flex: 1; padding: 7px 4px; border-radius: 6px; font-size: 12px; border: 1px solid rgba(47,93,80,0.2); background: var(--paper); color: var(--ink-soft); }
 .admin-mode-btn.active { background: var(--primary); color: #FFF8EE; border-color: var(--primary); font-weight: 600; }
 
+.admin-login-hint { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+.admin-header-left { display: flex; align-items: center; gap: 8px; }
+.admin-role-badge { font-size: 10px; padding: 2px 7px; border-radius: 999px; font-weight: 600; }
+.admin-role-badge.super { background: #FDE8E4; color: #B5432A; }
+.admin-role-badge.guest { background: var(--primary-soft); color: var(--primary); }
+.admin-filter-bar { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 6px; }
+.filter-chip { flex-shrink: 0; font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); color: var(--muted); cursor: pointer; }
+.filter-chip.active { background: var(--primary); color: #FFF8EE; border-color: var(--primary); font-weight: 600; }
+.admin-toolbar-tip { font-size: 11px; color: var(--muted); line-height: 1.4; flex: 1; }
+.admin-form-box { background: var(--card); border: 1.5px solid var(--primary); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 8px; }
+.admin-form-row { display: flex; gap: 8px; }
+.admin-kb-item-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+.admin-kb-item-meta { font-size: 10px; color: var(--muted); }
+.admin-btn-test { color: var(--primary); border-color: rgba(47,93,80,0.3); }
+.admin-btn-copy { color: var(--primary); }
+.admin-range { width: 100%; accent-color: var(--primary); }
+.admin-kepu-grid { display: flex; flex-direction: column; gap: 6px; }
+.admin-kepu-card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.admin-kepu-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; }
+.admin-kepu-tag { font-size: 10px; color: var(--muted); margin: 3px 0 6px; }
+.admin-kepu-actions { display: flex; gap: 6px; }
+.admin-dialect-list { display: flex; flex-direction: column; gap: 4px; }
+.admin-dialect-item { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
+.admin-dialect-item.muted { opacity: 0.7; }
+.admin-dialect-item-title { font-weight: 600; color: var(--ink); }
+.admin-dialect-item-url { font-size: 10px; color: var(--muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-import-panel { background: var(--card); border-radius: 8px; padding: 10px; }
+.admin-dropzone { border: 2px dashed rgba(47,93,80,0.3); border-radius: 8px; padding: 24px 12px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--paper); }
+.admin-dropzone:hover, .admin-dropzone.hover { border-color: var(--primary); background: var(--primary-faint); }
+.admin-dropzone-icon { font-size: 28px; margin-bottom: 4px; }
+.admin-dropzone-text { font-size: 13px; font-weight: 600; color: var(--primary-deep); }
+.admin-dropzone-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.admin-drafts-header { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 8px; }
+.admin-drafts-title { font-size: 12px; font-weight: 700; color: var(--primary-deep); }
+.admin-draft-card { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
+.admin-draft-head { display: flex; gap: 6px; margin-bottom: 4px; }
+.admin-token-card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+.admin-token-card.active { border-left: 4px solid var(--primary); }
+.admin-token-card.revoked, .admin-token-card.expired { border-left: 4px solid #B5432A; opacity: 0.75; }
+.admin-token-card-top { display: flex; justify-content: space-between; align-items: center; }
+.admin-token-code { font-family: monospace; font-size: 13px; font-weight: 700; color: var(--primary-deep); letter-spacing: 1px; }
+.admin-token-badge { font-size: 9px; padding: 1px 6px; border-radius: 999px; font-weight: 600; }
+.admin-token-badge.active { background: var(--primary-soft); color: var(--primary); }
+.admin-token-badge.revoked, .admin-token-badge.expired { background: #FDE8E4; color: #B5432A; }
+.admin-token-user { font-size: 11px; font-weight: 600; margin: 3px 0 1px; }
+.admin-token-dates { font-size: 10px; color: var(--muted); }
+.admin-token-actions { display: flex; gap: 4px; margin-top: 6px; }
+.admin-token-display { background: var(--primary-faint); border: 1px solid var(--primary); border-radius: 6px; padding: 10px; margin-top: 10px; }
+.admin-token-success-title { font-size: 11px; font-weight: 700; color: var(--primary-deep); margin-bottom: 6px; }
+.admin-token-key-row { display: flex; gap: 6px; }
+.token-highlight { font-family: monospace; font-weight: 700; letter-spacing: 1px; font-size: 13px; color: var(--primary-deep); }
+.admin-section-subtitle { font-size: 11px; font-weight: 700; color: var(--ink-soft); margin-bottom: 6px; }
+.admin-empty-sm { font-size: 11px; color: var(--muted); text-align: center; padding: 12px 0; }
+
 /* ---------- Typing ---------- */
 .typing-cursor { display: inline-block; width: 2px; height: 0.9em; background: var(--primary); margin-left: 1px; vertical-align: -1px; animation: blink 0.7s step-end infinite; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }

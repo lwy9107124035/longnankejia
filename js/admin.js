@@ -1,41 +1,41 @@
 /**
- * 管理员界面 —— 知识库管理 + API 配置
+ * 龙南客家非遗数智管理工作台 (Admin Console Pro)
  * ------------------------------------------------------------
- * 从用户页面底部入口进入，密码登录后可：
- *   - 增删改查知识库条目
- *   - 切换 AI 引擎模式 / 修改模型参数
- *   - 导入导出知识库 JSON
- *   - 修改管理员密码 / 重置数据
- *
- * 所有修改存 localStorage，不影响源码文件。
+ * 1. 邀请制权限与令牌鉴权体系 (超级管理员主口令 + 专属邀请令牌)
+ * 2. 知识库可视化管理 (分类筛选、搜索、卡片编辑、实时提问测试)
+ * 3. 科普模块动态管理 (科普卡片增删改、前台即时联动渲染)
+ * 4. 方言模块动态管理 (方言语音与讲解视频增删改)
+ * 5. 多格式文档智能解析入库 (支持 .txt, .md, .json, .docx 批量提取)
+ * 6. AI 模型与人设工作流编排 (底座模型、System Prompt、检索严格度)
+ * 7. 全站数智资产包一键打包导出与恢复
  */
 (function () {
   'use strict';
 
   var authenticated = false;
+  var currentUser = null; // { role: 'super_admin' | 'editor', name: string, title: string }
   var currentTab = 'kb';
-  var editingId = null; // 正在编辑的条目 id，null = 新增
+  var editingId = null;
+  var editingKepuId = null;
+  var editingDialectId = null;
+  var parsedDrafts = []; // 文档解析出的待入库草稿列表
 
-  /* ---------- DOM 工具 ---------- */
   function $(sel) { return document.querySelector(sel); }
-  function el(tag, cls, html) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
   function esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
   }
 
-  /* ---------- 登录 ---------- */
+  /* ==================== 登录模块 (支持邀请制令牌) ==================== */
   function showLogin() {
     var panel = $('#adminPanel');
     panel.innerHTML =
       '<div class="admin-login">' +
       '  <div class="admin-login-icon">🔐</div>' +
-      '  <div class="admin-login-title">管理员登录</div>' +
-      '  <input type="password" id="adminPwInput" placeholder="请输入管理员密码" autocomplete="off">' +
+      '  <div class="admin-login-title">数智管理工作台</div>' +
+      '  <div class="admin-login-hint">支持超级管理员主口令或受邀专属令牌登录</div>' +
+      '  <input type="password" id="adminPwInput" placeholder="请输入密码或邀请令牌" autocomplete="off">' +
       '  <div class="admin-login-error" id="adminPwError"></div>' +
       '  <button class="admin-login-btn" id="adminLoginBtn">登 录</button>' +
       '  <button class="admin-login-cancel" id="adminCancelBtn">返回用户页面</button>' +
@@ -55,18 +55,20 @@
         err.textContent = '尝试次数过多，请 ' + remainSec + ' 秒后再试';
         return;
       }
-      var pw = input.value;
-      if (pw === window.Store.getAdminPassword()) {
+      var pw = input.value.trim();
+      var authResult = window.Store.verifyLogin(pw);
+      if (authResult.ok) {
         failedAttempts = 0;
         authenticated = true;
+        currentUser = authResult;
         showMain();
       } else {
         failedAttempts++;
         if (failedAttempts >= 5) {
           lockUntil = Date.now() + 30000;
-          err.textContent = '错误次数超限，系统已临时锁定 30 秒';
+          err.textContent = '密码错误过多，系统已临时锁定 30 秒';
         } else {
-          err.textContent = '密码错误，请重试（还剩 ' + (5 - failedAttempts) + ' 次机会）';
+          err.textContent = '密码错误或邀请令牌无效，请重试（还剩 ' + (5 - failedAttempts) + ' 次机会）';
         }
         input.value = '';
         input.focus();
@@ -79,18 +81,30 @@
     setTimeout(function () { input.focus(); }, 100);
   }
 
-  /* ---------- 主面板 ---------- */
+  /* ==================== 主工作台面板 ==================== */
   function showMain() {
     var panel = $('#adminPanel');
+    var isSuper = currentUser && currentUser.role === 'super_admin';
+    var userBadge = isSuper
+      ? '<span class="admin-role-badge super">👑 超级管理员</span>'
+      : '<span class="admin-role-badge guest">👤 受邀：' + esc(currentUser.name) + '</span>';
+
     panel.innerHTML =
       '<div class="admin-header">' +
-      '  <div class="admin-header-title">⚙️ 管理员控制台</div>' +
+      '  <div class="admin-header-left">' +
+      '    <div class="admin-header-title">⚙️ 非遗数智管理工作台</div>' +
+      '    ' + userBadge +
+      '  </div>' +
       '  <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
       '</div>' +
       '<div class="admin-tabs">' +
       '  <button class="admin-tab active" data-tab="kb">📚 知识库</button>' +
-      '  <button class="admin-tab" data-tab="api">🤖 AI 设置</button>' +
-      '  <button class="admin-tab" data-tab="sys">🛠 系统</button>' +
+      '  <button class="admin-tab" data-tab="kepu">🏮 科普管理</button>' +
+      '  <button class="admin-tab" data-tab="dialect">🗣 方言管理</button>' +
+      '  <button class="admin-tab" data-tab="import">📂 文档导入</button>' +
+      '  <button class="admin-tab" data-tab="ai">🤖 AI工作流</button>' +
+      (isSuper ? '  <button class="admin-tab" data-tab="token">🔑 邀请令牌</button>' : '') +
+      '  <button class="admin-tab" data-tab="sys">🛠 系统备份</button>' +
       '</div>' +
       '<div class="admin-body" id="adminBody"></div>';
 
@@ -113,32 +127,64 @@
     var body = $('#adminBody');
     if (!body) return;
     if (currentTab === 'kb') renderKB(body);
-    else if (currentTab === 'api') renderAPI(body);
+    else if (currentTab === 'kepu') renderKepu(body);
+    else if (currentTab === 'dialect') renderDialect(body);
+    else if (currentTab === 'import') renderImport(body);
+    else if (currentTab === 'ai') renderAI(body);
+    else if (currentTab === 'token') renderToken(body);
     else if (currentTab === 'sys') renderSys(body);
   }
 
-  /* ==================== 知识库 Tab ==================== */
+  /* ==================== 1. 知识库可视化管理 ==================== */
   function renderKB(body) {
     var entries = window.Store.getEntries();
     body.innerHTML =
       '<div class="admin-kb-toolbar">' +
-      '  <input type="text" id="kbSearch" placeholder="搜索条目…" class="admin-search">' +
+      '  <input type="text" id="kbSearch" placeholder="搜索条目标题、关键词或正文…" class="admin-search">' +
       '  <button class="admin-btn admin-btn-primary" id="kbAddBtn">＋ 新增条目</button>' +
       '</div>' +
-      '<div class="admin-kb-stats">共 ' + entries.length + ' 条知识</div>' +
+      '<div class="admin-filter-bar" id="kbFilterBar">' +
+      '  <button class="filter-chip active" data-cat="all">全部 (' + entries.length + ')</button>' +
+      '  <button class="filter-chip" data-cat="craft">手艺工艺</button>' +
+      '  <button class="filter-chip" data-cat="arch">围屋建筑</button>' +
+      '  <button class="filter-chip" data-cat="custom">民俗礼俗</button>' +
+      '  <button class="filter-chip" data-cat="food">传统风味</button>' +
+      '  <button class="filter-chip" data-cat="dialect">方言童谣</button>' +
+      '</div>' +
       '<div class="admin-kb-form" id="kbForm" style="display:none"></div>' +
       '<div class="admin-kb-list" id="kbList"></div>';
 
     renderKBList(entries);
 
-    $('#kbSearch').addEventListener('input', function () {
-      var q = this.value.toLowerCase();
+    var curFilter = 'all';
+    function doFilter() {
+      var q = ($('#kbSearch').value || '').toLowerCase().trim();
       var filtered = entries.filter(function (e) {
-        return e.title.toLowerCase().indexOf(q) !== -1 ||
-               e.keywords.join(' ').toLowerCase().indexOf(q) !== -1 ||
-               e.answer.toLowerCase().indexOf(q) !== -1;
+        var matchQ = !q || e.title.toLowerCase().indexOf(q) !== -1 ||
+                     e.keywords.join(' ').toLowerCase().indexOf(q) !== -1 ||
+                     e.answer.toLowerCase().indexOf(q) !== -1;
+        if (!matchQ) return false;
+        if (curFilter === 'all') return true;
+        var text = (e.title + ' ' + (e.topics || []).join(' ') + ' ' + e.keywords.join(' ')).toLowerCase();
+        if (curFilter === 'craft') return text.indexOf('染') !== -1 || text.indexOf('编') !== -1 || text.indexOf('织') !== -1 || text.indexOf('漆') !== -1;
+        if (curFilter === 'arch') return text.indexOf('围') !== -1 || text.indexOf('屋') !== -1 || text.indexOf('塔') !== -1;
+        if (curFilter === 'custom') return text.indexOf('俗') !== -1 || text.indexOf('寿') !== -1 || text.indexOf('节') !== -1 || text.indexOf('灯') !== -1 || text.indexOf('会') !== -1;
+        if (curFilter === 'food') return text.indexOf('豆腐') !== -1 || text.indexOf('米果') !== -1 || text.indexOf('茶') !== -1 || text.indexOf('食') !== -1 || text.indexOf('珍珠') !== -1;
+        if (curFilter === 'dialect') return text.indexOf('话') !== -1 || text.indexOf('歌') !== -1 || text.indexOf('谣') !== -1 || text.indexOf('音') !== -1;
+        return true;
       });
       renderKBList(filtered);
+    }
+
+    $('#kbSearch').addEventListener('input', doFilter);
+
+    $('#kbFilterBar').querySelectorAll('.filter-chip').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        $('#kbFilterBar').querySelectorAll('.filter-chip').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        curFilter = btn.getAttribute('data-cat');
+        doFilter();
+      });
     });
 
     $('#kbAddBtn').addEventListener('click', function () {
@@ -157,17 +203,22 @@
       var isCustom = e.id && e.id.indexOf('custom-') === 0;
       var badge = isCustom ? '<span class="admin-badge admin-badge-custom">自定义</span>' :
                   '<span class="admin-badge admin-badge-default">内置</span>';
+      var sourceText = (e.sources && e.sources.length) ? ' · 📖 ' + esc(e.sources[0].title) : '';
       return '<div class="admin-kb-item" data-id="' + esc(e.id) + '">' +
         '<div class="admin-kb-item-head">' +
         '  <span class="admin-kb-item-title">' + esc(e.title) + '</span>' + badge +
         '</div>' +
         '<div class="admin-kb-item-keywords">' + esc(e.keywords.join(' / ')) + '</div>' +
-        '<div class="admin-kb-item-preview">' + esc(e.answer.slice(0, 80)) + (e.answer.length > 80 ? '…' : '') + '</div>' +
-        '<div class="admin-kb-item-actions">' +
-        '  <button class="admin-btn-sm admin-btn-edit" data-action="edit">编辑</button>' +
-        '  <button class="admin-btn-sm admin-btn-del" data-action="delete">删除</button>' +
+        '<div class="admin-kb-item-preview">' + esc(e.answer.slice(0, 95)) + (e.answer.length > 95 ? '…' : '') + '</div>' +
+        '<div class="admin-kb-item-footer">' +
+        '  <span class="admin-kb-item-meta">' + e.answer.length + ' 字' + sourceText + '</span>' +
+        '  <div class="admin-kb-item-actions">' +
+        '    <button class="admin-btn-sm admin-btn-test" data-action="test">测试提问</button>' +
+        '    <button class="admin-btn-sm admin-btn-edit" data-action="edit">编辑</button>' +
+        '    <button class="admin-btn-sm admin-btn-del" data-action="delete">删除</button>' +
+        '  </div>' +
         '</div>' +
-      '</div>';
+        '</div>';
     }).join('');
 
     list.querySelectorAll('.admin-kb-item').forEach(function (item) {
@@ -176,6 +227,15 @@
         var entry = window.Store.getEntries().find(function (e) { return e.id === id; });
         editingId = id;
         showKBForm(entry);
+      });
+      item.querySelector('[data-action="test"]').addEventListener('click', function () {
+        var entry = window.Store.getEntries().find(function (e) { return e.id === id; });
+        if (entry && window.AnswerEngine) {
+          var testQ = entry.title;
+          window.AnswerEngine.ask(testQ).then(function (res) {
+            alert('【阿蓝针对「' + testQ + '」的回答效果】\n\n' + (res.answer || res.text || '暂无命中') + '\n\n来源：' + (res.source || '本地资料库'));
+          });
+        }
       });
       item.querySelector('[data-action="delete"]').addEventListener('click', function () {
         if (confirm('确定删除「' + item.querySelector('.admin-kb-item-title').textContent + '」？')) {
@@ -189,172 +249,743 @@
   function showKBForm(entry) {
     var form = $('#kbForm');
     form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var sourcesTitle = (entry && entry.sources && entry.sources[0]) ? entry.sources[0].title : '';
+
     form.innerHTML =
-      '<div class="admin-form-title">' + (entry ? '编辑条目' : '新增条目') + '</div>' +
-      '<label class="admin-label">标题</label>' +
-      '<input type="text" id="kbTitle" class="admin-input" value="' + esc(entry ? entry.title : '') + '" placeholder="例如：客家蓝染">' +
-      '<label class="admin-label">关键词（逗号分隔）</label>' +
-      '<input type="text" id="kbKeywords" class="admin-input" value="' + esc(entry ? entry.keywords.join(', ') : '') + '" placeholder="蓝染, 染布, 靛蓝">' +
-      '<label class="admin-label">回答内容</label>' +
-      '<textarea id="kbAnswer" class="admin-textarea" rows="5" placeholder="阿蓝的回答内容…">' + esc(entry ? entry.answer : '') + '</textarea>' +
-      '<div class="admin-form-actions">' +
-      '  <button class="admin-btn admin-btn-primary" id="kbSaveBtn">保存</button>' +
-      '  <button class="admin-btn" id="kbCancelBtn">取消</button>' +
+      '<div class="admin-form-box">' +
+      '  <div class="admin-form-title">' + (entry ? '编辑条目' : '新增条目') + '</div>' +
+      '  <label class="admin-label">条目标题 *</label>' +
+      '  <input type="text" id="kbTitle" class="admin-input" value="' + esc(entry ? entry.title : '') + '" placeholder="例如：客家蓝染">' +
+      '  <label class="admin-label">触发关键词（逗号或空格分隔） *</label>' +
+      '  <input type="text" id="kbKeywords" class="admin-input" value="' + esc(entry ? entry.keywords.join(', ') : '') + '" placeholder="蓝染, 染布, 靛蓝, 植物染">' +
+      '  <label class="admin-label">文献出处 / 参考资料</label>' +
+      '  <input type="text" id="kbSourceTitle" class="admin-input" value="' + esc(sourcesTitle) + '" placeholder="例如：《赣南客家蓝染技艺》田野调查记录">' +
+      '  <label class="admin-label">阿蓝回答正文内容 *</label>' +
+      '  <textarea id="kbAnswer" class="admin-textarea" rows="6" placeholder="阿蓝对该知识的权威回答内容…">' + esc(entry ? entry.answer : '') + '</textarea>' +
+      '  <div class="admin-form-actions">' +
+      '    <button class="admin-btn admin-btn-primary" id="kbSaveBtn">保 存</button>' +
+      '    <button class="admin-btn" id="kbCancelBtn">取 消</button>' +
+      '  </div>' +
       '</div>';
 
     $('#kbSaveBtn').addEventListener('click', function () {
       var title = $('#kbTitle').value.trim();
-      var keywords = $('#kbKeywords').value.split(/[,，]/).map(function (s) { return s.trim(); }).filter(Boolean);
+      var keywords = $('#kbKeywords').value.split(/[,，\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
       var answer = $('#kbAnswer').value.trim();
-      if (!title || !answer) { alert('标题和回答内容不能为空'); return; }
-      var data = { title: title, keywords: keywords, answer: answer };
+      var sourceTitle = $('#kbSourceTitle').value.trim();
+      if (!title || !answer) { alert('条目标题和回答内容不能为空'); return; }
+
+      var data = {
+        title: title,
+        keywords: keywords.length ? keywords : [title],
+        answer: answer,
+        sources: sourceTitle ? [{ title: sourceTitle }] : []
+      };
+
       if (editingId) {
         window.Store.updateEntry(editingId, data);
       } else {
         window.Store.addEntry(data);
       }
+      form.style.display = 'none';
+      editingId = null;
       renderTab();
     });
+
     $('#kbCancelBtn').addEventListener('click', function () {
       form.style.display = 'none';
       editingId = null;
     });
-
-    form.scrollIntoView({ behavior: 'smooth' });
-    $('#kbTitle').focus();
   }
 
-  /* ==================== API Tab ==================== */
-  function renderAPI(body) {
-    var ai = window.Store.getEffectiveAi();
-    var mode = ai.mode || 'rules';
-    var api = ai.api || {};
-    var hasKey = !!(window.APP_SECRETS && window.APP_SECRETS.apiKey);
-    var hasProxy = !!api.proxyUrl;
-
+  /* ==================== 2. 科普模块动态管理 ==================== */
+  function renderKepu(body) {
+    var cards = window.Store.getHeritageCards(window.Heritage ? window.Heritage.list() : []);
     body.innerHTML =
-      '<div class="admin-api-section">' +
-      '  <div class="admin-form-title">引擎模式</div>' +
-      '  <div class="admin-mode-toggle">' +
-      '    <button class="admin-mode-btn ' + (mode === 'rules' ? 'active' : '') + '" data-mode="rules">📚 本地知识库</button>' +
-      '    <button class="admin-mode-btn ' + (mode === 'api' ? 'active' : '') + '" data-mode="api">🤖 AI 大模型</button>' +
-      '  </div>' +
-      '  <div class="admin-hint">' +
-      (hasKey
-        ? '✅ 本地直连 API Key 已配置（来自 secrets.js）'
-        : hasProxy
-          ? '✅ 已配置服务端 API 代理（密钥保存在服务器，不会下发到浏览器）'
-          : '⚠️ API 代理未配置，切换到 API 模式会自动回退到本地知识库') +
+      '<div class="admin-kb-toolbar">' +
+      '  <div class="admin-toolbar-tip">前台【🏮 科普】面板内容，在此增删改前台即时联动渲染</div>' +
+      '  <button class="admin-btn admin-btn-primary" id="kepuAddBtn">＋ 新增科普卡片</button>' +
       '</div>' +
-      '</div>' +
+      '<div class="admin-kb-form" id="kepuForm" style="display:none"></div>' +
+      '<div class="admin-kepu-grid" id="kepuList"></div>';
 
-      '<div class="admin-api-section">' +
-      '  <div class="admin-form-title">模型参数</div>' +
-      '  <label class="admin-label">模型名称</label>' +
-      '  <input type="text" id="apiModel" class="admin-input" value="' + esc(api.model || '') + '">' +
-      '  <div class="admin-hint">默认：Qwen/Qwen3-30B-A3B-Instruct-2507；也支持 DeepSeek-V3.2 与 Qwen2.5-7B-Instruct。</div>' +
-      '  <div class="admin-row">' +
-      '    <div class="admin-col">' +
-      '      <label class="admin-label">Temperature（0–2）</label>' +
-      '      <input type="number" id="apiTemp" class="admin-input" value="' + (api.temperature == null ? 0.2 : api.temperature) + '" min="0" max="2" step="0.1">' +
+    var list = $('#kepuList');
+    list.innerHTML = cards.map(function (c) {
+      return '<div class="admin-kepu-card" style="border-left: 4px solid ' + (c.accent || '#2F5D50') + '">' +
+        '<div class="admin-kepu-head">' +
+        '  <span class="admin-kepu-icon">' + (c.icon || '🏮') + '</span>' +
+        '  <span class="admin-kepu-name">' + esc(c.name) + '</span>' +
+        '</div>' +
+        '<div class="admin-kepu-tag">' + esc(c.tag || '') + '</div>' +
+        '<div class="admin-kepu-actions">' +
+        '  <button class="admin-btn-sm admin-btn-edit" data-edit-kepu="' + esc(c.id) + '">编辑</button>' +
+        '  <button class="admin-btn-sm admin-btn-del" data-del-kepu="' + esc(c.id) + '">删除</button>' +
+        '</div>' +
+        '</div>';
+    }).join('');
+
+    $('#kepuAddBtn').addEventListener('click', function () {
+      editingKepuId = null;
+      showKepuForm(null);
+    });
+
+    list.querySelectorAll('[data-edit-kepu]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-edit-kepu');
+        var card = cards.find(function (c) { return c.id === id; });
+        editingKepuId = id;
+        showKepuForm(card);
+      });
+    });
+
+    list.querySelectorAll('[data-del-kepu]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-del-kepu');
+        if (confirm('确定删除该科普卡片？')) {
+          window.Store.deleteHeritageCard(id);
+          if (window.Heritage && window.Heritage.render) window.Heritage.render();
+          renderTab();
+        }
+      });
+    });
+  }
+
+  function showKepuForm(card) {
+    var form = $('#kepuForm');
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    form.innerHTML =
+      '<div class="admin-form-box">' +
+      '  <div class="admin-form-title">' + (card ? '编辑科普卡片' : '新增科普卡片') + '</div>' +
+      '  <div class="admin-form-row">' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">卡片名称 *</label>' +
+      '      <input type="text" id="kpName" class="admin-input" value="' + esc(card ? card.name : '') + '" placeholder="例如：龙南大漆">' +
       '    </div>' +
-      '    <div class="admin-col">' +
-      '      <label class="admin-label">最大 Token 数</label>' +
-      '      <input type="number" id="apiMaxTok" class="admin-input" value="' + (api.maxTokens || 900) + '" min="50" max="2000" step="50">' +
+      '    <div style="width:100px">' +
+      '      <label class="admin-label">图标Emoji</label>' +
+      '      <input type="text" id="kpIcon" class="admin-input" value="' + esc(card ? card.icon : '🏮') + '" placeholder="🏺">' +
       '    </div>' +
       '  </div>' +
-      '  <button class="admin-btn admin-btn-primary" id="apiSaveBtn" style="margin-top:12px">保存 API 设置</button>' +
-      '</div>' +
-
-      '<div class="admin-api-section">' +
-      '  <div class="admin-form-title">资料问答规则</div>' +
-      '  <p class="admin-hint">AI按具体问题选择相关资料，事实按原文展示并附出处；资料缺失或冲突时说明限制。新增内容请在知识库中填写来源。</p>' +
+      '  <label class="admin-label">标签短语</label>' +
+      '  <input type="text" id="kpTag" class="admin-input" value="' + esc(card ? card.tag : '') + '" placeholder="传统手艺 · 传承千年">' +
+      '  <div class="admin-form-row">' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">主题主色</label>' +
+      '      <input type="color" id="kpAccent" class="admin-input" value="' + (card && card.accent ? card.accent : '#2F5D50') + '" style="height:38px;padding:2px">' +
+      '    </div>' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">卡片浅底色</label>' +
+      '      <input type="color" id="kpBg" class="admin-input" value="' + (card && card.bg ? card.bg : '#E4EFEA') + '" style="height:38px;padding:2px">' +
+      '    </div>' +
+      '  </div>' +
+      '  <label class="admin-label">科普详情正文 (支持HTML段落)</label>' +
+      '  <textarea id="kpDetail" class="admin-textarea" rows="5" placeholder="<p>科普介绍段落…</p>">' + esc(card ? card.detail : '') + '</textarea>' +
+      '  <label class="admin-label">点击向阿蓝提问的默认问题</label>' +
+      '  <input type="text" id="kpAsk" class="admin-input" value="' + esc(card ? card.ask : '') + '" placeholder="例如：龙南大漆有什么特色？">' +
+      '  <div class="admin-form-actions">' +
+      '    <button class="admin-btn admin-btn-primary" id="kpSaveBtn">保 存</button>' +
+      '    <button class="admin-btn" id="kpCancelBtn">取 消</button>' +
+      '  </div>' +
       '</div>';
 
-    // 模式切换
-    body.querySelectorAll('.admin-mode-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var m = btn.getAttribute('data-mode');
-        window.Store.setApiOverrides({ mode: m });
-        // 清除引擎缓存，下次提问重新初始化
-        window.AnswerEngine.reset();
-        renderTab();
-      });
+    $('#kpSaveBtn').addEventListener('click', function () {
+      var name = $('#kpName').value.trim();
+      var icon = $('#kpIcon').value.trim() || '🏮';
+      var tag = $('#kpTag').value.trim() || '客家非遗';
+      var accent = $('#kpAccent').value;
+      var bg = $('#kpBg').value;
+      var detail = $('#kpDetail').value.trim();
+      var ask = $('#kpAsk').value.trim() || ('介绍一下' + name);
+      if (!name) { alert('卡片名称不能为空'); return; }
+
+      var data = { name: name, icon: icon, tag: tag, accent: accent, bg: bg, detail: detail, ask: ask };
+      if (editingKepuId) {
+        window.Store.updateHeritageCard(editingKepuId, data);
+      } else {
+        window.Store.addHeritageCard(data);
+      }
+      if (window.Heritage && window.Heritage.render) window.Heritage.render();
+      form.style.display = 'none';
+      editingKepuId = null;
+      renderTab();
     });
 
-    $('#apiSaveBtn').addEventListener('click', function () {
-      window.Store.setApiOverrides({
-        model: $('#apiModel').value.trim(),
-        temperature: Number.isFinite(parseFloat($('#apiTemp').value)) ? parseFloat($('#apiTemp').value) : 0.2,
-        maxTokens: parseInt($('#apiMaxTok').value, 10) || 900
-      });
-      window.AnswerEngine.reset();
-      alert('API 设置已保存');
+    $('#kpCancelBtn').addEventListener('click', function () {
+      form.style.display = 'none';
+      editingKepuId = null;
     });
-
   }
 
-  /* ==================== 系统 Tab ==================== */
-  function renderSys(body) {
-    var entries = window.Store.getEntries();
+  /* ==================== 3. 方言模块动态管理 ==================== */
+  function renderDialect(body) {
+    var baseTracks = (window.Diancang && window.Diancang.videoExhibits) ? window.Diancang.videoExhibits() : [];
+    var customTracks = window.Store.getCustomDialectTracks();
+    body.innerHTML =
+      '<div class="admin-kb-toolbar">' +
+      '  <div class="admin-toolbar-tip">前台【🗣 方言】原声库与讲解视频，可增补客家音频语料</div>' +
+      '  <button class="admin-btn admin-btn-primary" id="dialectAddBtn">＋ 新增方言讲解/音频</button>' +
+      '</div>' +
+      '<div class="admin-kb-form" id="dialectForm" style="display:none"></div>' +
+      '<div class="admin-section-subtitle">自定义语料 (' + customTracks.length + ')</div>' +
+      '<div class="admin-dialect-list" id="customDialectList"></div>' +
+      '<div class="admin-section-subtitle" style="margin-top:14px">典藏内置原声讲解 (' + baseTracks.length + ')</div>' +
+      '<div class="admin-dialect-list" id="baseDialectList"></div>';
+
+    var cList = $('#customDialectList');
+    if (!customTracks.length) {
+      cList.innerHTML = '<div class="admin-empty-sm">暂无自定义语料，点击上方按钮新增</div>';
+    } else {
+      cList.innerHTML = customTracks.map(function (t) {
+        return '<div class="admin-dialect-item">' +
+          '<div class="admin-dialect-item-title">🔊 ' + esc(t.item.name) + ' (' + esc(t.chapter) + ' · 第' + esc(t.item.page) + '页)</div>' +
+          '<div class="admin-dialect-item-url">' + esc(t.item.videoUrl) + '</div>' +
+          '<button class="admin-btn-sm admin-btn-del" data-del-dialect="' + esc(t.id) + '">删除</button>' +
+          '</div>';
+      }).join('');
+      cList.querySelectorAll('[data-del-dialect]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-del-dialect');
+          if (confirm('确定删除该自定义方言条目？')) {
+            window.Store.deleteDialectTrack(id);
+            if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+            renderTab();
+          }
+        });
+      });
+    }
+
+    var bList = $('#baseDialectList');
+    bList.innerHTML = baseTracks.map(function (t, i) {
+      return '<div class="admin-dialect-item muted">' +
+        '<span>' + (i + 1) + '. ' + esc(t.item.name) + ' (' + esc(t.chapter) + ')</span>' +
+        '<span class="admin-badge admin-badge-default">内置</span>' +
+        '</div>';
+    }).join('');
+
+    $('#dialectAddBtn').addEventListener('click', function () {
+      showDialectForm();
+    });
+  }
+
+  function showDialectForm() {
+    var form = $('#dialectForm');
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    form.innerHTML =
+      '<div class="admin-form-box">' +
+      '  <div class="admin-form-title">新增方言语料 / 展品原声讲解</div>' +
+      '  <label class="admin-label">展品 / 方言语料名称 *</label>' +
+      '  <input type="text" id="dlName" class="admin-input" placeholder="例如：黄姜豆腐制作口述">' +
+      '  <div class="admin-form-row">' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">所属篇章 / 栏目</label>' +
+      '      <input type="text" id="dlChapter" class="admin-input" value="客家风味" placeholder="例如：客家风味">' +
+      '    </div>' +
+      '    <div style="width:100px">' +
+      '      <label class="admin-label">页码编号</label>' +
+      '      <input type="number" id="dlPage" class="admin-input" value="1">' +
+      '    </div>' +
+      '  </div>' +
+      '  <label class="admin-label">音视频嵌入链接 / 播放地址 *</label>' +
+      '  <input type="url" id="dlUrl" class="admin-input" placeholder="https://... 视频或音频地址">' +
+      '  <div class="admin-form-actions">' +
+      '    <button class="admin-btn admin-btn-primary" id="dlSaveBtn">保 存</button>' +
+      '    <button class="admin-btn" id="dlCancelBtn">取 消</button>' +
+      '  </div>' +
+      '</div>';
+
+    $('#dlSaveBtn').addEventListener('click', function () {
+      var name = $('#dlName').value.trim();
+      var chapter = $('#dlChapter').value.trim() || '客家方言';
+      var page = Number($('#dlPage').value) || 1;
+      var url = $('#dlUrl').value.trim();
+      if (!name || !url) { alert('名称和音视频链接不能为空'); return; }
+
+      window.Store.addDialectTrack({
+        id: 'dl-' + Date.now(),
+        chapter: chapter,
+        item: { name: name, page: page, videoUrl: url }
+      });
+      if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+      form.style.display = 'none';
+      renderTab();
+    });
+
+    $('#dlCancelBtn').addEventListener('click', function () {
+      form.style.display = 'none';
+    });
+  }
+
+  /* ==================== 4. 任意格式文档智能解析入库 ==================== */
+  function renderImport(body) {
+    body.innerHTML =
+      '<div class="admin-import-panel">' +
+      '  <div class="admin-form-title">📂 智能文档解析与批量入库</div>' +
+      '  <div class="admin-hint">支持拖拽或选择 Word (.docx)、Markdown (.md)、文本文档 (.txt) 或 JSON 文件。系统自动提取结构化问答条目。</div>' +
+      '  <div class="admin-dropzone" id="fileDropzone">' +
+      '    <div class="admin-dropzone-icon">📄</div>' +
+      '    <div class="admin-dropzone-text">点击或拖拽文件到此处解析</div>' +
+      '    <div class="admin-dropzone-sub">支持 .txt / .md / .json / .docx 格式文档</div>' +
+      '    <input type="file" id="docFileInput" accept=".txt,.md,.json,.docx" style="display:none">' +
+      '  </div>' +
+      '  <div class="admin-drafts-header" id="draftsHeader" style="display:none">' +
+      '    <span class="admin-drafts-title" id="draftsCountTitle">解析出的条目草稿 (0)</span>' +
+      '    <button class="admin-btn admin-btn-primary" id="batchCommitBtn">🚀 一键批量入库</button>' +
+      '  </div>' +
+      '  <div class="admin-drafts-list" id="draftsList"></div>' +
+      '</div>';
+
+    var dropzone = $('#fileDropzone');
+    var fileInput = $('#docFileInput');
+
+    dropzone.addEventListener('click', function () { fileInput.click(); });
+    dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('hover'); });
+    dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('hover'); });
+    dropzone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropzone.classList.remove('hover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+        processUploadedFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', function () {
+      if (this.files && this.files[0]) {
+        processUploadedFile(this.files[0]);
+      }
+    });
+
+    $('#batchCommitBtn').addEventListener('click', function () {
+      if (!parsedDrafts.length) return;
+      parsedDrafts.forEach(function (draft) {
+        window.Store.addEntry({
+          title: draft.title,
+          keywords: draft.keywords,
+          answer: draft.answer,
+          sources: draft.sources
+        });
+      });
+      alert('成功批量入库 ' + parsedDrafts.length + ' 条非遗知识！');
+      parsedDrafts = [];
+      renderTab();
+    });
+
+    renderDraftsList();
+  }
+
+  function processUploadedFile(file) {
+    var name = file.name || '';
+    var ext = name.slice(name.lastIndexOf('.')).toLowerCase();
+
+    if (ext === '.json') {
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var parsed = JSON.parse(reader.result);
+          if (Array.isArray(parsed)) {
+            parsedDrafts = parsed.map(function (item, idx) {
+              return {
+                title: String(item.title || ('解析条目 ' + (idx + 1))),
+                keywords: Array.isArray(item.keywords) ? item.keywords : [item.title || '非遗'],
+                answer: String(item.answer || item.content || item.desc || ''),
+                sources: Array.isArray(item.sources) ? item.sources : [{ title: name }]
+              };
+            });
+            renderDraftsList();
+          } else {
+            alert('JSON 文件格式不是条目数组');
+          }
+        } catch (err) { alert('JSON 解析失败'); }
+      };
+      reader.readAsText(file);
+    } else if (ext === '.txt' || ext === '.md') {
+      var txtReader = new FileReader();
+      txtReader.onload = function () {
+        parseTextToDrafts(txtReader.result, name);
+      };
+      txtReader.readAsText(file);
+    } else if (ext === '.docx') {
+      var binReader = new FileReader();
+      binReader.onload = function () {
+        parseDocxToDrafts(binReader.result, name);
+      };
+      binReader.readAsArrayBuffer(file);
+    } else {
+      alert('暂不支持此格式文件');
+    }
+  }
+
+  function parseTextToDrafts(rawText, sourceDocName) {
+    var text = String(rawText || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    var chunks = [];
+
+    // 尝试按 Markdown 标题或问答切分
+    var lines = text.split('\n');
+    var curTitle = '';
+    var curBody = [];
+
+    lines.forEach(function (line) {
+      var trimmed = line.trim();
+      var isHeader = /^#{1,4}\s+/.test(trimmed) || /^[一二三四五六七八九十]+[、.]\s*/.test(trimmed) || /^(【.+?】)/.test(trimmed) || /^问[：:]/.test(trimmed);
+      if (isHeader && (curTitle || curBody.length > 0)) {
+        if (curBody.join('\n').trim().length > 10) {
+          chunks.push({
+            title: curTitle || '非遗知识条目',
+            text: curBody.join('\n').trim()
+          });
+        }
+        curTitle = trimmed.replace(/^#{1,4}\s+/, '').replace(/^问[：:]\s*/, '').replace(/[【】]/g, '').slice(0, 32);
+        curBody = [];
+      } else if (isHeader) {
+        curTitle = trimmed.replace(/^#{1,4}\s+/, '').replace(/^问[：:]\s*/, '').replace(/[【】]/g, '').slice(0, 32);
+      } else if (trimmed) {
+        curBody.push(trimmed);
+      }
+    });
+
+    if (curBody.join('\n').trim().length > 10) {
+      chunks.push({
+        title: curTitle || '非遗知识条目',
+        text: curBody.join('\n').trim()
+      });
+    }
+
+    // 如果未切出标题，尝试按双换行切分
+    if (chunks.length === 0) {
+      var rawChunks = text.split(/\n\s*\n+/);
+      rawChunks.forEach(function (c, idx) {
+        var ct = c.trim();
+        if (ct.length > 20) {
+          var firstLine = ct.split('\n')[0].slice(0, 24);
+          chunks.push({
+            title: firstLine || ('条目 ' + (idx + 1)),
+            text: ct
+          });
+        }
+      });
+    }
+
+    parsedDrafts = chunks.map(function (c) {
+      return {
+        title: c.title.trim(),
+        keywords: [c.title.trim(), '客家非遗'],
+        answer: c.text.trim(),
+        sources: [{ title: sourceDocName || '导入文档' }]
+      };
+    });
+
+    renderDraftsList();
+  }
+
+  function parseDocxToDrafts(arrayBuffer, fileName) {
+    try {
+      var bytes = new Uint8Array(arrayBuffer);
+      var str = '';
+      // 简单抽样解码抽取 XML 文本段落
+      var decoder = new TextDecoder('utf-8', { fatal: false });
+      var decoded = decoder.decode(bytes);
+      var texts = [];
+      var regex = /<w:t(?:\s+[^>]*)?>([\s\S]*?)<\/w:t>/g;
+      var match;
+      while ((match = regex.exec(decoded)) !== null) {
+        if (match[1]) texts.push(match[1]);
+      }
+      if (texts.length) {
+        var fullText = texts.join('');
+        parseTextToDrafts(fullText, fileName);
+      } else {
+        alert('Word 文档解析未提取到文字，建议转换为 TXT 或 Markdown 上传');
+      }
+    } catch (e) {
+      alert('Word 文档解析失败，建议转为 TXT 格式上传');
+    }
+  }
+
+  function renderDraftsList() {
+    var header = $('#draftsHeader');
+    var list = $('#draftsList');
+    if (!header || !list) return;
+
+    if (!parsedDrafts.length) {
+      header.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+
+    header.style.display = 'flex';
+    $('#draftsCountTitle').textContent = '已解析出 ' + parsedDrafts.length + ' 条非遗条目草稿（确认后可一键入库）：';
+
+    list.innerHTML = parsedDrafts.map(function (d, idx) {
+      return '<div class="admin-draft-card">' +
+        '<div class="admin-draft-head">' +
+        '  <input type="text" class="admin-input draft-title" data-idx="' + idx + '" value="' + esc(d.title) + '">' +
+        '  <button class="admin-btn-sm admin-btn-del" data-del-draft="' + idx + '">✕</button>' +
+        '</div>' +
+        '<textarea class="admin-textarea draft-answer" rows="3" data-idx="' + idx + '">' + esc(d.answer) + '</textarea>' +
+        '</div>';
+    }).join('');
+
+    list.querySelectorAll('.draft-title').forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        var idx = Number(inp.getAttribute('data-idx'));
+        if (parsedDrafts[idx]) parsedDrafts[idx].title = inp.value;
+      });
+    });
+
+    list.querySelectorAll('.draft-answer').forEach(function (tx) {
+      tx.addEventListener('input', function () {
+        var idx = Number(tx.getAttribute('data-idx'));
+        if (parsedDrafts[idx]) parsedDrafts[idx].answer = tx.value;
+      });
+    });
+
+    list.querySelectorAll('[data-del-draft]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var idx = Number(btn.getAttribute('data-del-draft'));
+        parsedDrafts.splice(idx, 1);
+        renderDraftsList();
+      });
+    });
+  }
+
+  /* ==================== 5. AI 模型与工作流编排 ==================== */
+  function renderAI(body) {
     var apiOvr = window.Store.getApiOverrides();
+    var curModel = apiOvr.model || 'Qwen/Qwen3-30B-A3B-Instruct-2507';
+    var curTemp = apiOvr.temperature !== undefined ? apiOvr.temperature : 0.2;
+    var curTokens = apiOvr.maxTokens !== undefined ? apiOvr.maxTokens : 900;
+    var wf = window.Store.getWorkflowConfig();
 
     body.innerHTML =
-      '<div class="admin-api-section">' +
-      '  <div class="admin-form-title">修改管理员密码</div>' +
+      '<div class="admin-form-box">' +
+      '  <div class="admin-form-title">🤖 智能体工作流与模型编排</div>' +
+      '  <label class="admin-label">底座大语言模型 (LLM)</label>' +
+      '  <select id="apiModel" class="admin-input">' +
+      '    <option value="Qwen/Qwen3-30B-A3B-Instruct-2507"' + (curModel === 'Qwen/Qwen3-30B-A3B-Instruct-2507' ? ' selected' : '') + '>通义千问 Qwen3-30B (垂直非遗推理推荐)</option>' +
+      '    <option value="Qwen/Qwen2.5-7B-Instruct"' + (curModel === 'Qwen/Qwen2.5-7B-Instruct' ? ' selected' : '') + '>通义千问 Qwen2.5-7B (轻量高响应)</option>' +
+      '    <option value="deepseek-ai/DeepSeek-V3.2"' + (curModel === 'deepseek-ai/DeepSeek-V3.2' ? ' selected' : '') + '>DeepSeek-V3.2 (深度推理通用模型)</option>' +
+      '  </select>' +
+      '  <label class="admin-label">虚拟讲解员「阿蓝」人设工作流 (System Prompt)</label>' +
+      '  <textarea id="wfPrompt" class="admin-textarea" rows="4">' + esc(wf.systemPrompt) + '</textarea>' +
+      '  <div class="admin-form-row" style="margin-top:8px">' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">生成温度 (Temperature: ' + curTemp + ')</label>' +
+      '      <input type="range" id="apiTemp" min="0" max="1" step="0.05" value="' + curTemp + '" class="admin-range">' +
+      '    </div>' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">最大输出 Tokens</label>' +
+      '      <input type="number" id="apiMaxTokens" class="admin-input" value="' + curTokens + '" min="100" max="2000" step="50">' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="admin-form-actions" style="margin-top:14px">' +
+      '    <button class="admin-btn admin-btn-primary" id="aiSaveBtn">保存工作流与模型配置</button>' +
+      '  </div>' +
+      '</div>';
+
+    $('#apiTemp').addEventListener('input', function () {
+      this.previousElementSibling.textContent = '生成温度 (Temperature: ' + this.value + ')';
+    });
+
+    $('#aiSaveBtn').addEventListener('click', function () {
+      var model = $('#apiModel').value;
+      var temp = Number($('#apiTemp').value);
+      var maxTokens = Number($('#apiMaxTokens').value);
+      var sysPrompt = $('#wfPrompt').value.trim();
+
+      window.Store.setApiOverrides({ model: model, temperature: temp, maxTokens: maxTokens });
+      window.Store.setWorkflowConfig({ systemPrompt: sysPrompt });
+      if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+      alert('AI 模型与工作流配置已生效！');
+    });
+  }
+
+  /* ==================== 6. 邀请令牌权限管理 (仅超级管理员) ==================== */
+  function renderToken(body) {
+    var tokens = window.Store.getInviteTokens();
+    body.innerHTML =
+      '<div class="admin-form-box">' +
+      '  <div class="admin-form-title">🔑 管理员邀请令牌签发与管理</div>' +
+      '  <div class="admin-hint">为龙南文旅、文化馆专员签发专属受邀令牌。凭令牌可登录工作台录入非遗资料，但无权修改主密码或撤销他人令牌。</div>' +
+      '  <div class="admin-form-row" style="margin-top:10px">' +
+      '    <div style="flex:2">' +
+      '      <label class="admin-label">使用人单位 / 备注 *</label>' +
+      '      <input type="text" id="tokName" class="admin-input" placeholder="例如：龙南市文化馆-陈老师">' +
+      '    </div>' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">有效期</label>' +
+      '      <select id="tokDays" class="admin-input">' +
+      '        <option value="7">7 天有效</option>' +
+      '        <option value="30" selected>30 天有效</option>' +
+      '        <option value="90">90 天有效</option>' +
+      '        <option value="0">长期有效</option>' +
+      '      </select>' +
+      '    </div>' +
+      '  </div>' +
+      '  <button class="admin-btn admin-btn-primary" id="tokGenBtn" style="margin-top:10px">＋ 签发新邀请令牌</button>' +
+      '  <div id="tokNewDisplay" class="admin-token-display" style="display:none"></div>' +
+      '</div>' +
+      '<div class="admin-section-subtitle" style="margin-top:16px">已签发的管理员令牌列表 (' + tokens.length + ')</div>' +
+      '<div class="admin-token-list" id="tokenList"></div>';
+
+    var list = $('#tokenList');
+    if (!tokens.length) {
+      list.innerHTML = '<div class="admin-empty-sm">暂未签发邀请令牌，请在上方签发</div>';
+    } else {
+      list.innerHTML = tokens.map(function (t) {
+        var statusCls = t.revoked ? 'revoked' : (t.isExpired ? 'expired' : 'active');
+        return '<div class="admin-token-card ' + statusCls + '">' +
+          '<div class="admin-token-card-top">' +
+          '  <span class="admin-token-code">' + esc(t.token) + '</span>' +
+          '  <span class="admin-token-badge ' + statusCls + '">' + t.statusText + '</span>' +
+          '</div>' +
+          '<div class="admin-token-user">受邀人员：' + esc(t.name) + '</div>' +
+          '<div class="admin-token-dates">签发时间：' + new Date(t.createdAt).toLocaleDateString() + ' · 到期：' + (t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : '长期') + '</div>' +
+          '<div class="admin-token-actions">' +
+          '  <button class="admin-btn-sm admin-btn-copy" data-copy-token="' + esc(t.token) + '">📋 复制</button>' +
+          (t.revoked ? '' : '  <button class="admin-btn-sm admin-btn-del" data-revoke-token="' + esc(t.id) + '">撤销授权</button>') +
+          '  <button class="admin-btn-sm admin-btn-del" data-del-token="' + esc(t.id) + '">删除记录</button>' +
+          '</div>' +
+          '</div>';
+      }).join('');
+
+      list.querySelectorAll('[data-copy-token]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var code = btn.getAttribute('data-copy-token');
+          navigator.clipboard ? navigator.clipboard.writeText(code) : prompt('请复制令牌：', code);
+          alert('已复制令牌：' + code);
+        });
+      });
+
+      list.querySelectorAll('[data-revoke-token]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-revoke-token');
+          if (confirm('确定撤销该管理员令牌？撤销后对方将无法登录。')) {
+            window.Store.revokeInviteToken(id);
+            renderTab();
+          }
+        });
+      });
+
+      list.querySelectorAll('[data-del-token]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-del-token');
+          if (confirm('确定彻底删除该令牌记录？')) {
+            window.Store.deleteInviteToken(id);
+            renderTab();
+          }
+        });
+      });
+    }
+
+    $('#tokGenBtn').addEventListener('click', function () {
+      var name = $('#tokName').value.trim();
+      var days = Number($('#tokDays').value);
+      if (!name) { alert('请输入受邀人员姓名或单位备注'); return; }
+      var created = window.Store.generateInviteToken(name, days);
+      var disp = $('#tokNewDisplay');
+      disp.style.display = 'block';
+      disp.innerHTML =
+        '<div class="admin-token-success-title">🎉 令牌签发成功！请将以下专属邀请令牌发给对方：</div>' +
+        '<div class="admin-token-key-row">' +
+        '  <input type="text" readonly value="' + created.token + '" class="admin-input token-highlight" id="newTokBox">' +
+        '  <button class="admin-btn admin-btn-primary" id="copyNewTokBtn">一键复制</button>' +
+        '</div>';
+      $('#copyNewTokBtn').addEventListener('click', function () {
+        var box = $('#newTokBox');
+        box.select();
+        navigator.clipboard ? navigator.clipboard.writeText(box.value) : prompt('请复制：', box.value);
+        alert('已复制专属邀请令牌！');
+      });
+      $('#tokName').value = '';
+      renderTab();
+    });
+  }
+
+  /* ==================== 7. 系统与全站资产包备份 ==================== */
+  function renderSys(body) {
+    var isSuper = currentUser && currentUser.role === 'super_admin';
+    body.innerHTML =
+      (isSuper ?
+      '<div class="admin-form-box">' +
+      '  <div class="admin-form-title">修改超级管理员主密码</div>' +
       '  <input type="password" id="newPw1" class="admin-input" placeholder="新密码">' +
       '  <input type="password" id="newPw2" class="admin-input" placeholder="确认新密码" style="margin-top:6px">' +
-      '  <button class="admin-btn admin-btn-primary" id="pwSaveBtn" style="margin-top:8px">修改密码</button>' +
-      '</div>' +
+      '  <button class="admin-btn admin-btn-primary" id="pwSaveBtn" style="margin-top:8px">修改主密码</button>' +
+      '</div>' : '') +
 
-      '<div class="admin-api-section">' +
-      '  <div class="admin-form-title">知识库备份</div>' +
-      '  <div class="admin-hint">当前共 ' + entries.length + ' 条知识。导出为 JSON 文件可备份或迁移到其他设备。</div>' +
-      '  <div class="admin-row" style="gap:8px;margin-top:8px">' +
-      '    <button class="admin-btn admin-btn-primary" id="exportBtn">📥 导出知识库</button>' +
-      '    <button class="admin-btn" id="importBtn">📤 导入知识库</button>' +
+      '<div class="admin-form-box" style="margin-top:12px">' +
+      '  <div class="admin-form-title">📦 全站数智资产包一键备份与恢复</div>' +
+      '  <div class="admin-hint">将知识库、科普卡片、方言语料及AI工作流设置一并打包导出。发给技术人员可秒级合并发布至正式站。</div>' +
+      '  <div class="admin-form-row" style="margin-top:8px">' +
+      '    <button class="admin-btn admin-btn-primary" id="exportBundleBtn">📥 导出全站资产包 (JSON)</button>' +
+      '    <button class="admin-btn" id="importBundleBtn">📤 导入全站资产包</button>' +
+      '    <input type="file" id="bundleFileInput" accept=".json" style="display:none">' +
+      '  </div>' +
+      '  <div class="admin-form-row" style="margin-top:8px">' +
+      '    <button class="admin-btn-sm" id="exportBtn">仅导出知识库</button>' +
+      '    <button class="admin-btn-sm" id="importBtn">仅导入知识库</button>' +
       '    <input type="file" id="importFile" accept=".json" style="display:none">' +
       '  </div>' +
       '</div>' +
 
-      '<div class="admin-api-section">' +
-      '  <div class="admin-form-title">重置</div>' +
-      '  <div class="admin-hint">清除所有管理员修改，恢复到内置默认状态。不影响 API Key。</div>' +
+      (isSuper ?
+      '<div class="admin-form-box" style="margin-top:12px">' +
+      '  <div class="admin-form-title">系统重置</div>' +
+      '  <div class="admin-hint">清除所有自定义修改，恢复内置初始状态。</div>' +
       '  <button class="admin-btn admin-btn-danger" id="resetKBBtn" style="margin-top:8px">重置知识库</button>' +
-      '  <button class="admin-btn admin-btn-danger" id="resetApiBtn" style="margin-top:8px;margin-left:6px">重置 API 设置</button>' +
-      '</div>' +
+      '  <button class="admin-btn admin-btn-danger" id="resetApiBtn" style="margin-top:8px;margin-left:6px">重置 AI 设置</button>' +
+      '</div>' : '') +
 
-      '<div class="admin-api-section">' +
-      '  <div class="admin-form-title">关于</div>' +
-      '  <div class="admin-hint">' +
-      '    龙南客家非遗数字助手 v' + ((window.APP_CONFIG && window.APP_CONFIG.app && window.APP_CONFIG.app.version) || '1.0') + '<br>' +
-      '    所有修改保存在浏览器本地（localStorage），清除浏览器数据会丢失自定义内容。<br>' +
-      '    线上 API 密钥保存在服务端，不会下发到浏览器；本地直连密钥可存放在被忽略的 js/secrets.js 中。' +
-      '  </div>' +
+      '<div style="text-align:center;margin-top:16px">' +
+      '  <button class="admin-btn admin-btn-del" id="adminLogoutBtn">退出登录</button>' +
       '</div>';
 
-    // 修改密码
-    $('#pwSaveBtn').addEventListener('click', function () {
-      var p1 = $('#newPw1').value;
-      var p2 = $('#newPw2').value;
-      if (!p1 || p1.length < 4) { alert('密码至少 4 位'); return; }
-      if (p1 !== p2) { alert('两次密码不一致'); return; }
-      window.Store.setAdminPassword(p1);
-      alert('密码已修改');
+    if (isSuper && $('#pwSaveBtn')) {
+      $('#pwSaveBtn').addEventListener('click', function () {
+        var p1 = $('#newPw1').value;
+        var p2 = $('#newPw2').value;
+        if (!p1 || p1.length < 4) { alert('密码至少 4 位'); return; }
+        if (p1 !== p2) { alert('两次密码不一致'); return; }
+        window.Store.setAdminPassword(p1);
+        alert('主密码修改成功');
+      });
+    }
+
+    $('#exportBundleBtn').addEventListener('click', function () {
+      var json = window.Store.exportFullBundle();
+      downloadJson(json, 'longnan-heritage-bundle-' + new Date().toISOString().slice(0, 10) + '.json');
     });
 
-    // 导出
+    $('#importBundleBtn').addEventListener('click', function () {
+      $('#bundleFileInput').click();
+    });
+    $('#bundleFileInput').addEventListener('change', function () {
+      var file = this.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        if (window.Store.importFullBundle(reader.result)) {
+          alert('全站资产包恢复成功！');
+          if (window.Heritage && window.Heritage.render) window.Heritage.render();
+          if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+          if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+          renderTab();
+        } else {
+          alert('资产包导入失败：格式不正确');
+        }
+      };
+      reader.readAsText(file);
+    });
+
     $('#exportBtn').addEventListener('click', function () {
       var json = window.Store.exportKB();
-      var blob = new Blob([json], { type: 'application/json' });
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'heritage-kb-' + new Date().toISOString().slice(0, 10) + '.json';
-      a.click();
-      URL.revokeObjectURL(a.href);
+      downloadJson(json, 'heritage-kb-' + new Date().toISOString().slice(0, 10) + '.json');
     });
 
-    // 导入
     $('#importBtn').addEventListener('click', function () {
       $('#importFile').click();
     });
@@ -365,7 +996,7 @@
       reader.onload = function () {
         if (window.Store.importKB(reader.result)) {
           alert('导入成功！共 ' + window.Store.getEntries().length + ' 条知识');
-          window.AnswerEngine.reset();
+          if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
         } else {
           alert('导入失败：JSON 格式不正确');
         }
@@ -373,22 +1004,40 @@
       reader.readAsText(file);
     });
 
-    // 重置
-    $('#resetKBBtn').addEventListener('click', function () {
-      if (confirm('确定重置知识库？所有自定义内容将丢失。')) {
-        window.Store.resetKB();
-        window.AnswerEngine.reset();
-        alert('知识库已重置');
-      }
+    if (isSuper && $('#resetKBBtn')) {
+      $('#resetKBBtn').addEventListener('click', function () {
+        if (confirm('确定重置知识库？所有自定义内容将丢失。')) {
+          window.Store.resetKB();
+          if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+          alert('知识库已重置');
+        }
+      });
+    }
+
+    if (isSuper && $('#resetApiBtn')) {
+      $('#resetApiBtn').addEventListener('click', function () {
+        if (confirm('确定重置 AI 设置？')) {
+          window.Store.resetApi();
+          if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+          alert('AI 设置已重置');
+        }
+      });
+    }
+
+    $('#adminLogoutBtn').addEventListener('click', function () {
+      authenticated = false;
+      currentUser = null;
+      showLogin();
     });
-    $('#resetApiBtn').addEventListener('click', function () {
-      if (confirm('确定重置 API 设置？')) {
-        window.Store.resetApi();
-        window.AnswerEngine.reset();
-        renderTab();
-        alert('API 设置已重置');
-      }
-    });
+  }
+
+  function downloadJson(content, filename) {
+    var blob = new Blob([content], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   /* ---------- 打开 / 关闭 ---------- */
@@ -406,14 +1055,11 @@
     $('#adminMask').hidden = true;
   }
 
-  /* ---------- 初始化 ---------- */
   function init() {
-    // 注册入口按钮
     var entry = document.getElementById('adminEntry');
     if (entry) {
       entry.addEventListener('click', open);
     }
-    // 关闭遮罩点击
     var mask = document.getElementById('adminMask');
     if (mask) {
       mask.addEventListener('click', function (e) {
