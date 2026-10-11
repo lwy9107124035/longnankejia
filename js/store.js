@@ -24,7 +24,8 @@
     dialect_custom: 'nfyj_dialect_custom',
     dialect_deleted:'nfyj_dialect_deleted',
     workflow:       'nfyj_workflow_config',
-    audit_logs:     'nfyj_audit_logs'
+    audit_logs:     'nfyj_audit_logs',
+    notifications:  'nfyj_token_notifications'
   };
 
   function read(key, fallback) {
@@ -243,6 +244,25 @@
 
     var totalRemoved = removedKb + removedKepu + removedDialect;
     addAuditLog('超级管理员', '撤销修改', '回滚撤销了令牌 [' + tokCode + ' · ' + tokName + '] 录入的全部内容，共清除 ' + totalRemoved + ' 项数据');
+
+    // 发送全量撤回通知至该令牌
+    if (totalRemoved > 0) {
+      addTokenNotification(tokId, {
+        targetType: 'all',
+        targetTypeName: '全部修改数据',
+        targetTitle: '批量录入内容（共 ' + totalRemoved + ' 项）',
+        reason: '超级管理员已执行全量回滚，所录入内容已全部撤回'
+      });
+      if (tokCode && tokCode !== tokId) {
+        addTokenNotification(tokCode, {
+          targetType: 'all',
+          targetTypeName: '全部修改数据',
+          targetTitle: '批量录入内容（共 ' + totalRemoved + ' 项）',
+          reason: '超级管理员已执行全量回滚，所录入内容已全部撤回'
+        });
+      }
+    }
+
     return {
       ok: true,
       totalRemoved: totalRemoved,
@@ -252,6 +272,199 @@
       tokenName: tokName,
       tokenCode: tokCode
     };
+  }
+
+  /* ---------- 令牌改动明细审查与单项剔除 ---------- */
+
+  function getTokenDetailedContributions(tokenIdOrStr) {
+    var tokens = read(LS.tokens, []);
+    var tokObj = tokens.find(function (t) { return t.id === tokenIdOrStr || t.token === tokenIdOrStr; });
+    var tokId = tokObj ? tokObj.id : tokenIdOrStr;
+    var tokCode = tokObj ? tokObj.token : tokenIdOrStr;
+    var tokName = tokObj ? tokObj.name : '受邀管理员';
+
+    var customKb = read(LS.custom, []);
+    var customKepu = read(LS.kepu_custom, []);
+    var customDialect = read(LS.dialect_custom, []);
+
+    var items = [];
+
+    customKb.forEach(function (e) {
+      if (e.creatorTokenId === tokId || e.creatorTokenId === tokCode) {
+        items.push({
+          id: e.id,
+          type: 'kb',
+          typeName: '知识库条目',
+          typeBadge: '📚 知识库',
+          title: e.title,
+          preview: (e.answer || '').slice(0, 90) + (e.answer && e.answer.length > 90 ? '…' : ''),
+          createdAt: e.createdAt || 0,
+          raw: e
+        });
+      }
+    });
+
+    customKepu.forEach(function (c) {
+      if (c.creatorTokenId === tokId || c.creatorTokenId === tokCode) {
+        items.push({
+          id: c.id,
+          type: 'kepu',
+          typeName: '科普卡片',
+          typeBadge: '🏮 科普卡片',
+          title: c.name,
+          preview: (c.detail || c.tag || '').slice(0, 90),
+          createdAt: c.createdAt || 0,
+          raw: c
+        });
+      }
+    });
+
+    customDialect.forEach(function (d) {
+      if (d.creatorTokenId === tokId || d.creatorTokenId === tokCode) {
+        var tName = (d.item && d.item.name) || d.name || '方言展品';
+        var tUrl = (d.item && d.item.videoUrl) || d.url || '';
+        items.push({
+          id: d.id,
+          type: 'dialect',
+          typeName: '方言讲解',
+          typeBadge: '🗣 方言讲解',
+          title: tName,
+          preview: tUrl,
+          createdAt: d.createdAt || 0,
+          raw: d
+        });
+      }
+    });
+
+    // 默认按创建时间倒序排列
+    items.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+
+    return {
+      token: tokObj || { id: tokId, token: tokCode, name: tokName },
+      items: items
+    };
+  }
+
+  function rejectTokenItem(tokenIdOrStr, itemId, itemType, reason) {
+    reason = String(reason || '内容审核未通过，已被超级管理员剔除').trim();
+    var tokens = read(LS.tokens, []);
+    var tokObj = tokens.find(function (t) { return t.id === tokenIdOrStr || t.token === tokenIdOrStr; });
+    var tokId = tokObj ? tokObj.id : tokenIdOrStr;
+    var tokCode = tokObj ? tokObj.token : tokenIdOrStr;
+    var tokName = tokObj ? tokObj.name : '受邀管理员';
+
+    var itemTitle = '';
+    var typeName = '';
+
+    if (itemType === 'kb') {
+      var customKb = read(LS.custom, []);
+      var targetKb = customKb.find(function (e) { return e.id === itemId; });
+      if (targetKb) {
+        itemTitle = targetKb.title;
+        typeName = '知识库条目';
+        customKb = customKb.filter(function (e) { return e.id !== itemId; });
+        write(LS.custom, customKb);
+      }
+    } else if (itemType === 'kepu') {
+      var customKepu = read(LS.kepu_custom, []);
+      var targetKepu = customKepu.find(function (c) { return c.id === itemId; });
+      if (targetKepu) {
+        itemTitle = targetKepu.name;
+        typeName = '科普卡片';
+        customKepu = customKepu.filter(function (c) { return c.id !== itemId; });
+        write(LS.kepu_custom, customKepu);
+      }
+    } else if (itemType === 'dialect') {
+      var customDialect = read(LS.dialect_custom, []);
+      var targetDialect = customDialect.find(function (d) { return d.id === itemId; });
+      if (targetDialect) {
+        itemTitle = (targetDialect.item && targetDialect.item.name) || targetDialect.name || '方言讲解';
+        typeName = '方言讲解';
+        customDialect = customDialect.filter(function (d) { return d.id !== itemId; });
+        write(LS.dialect_custom, customDialect);
+      }
+    }
+
+    if (!itemTitle) return { ok: false, error: '未找到对应修改条目' };
+
+    // 1. 记入审计流水
+    addAuditLog('超级管理员', '剔除修改', '剔除了令牌 [' + tokCode + ' · ' + tokName + '] 录入的' + typeName + '「' + itemTitle + '」，原因：' + reason);
+
+    // 2. 将消息精准派发至该受邀管理员的消息中心
+    addTokenNotification(tokId, {
+      targetType: itemType,
+      targetTypeName: typeName,
+      targetTitle: itemTitle,
+      reason: reason
+    });
+    if (tokCode && tokCode !== tokId) {
+      addTokenNotification(tokCode, {
+        targetType: itemType,
+        targetTypeName: typeName,
+        targetTitle: itemTitle,
+        reason: reason
+      });
+    }
+
+    return {
+      ok: true,
+      itemTitle: itemTitle,
+      typeName: typeName,
+      tokenName: tokName
+    };
+  }
+
+  /* ---------- 消息通知中心（面向受邀管理员） ---------- */
+
+  function addTokenNotification(tokenIdOrStr, notif) {
+    try {
+      var list = read(LS.notifications, []);
+      var item = {
+        id: 'notif-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        tokenId: String(tokenIdOrStr),
+        targetType: notif.targetType || 'kb',
+        targetTypeName: notif.targetTypeName || '非遗内容',
+        targetTitle: notif.targetTitle || '未命名条目',
+        reason: notif.reason || '审核未通过',
+        time: Date.now(),
+        read: false
+      };
+      list.unshift(item);
+      if (list.length > 100) list = list.slice(0, 100);
+      write(LS.notifications, list);
+      return item;
+    } catch (e) { return null; }
+  }
+
+  function getTokenNotifications(tokenIdOrStr) {
+    var list = read(LS.notifications, []);
+    if (!tokenIdOrStr) return list;
+    var str = String(tokenIdOrStr);
+    return list.filter(function (n) {
+      return n.tokenId === str;
+    });
+  }
+
+  function markTokenNotificationRead(notifId) {
+    var list = read(LS.notifications, []);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === notifId) {
+        list[i].read = true;
+        break;
+      }
+    }
+    write(LS.notifications, list);
+  }
+
+  function clearTokenNotifications(tokenIdOrStr) {
+    var list = read(LS.notifications, []);
+    if (!tokenIdOrStr) {
+      write(LS.notifications, []);
+    } else {
+      var str = String(tokenIdOrStr);
+      var filtered = list.filter(function (n) { return n.tokenId !== str; });
+      write(LS.notifications, filtered);
+    }
   }
 
   function verifyLogin(inputStr) {
@@ -612,10 +825,18 @@
     revokeInviteToken: revokeInviteToken,
     deleteInviteToken: deleteInviteToken,
     rollbackTokenChanges: rollbackTokenChanges,
+    getTokenDetailedContributions: getTokenDetailedContributions,
+    rejectTokenItem: rejectTokenItem,
     verifyLogin: verifyLogin,
     getAuditLogs: getAuditLogs,
     clearAuditLogs: clearAuditLogs,
     addAuditLog: addAuditLog,
+
+    // 消息通知中心
+    getTokenNotifications: getTokenNotifications,
+    addTokenNotification: addTokenNotification,
+    markTokenNotificationRead: markTokenNotificationRead,
+    clearTokenNotifications: clearTokenNotifications,
 
     // 知识库
     getEntries: getEntries,

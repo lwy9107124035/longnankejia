@@ -95,6 +95,24 @@
       ? '<span class="admin-role-badge super">👑 超级管理员</span>'
       : '<span class="admin-role-badge guest">👤 受邀：' + esc(currentUser.name) + '</span>';
 
+    var notifs = (!isSuper && currentUser) ? window.Store.getTokenNotifications(currentUser.tokenId || currentUser.token) : [];
+    var notifBanner = '';
+    if (notifs && notifs.length) {
+      notifBanner =
+        '<div class="admin-notice-bar" id="tokenNoticeBar">' +
+        '  <div class="admin-notice-icon">⚠️</div>' +
+        '  <div class="admin-notice-content">' +
+        '    <div class="admin-notice-title">审核反馈通知（您的 ' + notifs.length + ' 项修改已被超级管理员剔除/驳回）</div>' +
+        '    <div class="admin-notice-list">' +
+        notifs.map(function (n) {
+          return '<div class="admin-notice-item"><strong>[' + esc(n.targetTypeName) + ']</strong>「' + esc(n.targetTitle) + '」<span class="admin-notice-reason">驳回原因：' + esc(n.reason) + '</span></div>';
+        }).join('') +
+        '    </div>' +
+        '  </div>' +
+        '  <button class="admin-notice-ack" id="ackNotifBtn">我知道了</button>' +
+        '</div>';
+    }
+
     panel.innerHTML =
       '<div class="admin-header">' +
       '  <div class="admin-header-left">' +
@@ -106,6 +124,7 @@
       '    <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
       '  </div>' +
       '</div>' +
+      notifBanner +
       '<div class="admin-tabs">' +
       '  <button class="admin-tab active" data-tab="kb">📚 知识库</button>' +
       '  <button class="admin-tab" data-tab="kepu">🏮 科普管理</button>' +
@@ -119,6 +138,15 @@
 
     $('#adminCloseBtn').addEventListener('click', close);
     $('#adminHeaderLogoutBtn').addEventListener('click', doLogout);
+
+    var ackBtn = $('#ackNotifBtn');
+    if (ackBtn) {
+      ackBtn.addEventListener('click', function () {
+        window.Store.clearTokenNotifications(currentUser.tokenId || currentUser.token);
+        var bar = $('#tokenNoticeBar');
+        if (bar) bar.style.display = 'none';
+      });
+    }
 
     var tabs = panel.querySelectorAll('.admin-tab');
     tabs.forEach(function (t) {
@@ -842,6 +870,7 @@
       '</div>' +
       '<div class="admin-section-subtitle" style="margin-top:16px">已签发的管理员令牌与监控列表 (' + tokens.length + ')</div>' +
       '<div class="admin-token-list" id="tokenList"></div>' +
+      '<div id="inspectContainer" style="display:none"></div>' +
       '<div class="admin-audit-box">' +
       '  <div class="admin-audit-header">' +
       '    <div class="admin-audit-title">📊 令牌活动与安全审计流水 (' + auditLogs.length + ')</div>' +
@@ -892,7 +921,8 @@
             ? '  <button class="admin-btn-sm admin-btn-resume" data-resume-token="' + esc(t.id) + '">▶ 恢复授权</button>'
             : (!t.isRevoked ? '  <button class="admin-btn-sm admin-btn-pause" data-pause-token="' + esc(t.id) + '">⏸ 暂停授权</button>' : '')) +
           (t.totalContributions > 0
-            ? '  <button class="admin-btn-sm admin-btn-rollback" data-rollback-token="' + esc(t.id) + '" data-name="' + esc(t.name) + '" data-count="' + t.totalContributions + '">↩️ 撤销所做修改 (' + t.totalContributions + ')</button>'
+            ? '  <button class="admin-btn-sm admin-btn-inspect" data-inspect-token="' + esc(t.id) + '">🔍 审查详细改动 (' + t.totalContributions + ')</button>' +
+              '  <button class="admin-btn-sm admin-btn-rollback" data-rollback-token="' + esc(t.id) + '" data-name="' + esc(t.name) + '" data-count="' + t.totalContributions + '">↩️ 撤销全部修改</button>'
             : '') +
           (!t.isRevoked ? '  <button class="admin-btn-sm admin-btn-del" data-revoke-token="' + esc(t.id) + '">🔥 销毁令牌</button>' : '') +
           '  <button class="admin-btn-sm admin-btn-del" data-del-token="' + esc(t.id) + '">🗑 删除记录</button>' +
@@ -905,6 +935,13 @@
           var code = btn.getAttribute('data-copy-token');
           navigator.clipboard ? navigator.clipboard.writeText(code) : prompt('请复制令牌：', code);
           alert('已复制令牌：' + code);
+        });
+      });
+
+      list.querySelectorAll('[data-inspect-token]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-inspect-token');
+          showInspectBox(id);
         });
       });
 
@@ -958,6 +995,69 @@
           if (confirm('确定彻底删除该令牌记录？')) {
             window.Store.deleteInviteToken(id);
             renderTab();
+          }
+        });
+      });
+    }
+
+    function showInspectBox(tokenId) {
+      var box = $('#inspectContainer');
+      if (!box) return;
+      var detailed = window.Store.getTokenDetailedContributions(tokenId);
+      if (!detailed.items.length) {
+        box.style.display = 'none';
+        alert('该令牌暂无可审查的修改条目');
+        return;
+      }
+      box.style.display = 'block';
+      box.innerHTML =
+        '<div class="admin-inspect-box">' +
+        '  <div class="admin-inspect-head">' +
+        '    <div class="admin-inspect-title">📋 审查【' + esc(detailed.token.name) + '】提交的内容明细 (' + detailed.items.length + ' 条)</div>' +
+        '    <button class="admin-btn-sm" id="closeInspectBtn">✕ 收起明细</button>' +
+        '  </div>' +
+        '  <div class="admin-hint" style="margin-bottom:8px">逐条核对内容，对不妥当的改动点击「剔除此项」并附带理由，系统将精准剔除该项并将驳回原因通知该管理员。</div>' +
+        '  <div class="admin-inspect-list">' +
+        detailed.items.map(function (item) {
+          var timeStr = item.createdAt ? new Date(item.createdAt).toLocaleString() : '最近';
+          return '<div class="admin-inspect-item">' +
+            '<div class="admin-inspect-main">' +
+            '  <div><span class="admin-inspect-badge">' + item.typeBadge + '</span><span class="admin-inspect-item-title">' + esc(item.title) + '</span></div>' +
+            '  <div class="admin-inspect-preview">' + esc(item.preview) + '</div>' +
+            '  <div class="admin-inspect-date">提交时间：' + timeStr + '</div>' +
+            '</div>' +
+            '<div class="admin-inspect-actions">' +
+            '  <button class="admin-btn-reject" data-reject-id="' + esc(item.id) + '" data-reject-type="' + item.type + '" data-reject-title="' + esc(item.title) + '">🗑 剔除此项</button>' +
+            '</div>' +
+            '</div>';
+        }).join('') +
+        '  </div>' +
+        '</div>';
+
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      $('#closeInspectBtn').addEventListener('click', function () {
+        box.style.display = 'none';
+      });
+
+      box.querySelectorAll('[data-reject-id]').forEach(function (rBtn) {
+        rBtn.addEventListener('click', function () {
+          var itemId = rBtn.getAttribute('data-reject-id');
+          var itemType = rBtn.getAttribute('data-reject-type');
+          var itemTitle = rBtn.getAttribute('data-reject-title');
+          var reason = prompt('确定剔除修改项「' + itemTitle + '」？\n请输入驳回原因（此消息将发送给该管理员）：', '内容考据不严谨，需核对后录入');
+          if (reason !== null && reason.trim()) {
+            var res = window.Store.rejectTokenItem(tokenId, itemId, itemType, reason.trim());
+            if (res.ok) {
+              if (window.Heritage && window.Heritage.render) window.Heritage.render();
+              if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+              if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+              alert('已剔除「' + itemTitle + '」，并将驳回通知发送给该管理员！');
+              renderTab();
+              showInspectBox(tokenId);
+            } else {
+              alert('剔除失败：' + (res.error || '未找到该项'));
+            }
           }
         });
       });
