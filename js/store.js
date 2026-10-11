@@ -25,7 +25,8 @@
     dialect_deleted:'nfyj_dialect_deleted',
     workflow:       'nfyj_workflow_config',
     audit_logs:     'nfyj_audit_logs',
-    notifications:  'nfyj_token_notifications'
+    notifications:  'nfyj_token_notifications',
+    admin_session:  'nfyj_admin_session'
   };
 
   function read(key, fallback) {
@@ -517,6 +518,51 @@
     return { ok: false, error: '密码错误或邀请令牌无效' };
   }
 
+  /* ---------- 管理员持久登录会话管理 ---------- */
+  function saveSession(sessionData) {
+    if (!sessionData) return;
+    write(LS.admin_session, {
+      role: sessionData.role || 'editor',
+      name: sessionData.name || '管理员',
+      title: sessionData.title || '',
+      tokenId: sessionData.tokenId || '',
+      token: sessionData.token || '',
+      loginAt: Date.now()
+    });
+  }
+
+  function getSession() {
+    var s = read(LS.admin_session, null);
+    if (!s || !s.role) return null;
+    if (s.role === 'super_admin') return s;
+    if (s.role === 'editor') {
+      var tokens = getTokens();
+      var found = tokens.find(function (t) {
+        return (s.tokenId && t.id === s.tokenId) || (s.token && t.token === s.token);
+      });
+      if (!found || found.status !== 'active') {
+        clearSession();
+        return null;
+      }
+      return {
+        role: 'editor',
+        name: found.name,
+        title: found.title,
+        tokenId: found.id,
+        token: found.token,
+        loginAt: s.loginAt
+      };
+    }
+    return null;
+  }
+
+  function clearSession() {
+    try {
+      localStorage.removeItem(LS.admin_session);
+    } catch (_) {}
+  }
+
+
   /* ---------- 知识库 ---------- */
 
   function getEntries() {
@@ -828,6 +874,9 @@
     getTokenDetailedContributions: getTokenDetailedContributions,
     rejectTokenItem: rejectTokenItem,
     verifyLogin: verifyLogin,
+    saveSession: saveSession,
+    getSession: getSession,
+    clearSession: clearSession,
     getAuditLogs: getAuditLogs,
     clearAuditLogs: clearAuditLogs,
     addAuditLog: addAuditLog,

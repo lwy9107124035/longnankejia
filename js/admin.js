@@ -27,6 +27,15 @@
     });
   }
 
+  function refreshFrontEnd() {
+    try {
+      var h = window.Heritage || (window.UI && window.UI.Heritage);
+      if (h && h.render) h.render();
+      if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+      if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+    } catch (_) {}
+  }
+
   /* ==================== 登录模块 (支持邀请制令牌) ==================== */
   function showLogin() {
     var panel = $('#adminPanel');
@@ -61,6 +70,9 @@
         failedAttempts = 0;
         authenticated = true;
         currentUser = authResult;
+        if (window.Store && window.Store.saveSession) {
+          window.Store.saveSession(authResult);
+        }
         showMain();
       } else {
         failedAttempts++;
@@ -84,6 +96,9 @@
   function doLogout() {
     authenticated = false;
     currentUser = null;
+    if (window.Store && window.Store.clearSession) {
+      window.Store.clearSession();
+    }
     showLogin();
   }
 
@@ -382,7 +397,7 @@
         var id = btn.getAttribute('data-del-kepu');
         if (confirm('确定删除该科普卡片？')) {
           window.Store.deleteHeritageCard(id);
-          if (window.Heritage && window.Heritage.render) window.Heritage.render();
+          refreshFrontEnd();
           renderTab();
         }
       });
@@ -445,7 +460,7 @@
       } else {
         window.Store.addHeritageCard(data, currentUser);
       }
-      if (window.Heritage && window.Heritage.render) window.Heritage.render();
+      refreshFrontEnd();
       form.style.display = 'none';
       editingKepuId = null;
       renderTab();
@@ -548,7 +563,7 @@
         chapter: chapter,
         item: { name: name, page: page, videoUrl: url }
       }, currentUser);
-      if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+      refreshFrontEnd();
       form.style.display = 'none';
       renderTab();
     });
@@ -970,9 +985,7 @@
           var count = btn.getAttribute('data-count');
           if (confirm('确定撤销受邀人员「' + name + '」录入的全部修改？\n将清除其录入的全部 ' + count + ' 项数据（知识库、科普卡片、方言语音）。此操作不可撤销。')) {
             var res = window.Store.rollbackTokenChanges(id);
-            if (window.Heritage && window.Heritage.render) window.Heritage.render();
-            if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
-            if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+            refreshFrontEnd();
             alert('已成功撤销该令牌录入的修改，共回滚清除 ' + res.totalRemoved + ' 项数据！');
             renderTab();
           }
@@ -1049,9 +1062,7 @@
           if (reason !== null && reason.trim()) {
             var res = window.Store.rejectTokenItem(tokenId, itemId, itemType, reason.trim());
             if (res.ok) {
-              if (window.Heritage && window.Heritage.render) window.Heritage.render();
-              if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
-              if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+              refreshFrontEnd();
               alert('已剔除「' + itemTitle + '」，并将驳回通知发送给该管理员！');
               renderTab();
               showInspectBox(tokenId);
@@ -1163,9 +1174,7 @@
       reader.onload = function () {
         if (window.Store.importFullBundle(reader.result)) {
           alert('全站资产包恢复成功！');
-          if (window.Heritage && window.Heritage.render) window.Heritage.render();
-          if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
-          if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+          refreshFrontEnd();
           renderTab();
         } else {
           alert('资产包导入失败：格式不正确');
@@ -1217,11 +1226,7 @@
       });
     }
 
-    $('#adminLogoutBtn').addEventListener('click', function () {
-      authenticated = false;
-      currentUser = null;
-      showLogin();
-    });
+    $('#adminLogoutBtn').addEventListener('click', doLogout);
   }
 
   function downloadJson(content, filename) {
@@ -1237,6 +1242,13 @@
   function open() {
     var mask = $('#adminMask');
     mask.hidden = false;
+    if (!authenticated) {
+      var saved = window.Store && window.Store.getSession ? window.Store.getSession() : null;
+      if (saved) {
+        authenticated = true;
+        currentUser = saved;
+      }
+    }
     if (authenticated) {
       showMain();
     } else {
@@ -1246,6 +1258,7 @@
 
   function close() {
     $('#adminMask').hidden = true;
+    refreshFrontEnd();
   }
 
   function init() {

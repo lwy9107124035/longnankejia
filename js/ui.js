@@ -587,6 +587,7 @@
   })();
 
   /* ---------- 导出 ---------- */
+  window.Heritage = Heritage;
   window.UI = {
     init: function () {
       Chat.init();
