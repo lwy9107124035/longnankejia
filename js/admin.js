@@ -45,13 +45,29 @@
     var btn = $('#adminLoginBtn');
     var err = $('#adminPwError');
 
+    var failedAttempts = 0;
+    var lockUntil = 0;
+
     function doLogin() {
+      var now = Date.now();
+      if (now < lockUntil) {
+        var remainSec = Math.ceil((lockUntil - now) / 1000);
+        err.textContent = '尝试次数过多，请 ' + remainSec + ' 秒后再试';
+        return;
+      }
       var pw = input.value;
       if (pw === window.Store.getAdminPassword()) {
+        failedAttempts = 0;
         authenticated = true;
         showMain();
       } else {
-        err.textContent = '密码错误，请重试';
+        failedAttempts++;
+        if (failedAttempts >= 5) {
+          lockUntil = Date.now() + 30000;
+          err.textContent = '错误次数超限，系统已临时锁定 30 秒';
+        } else {
+          err.textContent = '密码错误，请重试（还剩 ' + (5 - failedAttempts) + ' 次机会）';
+        }
         input.value = '';
         input.focus();
       }
