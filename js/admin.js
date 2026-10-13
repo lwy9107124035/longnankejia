@@ -189,15 +189,57 @@
   }
 
   /* ==================== 1. 知识库可视化管理 ==================== */
+  var kbCurFilter = 'all';
+  var kbCurSource = 'all';
+  var kbCurSort = 'custom_first';
+  var kbCurPage = 1;
+  var kbPageSize = 15;
+
   function renderKB(body) {
-    var entries = window.Store.getEntries();
+    var allEntries = window.Store.getEntries();
+    var customCount = allEntries.filter(function (e) {
+      return (e.id && e.id.indexOf('custom-') === 0) || e.creatorTokenId || (e.creatorName && e.creatorName !== '超级管理员' && e.creatorName !== '典藏内置');
+    }).length;
+    var builtinCount = allEntries.length - customCount;
+    var totalChars = allEntries.reduce(function (sum, e) { return sum + (e.answer ? e.answer.length : 0); }, 0);
+    var charsDisplay = totalChars > 10000 ? (totalChars / 10000).toFixed(1) + '万' : totalChars;
+
     body.innerHTML =
+      '<div class="admin-stats-bar">' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + allEntries.length + '</div><div class="admin-stat-label">知识总条目</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + customCount + '</div><div class="admin-stat-label">自定义录入</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + builtinCount + '</div><div class="admin-stat-label">典藏内置</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + charsDisplay + '</div><div class="admin-stat-label">知识总字数</div></div>' +
+      '</div>' +
       '<div class="admin-kb-toolbar">' +
-      '  <input type="text" id="kbSearch" placeholder="搜索条目标题、关键词或正文…" class="admin-search">' +
+      '  <div class="admin-search-wrap">' +
+      '    <input type="text" id="kbSearch" placeholder="搜索条目标题、关键词或正文…" class="admin-search">' +
+      '    <button type="button" class="admin-search-clear" id="kbSearchClear" title="清空搜索">✕</button>' +
+      '  </div>' +
       '  <button class="admin-btn admin-btn-primary" id="kbAddBtn">＋ 新增条目</button>' +
       '</div>' +
+      '<div class="admin-toolbar-row">' +
+      '  <select id="kbSourceFilter" class="admin-select-sm">' +
+      '    <option value="all">来源：全部 (' + allEntries.length + ')</option>' +
+      '    <option value="custom">来源：仅自定义 (' + customCount + ')</option>' +
+      '    <option value="builtin">来源：仅内置 (' + builtinCount + ')</option>' +
+      '  </select>' +
+      '  <select id="kbSortSelect" class="admin-select-sm">' +
+      '    <option value="custom_first">排序：置顶自定义条目（默认）</option>' +
+      '    <option value="time_desc">排序：创建时间最新</option>' +
+      '    <option value="title_asc">排序：标题字典序</option>' +
+      '    <option value="len_desc">排序：正文字数降序</option>' +
+      '  </select>' +
+      '  <select id="kbPageSize" class="admin-select-sm">' +
+      '    <option value="15">每页 15 条</option>' +
+      '    <option value="30">每页 30 条</option>' +
+      '    <option value="50">每页 50 条</option>' +
+      '    <option value="9999">查看全部</option>' +
+      '  </select>' +
+      '  <button class="admin-btn-sm" id="kbExportFilterBtn" title="导出当前筛选条目为JSON">导出筛选</button>' +
+      '</div>' +
       '<div class="admin-filter-bar" id="kbFilterBar">' +
-      '  <button class="filter-chip active" data-cat="all">全部 (' + entries.length + ')</button>' +
+      '  <button class="filter-chip active" data-cat="all">全部 (' + allEntries.length + ')</button>' +
       '  <button class="filter-chip" data-cat="craft">手艺工艺</button>' +
       '  <button class="filter-chip" data-cat="arch">围屋建筑</button>' +
       '  <button class="filter-chip" data-cat="custom">民俗礼俗</button>' +
@@ -205,38 +247,127 @@
       '  <button class="filter-chip" data-cat="dialect">方言童谣</button>' +
       '</div>' +
       '<div class="admin-kb-form" id="kbForm" style="display:none"></div>' +
-      '<div class="admin-kb-list" id="kbList"></div>';
+      '<div class="admin-kb-list" id="kbList"></div>' +
+      '<div class="admin-pagination" id="kbPagination"></div>';
 
-    renderKBList(entries);
+    var searchInput = $('#kbSearch');
+    var clearBtn = $('#kbSearchClear');
+    var sourceSelect = $('#kbSourceFilter');
+    var sortSelect = $('#kbSortSelect');
+    var pageSizeSelect = $('#kbPageSize');
 
-    var curFilter = 'all';
-    function doFilter() {
-      var q = ($('#kbSearch').value || '').toLowerCase().trim();
-      var filtered = entries.filter(function (e) {
-        var matchQ = !q || e.title.toLowerCase().indexOf(q) !== -1 ||
-                     e.keywords.join(' ').toLowerCase().indexOf(q) !== -1 ||
-                     e.answer.toLowerCase().indexOf(q) !== -1;
+    sourceSelect.value = kbCurSource;
+    sortSelect.value = kbCurSort;
+    pageSizeSelect.value = String(kbPageSize);
+
+    function refreshKBView() {
+      var q = (searchInput.value || '').toLowerCase().trim();
+      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+
+      var filtered = allEntries.filter(function (e) {
+        var isCustom = (e.id && e.id.indexOf('custom-') === 0) || e.creatorTokenId || (e.creatorName && e.creatorName !== '超级管理员' && e.creatorName !== '典藏内置');
+        if (kbCurSource === 'custom' && !isCustom) return false;
+        if (kbCurSource === 'builtin' && isCustom) return false;
+
+        var matchQ = !q || (e.title && e.title.toLowerCase().indexOf(q) !== -1) ||
+                     (e.keywords && e.keywords.join(' ').toLowerCase().indexOf(q) !== -1) ||
+                     (e.answer && e.answer.toLowerCase().indexOf(q) !== -1);
         if (!matchQ) return false;
-        if (curFilter === 'all') return true;
-        var text = (e.title + ' ' + (e.topics || []).join(' ') + ' ' + e.keywords.join(' ')).toLowerCase();
-        if (curFilter === 'craft') return text.indexOf('染') !== -1 || text.indexOf('编') !== -1 || text.indexOf('织') !== -1 || text.indexOf('漆') !== -1;
-        if (curFilter === 'arch') return text.indexOf('围') !== -1 || text.indexOf('屋') !== -1 || text.indexOf('塔') !== -1;
-        if (curFilter === 'custom') return text.indexOf('俗') !== -1 || text.indexOf('寿') !== -1 || text.indexOf('节') !== -1 || text.indexOf('灯') !== -1 || text.indexOf('会') !== -1;
-        if (curFilter === 'food') return text.indexOf('豆腐') !== -1 || text.indexOf('米果') !== -1 || text.indexOf('茶') !== -1 || text.indexOf('食') !== -1 || text.indexOf('珍珠') !== -1;
-        if (curFilter === 'dialect') return text.indexOf('话') !== -1 || text.indexOf('歌') !== -1 || text.indexOf('谣') !== -1 || text.indexOf('音') !== -1;
+
+        if (kbCurFilter === 'all') return true;
+        var text = ((e.title || '') + ' ' + (e.topics || []).join(' ') + ' ' + (e.keywords || []).join(' ')).toLowerCase();
+        if (kbCurFilter === 'craft') return text.indexOf('染') !== -1 || text.indexOf('编') !== -1 || text.indexOf('织') !== -1 || text.indexOf('漆') !== -1;
+        if (kbCurFilter === 'arch') return text.indexOf('围') !== -1 || text.indexOf('屋') !== -1 || text.indexOf('塔') !== -1;
+        if (kbCurFilter === 'custom') return text.indexOf('俗') !== -1 || text.indexOf('寿') !== -1 || text.indexOf('节') !== -1 || text.indexOf('灯') !== -1 || text.indexOf('会') !== -1;
+        if (kbCurFilter === 'food') return text.indexOf('豆腐') !== -1 || text.indexOf('米果') !== -1 || text.indexOf('茶') !== -1 || text.indexOf('食') !== -1 || text.indexOf('珍珠') !== -1;
+        if (kbCurFilter === 'dialect') return text.indexOf('话') !== -1 || text.indexOf('歌') !== -1 || text.indexOf('谣') !== -1 || text.indexOf('音') !== -1;
         return true;
       });
-      renderKBList(filtered);
+
+      filtered.sort(function (a, b) {
+        var isCustomA = (a.id && a.id.indexOf('custom-') === 0) || a.creatorTokenId || a.createdAt;
+        var isCustomB = (b.id && b.id.indexOf('custom-') === 0) || b.creatorTokenId || b.createdAt;
+
+        if (kbCurSort === 'custom_first') {
+          if (isCustomA && !isCustomB) return -1;
+          if (!isCustomA && isCustomB) return 1;
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        }
+        if (kbCurSort === 'time_desc') {
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        }
+        if (kbCurSort === 'title_asc') {
+          return String(a.title || '').localeCompare(String(b.title || ''), 'zh');
+        }
+        if (kbCurSort === 'len_desc') {
+          return (b.answer ? b.answer.length : 0) - (a.answer ? a.answer.length : 0);
+        }
+        return 0;
+      });
+
+      var total = filtered.length;
+      var totalPages = Math.ceil(total / kbPageSize) || 1;
+      if (kbCurPage > totalPages) kbCurPage = totalPages;
+      if (kbCurPage < 1) kbCurPage = 1;
+
+      var startIndex = (kbCurPage - 1) * kbPageSize;
+      var pageItems = filtered.slice(startIndex, startIndex + kbPageSize);
+
+      renderKBList(pageItems);
+      renderKBPagination(total, totalPages, startIndex, pageItems.length, filtered);
     }
 
-    $('#kbSearch').addEventListener('input', doFilter);
+    searchInput.addEventListener('input', function () {
+      kbCurPage = 1;
+      refreshKBView();
+    });
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        searchInput.value = '';
+        kbCurPage = 1;
+        refreshKBView();
+        searchInput.focus();
+      });
+    }
+
+    sourceSelect.addEventListener('change', function () {
+      kbCurSource = sourceSelect.value;
+      kbCurPage = 1;
+      refreshKBView();
+    });
+
+    sortSelect.addEventListener('change', function () {
+      kbCurSort = sortSelect.value;
+      kbCurPage = 1;
+      refreshKBView();
+    });
+
+    pageSizeSelect.addEventListener('change', function () {
+      kbPageSize = Number(pageSizeSelect.value) || 15;
+      kbCurPage = 1;
+      refreshKBView();
+    });
+
+    $('#kbExportFilterBtn').addEventListener('click', function () {
+      var q = (searchInput.value || '').toLowerCase().trim();
+      var filtered = allEntries.filter(function (e) {
+        var isCustom = (e.id && e.id.indexOf('custom-') === 0) || e.creatorTokenId;
+        if (kbCurSource === 'custom' && !isCustom) return false;
+        if (kbCurSource === 'builtin' && isCustom) return false;
+        if (q && (e.title.toLowerCase().indexOf(q) === -1 && e.answer.toLowerCase().indexOf(q) === -1)) return false;
+        return true;
+      });
+      downloadJson(JSON.stringify(filtered, null, 2), '龙南知识库筛选导出-' + Date.now() + '.json');
+    });
 
     $('#kbFilterBar').querySelectorAll('.filter-chip').forEach(function (btn) {
       btn.addEventListener('click', function () {
         $('#kbFilterBar').querySelectorAll('.filter-chip').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
-        curFilter = btn.getAttribute('data-cat');
-        doFilter();
+        kbCurFilter = btn.getAttribute('data-cat');
+        kbCurPage = 1;
+        refreshKBView();
       });
     });
 
@@ -244,28 +375,36 @@
       editingId = null;
       showKBForm(null);
     });
+
+    refreshKBView();
   }
 
-  function renderKBList(entries) {
+  function renderKBList(pageEntries) {
     var list = $('#kbList');
-    if (!entries.length) {
+    if (!pageEntries.length) {
       list.innerHTML = '<div class="admin-empty">没有匹配的知识条目</div>';
       return;
     }
-    list.innerHTML = entries.map(function (e) {
-      var isCustom = e.id && e.id.indexOf('custom-') === 0;
-      var badge = isCustom ? '<span class="admin-badge admin-badge-custom">自定义</span>' :
-                  '<span class="admin-badge admin-badge-default">内置</span>';
-      var sourceText = (e.sources && e.sources.length) ? ' · 📖 ' + esc(e.sources[0].title) : '';
+    list.innerHTML = pageEntries.map(function (e) {
+      var isCustom = (e.id && e.id.indexOf('custom-') === 0) || e.creatorTokenId || (e.creatorName && e.creatorName !== '超级管理员' && e.creatorName !== '典藏内置');
+      var badge = isCustom
+        ? '<span class="admin-badge admin-badge-custom">自定义</span>' + (e.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(e.creatorName) + '</span>' : '')
+        : '<span class="admin-badge admin-badge-default">内置</span>';
+      var sourceText = (e.sources && e.sources.length && e.sources[0].title) ? ' · 📖 ' + esc(e.sources[0].title) : '';
+      var kwText = (e.keywords && e.keywords.length) ? esc(e.keywords.join(' / ')) : esc(e.title);
+
       return '<div class="admin-kb-item" data-id="' + esc(e.id) + '">' +
         '<div class="admin-kb-item-head">' +
         '  <span class="admin-kb-item-title">' + esc(e.title) + '</span>' + badge +
         '</div>' +
-        '<div class="admin-kb-item-keywords">' + esc(e.keywords.join(' / ')) + '</div>' +
+        '<div class="admin-kb-item-keywords">' + kwText + '</div>' +
         '<div class="admin-kb-item-preview">' + esc(e.answer.slice(0, 95)) + (e.answer.length > 95 ? '…' : '') + '</div>' +
+        '<div class="admin-kb-fulltext" id="full-' + esc(e.id) + '">' + esc(e.answer) + '</div>' +
         '<div class="admin-kb-item-footer">' +
         '  <span class="admin-kb-item-meta">' + e.answer.length + ' 字' + sourceText + '</span>' +
         '  <div class="admin-kb-item-actions">' +
+        '    <button class="admin-btn-sm admin-btn-expand" data-action="expand">展开全文</button>' +
+        '    <button class="admin-btn-sm admin-btn-copy" data-action="copy">复制模板</button>' +
         '    <button class="admin-btn-sm admin-btn-test" data-action="test">测试提问</button>' +
         '    <button class="admin-btn-sm admin-btn-edit" data-action="edit">编辑</button>' +
         '    <button class="admin-btn-sm admin-btn-del" data-action="delete">删除</button>' +
@@ -276,11 +415,38 @@
 
     list.querySelectorAll('.admin-kb-item').forEach(function (item) {
       var id = item.getAttribute('data-id');
+
+      item.querySelector('[data-action="expand"]').addEventListener('click', function () {
+        var drawer = item.querySelector('.admin-kb-fulltext');
+        var btn = item.querySelector('[data-action="expand"]');
+        if (drawer.classList.contains('open')) {
+          drawer.classList.remove('open');
+          btn.textContent = '展开全文';
+        } else {
+          drawer.classList.add('open');
+          btn.textContent = '收起全文';
+        }
+      });
+
+      item.querySelector('[data-action="copy"]').addEventListener('click', function () {
+        var entry = window.Store.getEntries().find(function (e) { return e.id === id; });
+        if (entry) {
+          editingId = null;
+          showKBForm({
+            title: entry.title + ' (复制模板)',
+            keywords: (entry.keywords || []).slice(),
+            answer: entry.answer,
+            sources: entry.sources ? entry.sources.slice() : []
+          });
+        }
+      });
+
       item.querySelector('[data-action="edit"]').addEventListener('click', function () {
         var entry = window.Store.getEntries().find(function (e) { return e.id === id; });
         editingId = id;
         showKBForm(entry);
       });
+
       item.querySelector('[data-action="test"]').addEventListener('click', function () {
         var entry = window.Store.getEntries().find(function (e) { return e.id === id; });
         if (entry && window.AnswerEngine) {
@@ -290,6 +456,7 @@
           });
         }
       });
+
       item.querySelector('[data-action="delete"]').addEventListener('click', function () {
         if (confirm('确定删除「' + item.querySelector('.admin-kb-item-title').textContent + '」？')) {
           window.Store.deleteEntry(id);
@@ -297,6 +464,52 @@
         }
       });
     });
+  }
+
+  function renderKBPagination(total, totalPages, startIndex, pageCount, allFiltered) {
+    var pEl = $('#kbPagination');
+    if (!pEl) return;
+    if (total <= kbPageSize && totalPages <= 1) {
+      pEl.innerHTML = '<span class="admin-page-info">共 ' + total + ' 条</span>';
+      return;
+    }
+    var infoText = '显示 ' + (startIndex + 1) + '-' + (startIndex + pageCount) + ' 条，共 ' + total + ' 条';
+    pEl.innerHTML =
+      '<span class="admin-page-info">' + infoText + '</span>' +
+      '<div class="admin-page-controls">' +
+      '  <button class="admin-page-btn" id="kbPagePrev"' + (kbCurPage <= 1 ? ' disabled' : '') + '>上一页</button>' +
+      '  <span class="admin-page-info" style="margin:0 4px">' + kbCurPage + ' / ' + totalPages + '</span>' +
+      '  <button class="admin-page-btn" id="kbPageNext"' + (kbCurPage >= totalPages ? ' disabled' : '') + '>下一页</button>' +
+      '</div>';
+
+    var prev = $('#kbPagePrev');
+    var next = $('#kbPageNext');
+    if (prev) {
+      prev.addEventListener('click', function () {
+        if (kbCurPage > 1) {
+          kbCurPage--;
+          var start = (kbCurPage - 1) * kbPageSize;
+          var slice = allFiltered.slice(start, start + kbPageSize);
+          renderKBList(slice);
+          renderKBPagination(total, totalPages, start, slice.length, allFiltered);
+          var elList = $('#kbList');
+          if (elList) elList.scrollTop = 0;
+        }
+      });
+    }
+    if (next) {
+      next.addEventListener('click', function () {
+        if (kbCurPage < totalPages) {
+          kbCurPage++;
+          var start = (kbCurPage - 1) * kbPageSize;
+          var slice = allFiltered.slice(start, start + kbPageSize);
+          renderKBList(slice);
+          renderKBPagination(total, totalPages, start, slice.length, allFiltered);
+          var elList = $('#kbList');
+          if (elList) elList.scrollTop = 0;
+        }
+      });
+    }
   }
 
   function showKBForm(entry) {
@@ -307,7 +520,7 @@
 
     form.innerHTML =
       '<div class="admin-form-box">' +
-      '  <div class="admin-form-title">' + (entry ? '编辑条目' : '新增条目') + '</div>' +
+      '  <div class="admin-form-title">' + (entry ? (editingId ? '编辑条目' : '基于模板新增条目') : '新增条目') + '</div>' +
       '  <label class="admin-label">条目标题 *</label>' +
       '  <input type="text" id="kbTitle" class="admin-input" value="' + esc(entry ? entry.title : '') + '" placeholder="例如：客家蓝染">' +
       '  <label class="admin-label">触发关键词（逗号或空格分隔） *</label>' +
@@ -353,40 +566,163 @@
   }
 
   /* ==================== 2. 科普模块动态管理 ==================== */
+  var kepuCurSource = 'all';
+
   function renderKepu(body) {
-    var cards = window.Store.getHeritageCards(window.Heritage ? window.Heritage.list() : []);
+    var rawCards = window.Store.getHeritageCards(window.Heritage ? window.Heritage.list() : []);
+    var customCards = rawCards.filter(function (c) {
+      return (c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员');
+    });
+    var builtinCards = rawCards.filter(function (c) { return customCards.indexOf(c) === -1; });
+
+    var sortedCards = customCards.concat(builtinCards);
+
     body.innerHTML =
+      '<div class="admin-stats-bar">' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + rawCards.length + '</div><div class="admin-stat-label">科普总卡片</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + customCards.length + '</div><div class="admin-stat-label">自定义卡片</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + builtinCards.length + '</div><div class="admin-stat-label">内置卡片</div></div>' +
+      '</div>' +
       '<div class="admin-kb-toolbar">' +
-      '  <div class="admin-toolbar-tip">前台【🏮 科普】面板内容，在此增删改前台即时联动渲染</div>' +
+      '  <div class="admin-search-wrap">' +
+      '    <input type="text" id="kepuSearch" placeholder="搜索科普名称、标签或详情…" class="admin-search">' +
+      '    <button type="button" class="admin-search-clear" id="kepuSearchClear" title="清空搜索">✕</button>' +
+      '  </div>' +
       '  <button class="admin-btn admin-btn-primary" id="kepuAddBtn">＋ 新增科普卡片</button>' +
+      '</div>' +
+      '<div class="admin-toolbar-row">' +
+      '  <select id="kepuSourceFilter" class="admin-select-sm">' +
+      '    <option value="all">来源：全部卡片 (' + rawCards.length + ')</option>' +
+      '    <option value="custom">来源：仅自定义 (' + customCards.length + ')</option>' +
+      '    <option value="builtin">来源：仅内置 (' + builtinCards.length + ')</option>' +
+      '  </select>' +
+      '  <div class="admin-toolbar-tip" style="margin-left:auto;font-size:11px;color:var(--muted)">前台【🏮 科普】面板内容，即时联动渲染</div>' +
       '</div>' +
       '<div class="admin-kb-form" id="kepuForm" style="display:none"></div>' +
       '<div class="admin-kepu-grid" id="kepuList"></div>';
 
-    var list = $('#kepuList');
-    list.innerHTML = cards.map(function (c) {
-      return '<div class="admin-kepu-card" style="border-left: 4px solid ' + (c.accent || '#2F5D50') + '">' +
-        '<div class="admin-kepu-head">' +
-        '  <span class="admin-kepu-icon">' + (c.icon || '🏮') + '</span>' +
-        '  <span class="admin-kepu-name">' + esc(c.name) + '</span>' +
-        '</div>' +
-        '<div class="admin-kepu-tag">' + esc(c.tag || '') + '</div>' +
-        '<div class="admin-kepu-actions">' +
-        '  <button class="admin-btn-sm admin-btn-edit" data-edit-kepu="' + esc(c.id) + '">编辑</button>' +
-        '  <button class="admin-btn-sm admin-btn-del" data-del-kepu="' + esc(c.id) + '">删除</button>' +
-        '</div>' +
-        '</div>';
-    }).join('');
+    var searchInput = $('#kepuSearch');
+    var clearBtn = $('#kepuSearchClear');
+    var sourceSelect = $('#kepuSourceFilter');
+
+    sourceSelect.value = kepuCurSource;
+
+    function refreshKepuList() {
+      var q = (searchInput.value || '').toLowerCase().trim();
+      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+
+      var filtered = sortedCards.filter(function (c) {
+        var isCustom = (c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员');
+        if (kepuCurSource === 'custom' && !isCustom) return false;
+        if (kepuCurSource === 'builtin' && isCustom) return false;
+        if (q) {
+          var match = (c.name && c.name.toLowerCase().indexOf(q) !== -1) ||
+                      (c.tag && c.tag.toLowerCase().indexOf(q) !== -1) ||
+                      (c.detail && c.detail.toLowerCase().indexOf(q) !== -1);
+          if (!match) return false;
+        }
+        return true;
+      });
+
+      renderKepuItems(filtered, rawCards);
+    }
+
+    searchInput.addEventListener('input', refreshKepuList);
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        searchInput.value = '';
+        refreshKepuList();
+        searchInput.focus();
+      });
+    }
+
+    sourceSelect.addEventListener('change', function () {
+      kepuCurSource = sourceSelect.value;
+      refreshKepuList();
+    });
 
     $('#kepuAddBtn').addEventListener('click', function () {
       editingKepuId = null;
       showKepuForm(null);
     });
 
+    refreshKepuList();
+  }
+
+  function renderKepuItems(cards, allCards) {
+    var list = $('#kepuList');
+    if (!cards.length) {
+      list.innerHTML = '<div class="admin-empty-sm">没有匹配的科普卡片</div>';
+      return;
+    }
+
+    list.innerHTML = cards.map(function (c) {
+      var isCustom = (c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员');
+      var badge = isCustom
+        ? '<span class="admin-badge admin-badge-custom">自定义</span>' + (c.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(c.creatorName) + '</span>' : '')
+        : '<span class="admin-badge admin-badge-default">内置</span>';
+
+      return '<div class="admin-kepu-card" style="border-left: 4px solid ' + (c.accent || '#2F5D50') + '">' +
+        '<div class="admin-kepu-head">' +
+        '  <span class="admin-kepu-icon">' + (c.icon || '🏮') + '</span>' +
+        '  <span class="admin-kepu-name">' + esc(c.name) + '</span>' + badge +
+        '</div>' +
+        '<div class="admin-kepu-tag">' + esc(c.tag || '') + '</div>' +
+        '<div class="admin-kb-fulltext" id="preview-box-' + esc(c.id) + '">' +
+        '  <div style="font-weight:600;margin-bottom:4px;color:' + (c.accent || '#2F5D50') + '">【前台游客呈现预览】</div>' +
+        '  <div style="background:' + (c.bg || '#E4EFEA') + ';padding:8px;border-radius:4px;color:var(--ink)">' +
+        '    <div style="font-size:12px;margin-bottom:4px">' + (c.detail || '暂无详细介绍') + '</div>' +
+        '    <div style="font-size:10px;color:var(--muted)">💬 点击卡片提问阿蓝：「' + esc(c.ask || ('介绍一下' + c.name)) + '」</div>' +
+        '  </div>' +
+        '</div>' +
+        '<div class="admin-kepu-actions">' +
+        '  <button class="admin-btn-sm admin-btn-preview" data-preview-kepu="' + esc(c.id) + '">游客预览</button>' +
+        '  <button class="admin-btn-sm admin-btn-copy" data-copy-kepu="' + esc(c.id) + '">复制模板</button>' +
+        '  <button class="admin-btn-sm admin-btn-edit" data-edit-kepu="' + esc(c.id) + '">编辑</button>' +
+        '  <button class="admin-btn-sm admin-btn-del" data-del-kepu="' + esc(c.id) + '">删除</button>' +
+        '</div>' +
+        '</div>';
+    }).join('');
+
+    list.querySelectorAll('[data-preview-kepu]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-preview-kepu');
+        var box = document.getElementById('preview-box-' + id);
+        if (box) {
+          if (box.classList.contains('open')) {
+            box.classList.remove('open');
+            btn.textContent = '游客预览';
+          } else {
+            box.classList.add('open');
+            btn.textContent = '收起预览';
+          }
+        }
+      });
+    });
+
+    list.querySelectorAll('[data-copy-kepu]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-copy-kepu');
+        var card = allCards.find(function (c) { return c.id === id; });
+        if (card) {
+          editingKepuId = null;
+          showKepuForm({
+            name: card.name + ' (复制模板)',
+            icon: card.icon,
+            tag: card.tag,
+            accent: card.accent,
+            bg: card.bg,
+            detail: card.detail,
+            ask: card.ask
+          });
+        }
+      });
+    });
+
     list.querySelectorAll('[data-edit-kepu]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-edit-kepu');
-        var card = cards.find(function (c) { return c.id === id; });
+        var card = allCards.find(function (c) { return c.id === id; });
         editingKepuId = id;
         showKepuForm(card);
       });
@@ -411,7 +747,7 @@
 
     form.innerHTML =
       '<div class="admin-form-box">' +
-      '  <div class="admin-form-title">' + (card ? '编辑科普卡片' : '新增科普卡片') + '</div>' +
+      '  <div class="admin-form-title">' + (card ? (editingKepuId ? '编辑科普卡片' : '基于模板新增科普卡片') : '新增科普卡片') + '</div>' +
       '  <div class="admin-form-row">' +
       '    <div style="flex:1">' +
       '      <label class="admin-label">卡片名称 *</label>' +
@@ -476,51 +812,132 @@
   function renderDialect(body) {
     var baseTracks = (window.Diancang && window.Diancang.videoExhibits) ? window.Diancang.videoExhibits() : [];
     var customTracks = window.Store.getCustomDialectTracks();
+    var totalCount = baseTracks.length + customTracks.length;
+
     body.innerHTML =
+      '<div class="admin-stats-bar">' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + totalCount + '</div><div class="admin-stat-label">方言总语料</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + customTracks.length + '</div><div class="admin-stat-label">自定义录入</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + baseTracks.length + '</div><div class="admin-stat-label">典藏内置讲解</div></div>' +
+      '</div>' +
       '<div class="admin-kb-toolbar">' +
-      '  <div class="admin-toolbar-tip">前台【🗣 方言】原声库与讲解视频，可增补客家音频语料</div>' +
+      '  <div class="admin-search-wrap">' +
+      '    <input type="text" id="dlSearch" placeholder="搜索方言名称、篇章或音视频地址…" class="admin-search">' +
+      '    <button type="button" class="admin-search-clear" id="dlSearchClear" title="清空搜索">✕</button>' +
+      '  </div>' +
       '  <button class="admin-btn admin-btn-primary" id="dialectAddBtn">＋ 新增方言讲解/音频</button>' +
       '</div>' +
       '<div class="admin-kb-form" id="dialectForm" style="display:none"></div>' +
-      '<div class="admin-section-subtitle">自定义语料 (' + customTracks.length + ')</div>' +
+      '<div class="admin-section-subtitle">自定义语料 (' + customTracks.length + ') · 置顶管理</div>' +
       '<div class="admin-dialect-list" id="customDialectList"></div>' +
       '<div class="admin-section-subtitle" style="margin-top:14px">典藏内置原声讲解 (' + baseTracks.length + ')</div>' +
       '<div class="admin-dialect-list" id="baseDialectList"></div>';
 
-    var cList = $('#customDialectList');
-    if (!customTracks.length) {
-      cList.innerHTML = '<div class="admin-empty-sm">暂无自定义语料，点击上方按钮新增</div>';
-    } else {
-      cList.innerHTML = customTracks.map(function (t) {
-        return '<div class="admin-dialect-item">' +
-          '<div class="admin-dialect-item-title">🔊 ' + esc(t.item.name) + ' (' + esc(t.chapter) + ' · 第' + esc(t.item.page) + '页)</div>' +
-          '<div class="admin-dialect-item-url">' + esc(t.item.videoUrl) + '</div>' +
-          '<button class="admin-btn-sm admin-btn-del" data-del-dialect="' + esc(t.id) + '">删除</button>' +
-          '</div>';
-      }).join('');
-      cList.querySelectorAll('[data-del-dialect]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var id = btn.getAttribute('data-del-dialect');
-          if (confirm('确定删除该自定义方言条目？')) {
-            window.Store.deleteDialectTrack(id);
-            if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
-            renderTab();
-          }
-        });
+    var searchInput = $('#dlSearch');
+    var clearBtn = $('#dlSearchClear');
+
+    function refreshDialectView() {
+      var q = (searchInput.value || '').toLowerCase().trim();
+      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+
+      var filteredCustom = customTracks.filter(function (t) {
+        if (!q) return true;
+        var text = ((t.item && t.item.name) + ' ' + t.chapter + ' ' + (t.item && t.item.videoUrl)).toLowerCase();
+        return text.indexOf(q) !== -1;
       });
+
+      var cList = $('#customDialectList');
+      if (!filteredCustom.length) {
+        cList.innerHTML = '<div class="admin-empty-sm">' + (customTracks.length ? '未找到匹配的自定义语料' : '暂无自定义语料，点击上方按钮新增') + '</div>';
+      } else {
+        cList.innerHTML = filteredCustom.map(function (t) {
+          var creatorTag = t.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(t.creatorName) + '</span>' : '';
+          return '<div class="admin-dialect-item" style="border-left: 3px solid var(--primary);">' +
+            '<div>' +
+            '  <div class="admin-dialect-item-title">🔊 ' + esc(t.item.name) + ' (' + esc(t.chapter) + ' · 第' + esc(t.item.page) + '页) <span class="admin-badge admin-badge-custom">自定义</span>' + creatorTag + '</div>' +
+            '  <div class="admin-dialect-item-url">' + esc(t.item.videoUrl) + '</div>' +
+            '</div>' +
+            '<div class="admin-kb-item-actions">' +
+            '  <button class="admin-btn-sm admin-btn-test" data-play-dialect="' + esc(t.item.videoUrl) + '">▶ 播放测试</button>' +
+            '  <button class="admin-btn-sm admin-btn-copy" data-copy-dialect="' + esc(t.item.videoUrl) + '">复制链接</button>' +
+            '  <button class="admin-btn-sm admin-btn-del" data-del-dialect="' + esc(t.id) + '">删除</button>' +
+            '</div>' +
+            '</div>';
+        }).join('');
+
+        cList.querySelectorAll('[data-play-dialect]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var url = btn.getAttribute('data-play-dialect');
+            if (url) window.open(url, '_blank');
+          });
+        });
+
+        cList.querySelectorAll('[data-copy-dialect]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var url = btn.getAttribute('data-copy-dialect');
+            if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(url).then(function () { alert('音视频链接已复制到剪贴板'); });
+            } else {
+              alert('链接：' + url);
+            }
+          });
+        });
+
+        cList.querySelectorAll('[data-del-dialect]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-del-dialect');
+            if (confirm('确定删除该自定义方言条目？')) {
+              window.Store.deleteDialectTrack(id);
+              if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+              renderTab();
+            }
+          });
+        });
+      }
+
+      var filteredBase = baseTracks.filter(function (t) {
+        if (!q) return true;
+        var text = ((t.item && t.item.name) + ' ' + t.chapter + ' ' + (t.item && t.item.videoUrl)).toLowerCase();
+        return text.indexOf(q) !== -1;
+      });
+
+      var bList = $('#baseDialectList');
+      if (!filteredBase.length) {
+        bList.innerHTML = '<div class="admin-empty-sm">未找到匹配的内置讲解</div>';
+      } else {
+        bList.innerHTML = filteredBase.map(function (t, i) {
+          return '<div class="admin-dialect-item muted">' +
+            '<span>' + (i + 1) + '. ' + esc(t.item.name) + ' (' + esc(t.chapter) + ')</span>' +
+            '<div style="display:flex;align-items:center;gap:6px">' +
+            '  <button class="admin-btn-sm admin-btn-test" data-play-dialect="' + esc(t.item.videoUrl) + '">▶ 试听</button>' +
+            '  <span class="admin-badge admin-badge-default">内置</span>' +
+            '</div>' +
+            '</div>';
+        }).join('');
+
+        bList.querySelectorAll('[data-play-dialect]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var url = btn.getAttribute('data-play-dialect');
+            if (url) window.open(url, '_blank');
+          });
+        });
+      }
     }
 
-    var bList = $('#baseDialectList');
-    bList.innerHTML = baseTracks.map(function (t, i) {
-      return '<div class="admin-dialect-item muted">' +
-        '<span>' + (i + 1) + '. ' + esc(t.item.name) + ' (' + esc(t.chapter) + ')</span>' +
-        '<span class="admin-badge admin-badge-default">内置</span>' +
-        '</div>';
-    }).join('');
+    searchInput.addEventListener('input', refreshDialectView);
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        searchInput.value = '';
+        refreshDialectView();
+        searchInput.focus();
+      });
+    }
 
     $('#dialectAddBtn').addEventListener('click', function () {
       showDialectForm();
     });
+
+    refreshDialectView();
   }
 
   function showDialectForm() {
@@ -1262,6 +1679,14 @@
   }
 
   function init() {
+    try {
+      var saved = window.Store && window.Store.getSession ? window.Store.getSession() : null;
+      if (saved) {
+        authenticated = true;
+        currentUser = saved;
+      }
+    } catch (_) {}
+
     var entry = document.getElementById('adminEntry');
     if (entry) {
       entry.addEventListener('click', open);

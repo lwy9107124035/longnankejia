@@ -536,18 +536,21 @@
     if (!s || !s.role) return null;
     if (s.role === 'super_admin') return s;
     if (s.role === 'editor') {
-      var tokens = getTokens();
+      var tokens = read(LS.tokens, []);
       var found = tokens.find(function (t) {
         return (s.tokenId && t.id === s.tokenId) || (s.token && t.token === s.token);
       });
-      if (!found || found.status !== 'active') {
+      var now = Date.now();
+      var isExpired = found && found.expiresAt && found.expiresAt > 0 && now > found.expiresAt;
+      if (!found || found.paused || found.revoked || isExpired) {
         clearSession();
         return null;
       }
       return {
+        ok: true,
         role: 'editor',
         name: found.name,
-        title: found.title,
+        title: found.title || ('受邀管理员 · ' + found.name),
         tokenId: found.id,
         token: found.token,
         loginAt: s.loginAt
