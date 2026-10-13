@@ -153,7 +153,9 @@
     // 直接调用（例如「问问阿蓝」）也要让地址栏跟上，hash 相同则不会触发事件
     var routeName = window.Router && window.Router.BY_PANEL[panelId];
     if (routeName && window.location.hash !== '#/' + routeName) {
-      window.location.hash = '#/' + routeName;
+      if (String(window.location.hash || '').indexOf('admin-') === -1) {
+        window.location.hash = '#/' + routeName;
+      }
     }
   }
 

@@ -417,12 +417,85 @@
       return true;
     }
 
+    function setupPillScroller(pillsEl, leftBtn, rightBtn) {
+      if (!pillsEl) return;
+      function updateArrows() {
+        var max = pillsEl.scrollWidth - pillsEl.clientWidth;
+        if (leftBtn) {
+          if (pillsEl.scrollLeft <= 2) leftBtn.classList.add('is-disabled');
+          else leftBtn.classList.remove('is-disabled');
+        }
+        if (rightBtn) {
+          if (pillsEl.scrollLeft >= max - 2) rightBtn.classList.add('is-disabled');
+          else rightBtn.classList.remove('is-disabled');
+        }
+      }
+      if (leftBtn) {
+        leftBtn.addEventListener('click', function () {
+          pillsEl.scrollBy({ left: -160, behavior: 'smooth' });
+          setTimeout(updateArrows, 280);
+        });
+      }
+      if (rightBtn) {
+        rightBtn.addEventListener('click', function () {
+          pillsEl.scrollBy({ left: 160, behavior: 'smooth' });
+          setTimeout(updateArrows, 280);
+        });
+      }
+      pillsEl.addEventListener('scroll', updateArrows);
+      setTimeout(updateArrows, 100);
+
+      // 滚轮横向滚动支持
+      pillsEl.addEventListener('wheel', function (e) {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          e.preventDefault();
+          pillsEl.scrollLeft += e.deltaY;
+          updateArrows();
+        }
+      }, { passive: false });
+
+      // 鼠标拖拽横向抓取滑动
+      var isDown = false;
+      var startX = 0;
+      var startScrollLeft = 0;
+      var hasMoved = false;
+
+      pillsEl.addEventListener('mousedown', function (e) {
+        isDown = true;
+        hasMoved = false;
+        startX = e.pageX - pillsEl.offsetLeft;
+        startScrollLeft = pillsEl.scrollLeft;
+      });
+      window.addEventListener('mouseup', function () { isDown = false; });
+      pillsEl.addEventListener('mouseleave', function () { isDown = false; });
+      pillsEl.addEventListener('mousemove', function (e) {
+        if (!isDown) return;
+        var x = e.pageX - pillsEl.offsetLeft;
+        var walk = (x - startX) * 1.2;
+        if (Math.abs(walk) > 3) hasMoved = true;
+        pillsEl.scrollLeft = startScrollLeft - walk;
+        updateArrows();
+      });
+      pillsEl.addEventListener('click', function (e) {
+        if (hasMoved) {
+          e.stopPropagation();
+          hasMoved = false;
+        }
+      }, true);
+    }
+
     function bindHeritageEvents() {
       if (eventsBound) return;
       eventsBound = true;
       var sInput = document.getElementById('heritageSearch');
       var sClear = document.getElementById('heritageSearchClear');
       var pills = document.getElementById('heritageCatPills');
+      var leftBtn = document.getElementById('heritagePillLeft');
+      var rightBtn = document.getElementById('heritagePillRight');
+
+      if (pills) {
+        setupPillScroller(pills, leftBtn, rightBtn);
+      }
 
       if (sInput) {
         sInput.addEventListener('input', function () {
@@ -508,7 +581,7 @@
       return (window.Store && window.Store.getHeritageCards) ? window.Store.getHeritageCards(CARDS) : CARDS;
     }
 
-    return { init: init, render: render, list: list };
+    return { init: init, render: render, list: list, setupPillScroller: setupPillScroller };
   })();
 
   /* ================================================================
@@ -682,11 +755,30 @@
       Heritage.init(function (card) {
         DetailModal.open(card);
       });
+
+      var quickBadge = document.getElementById('adminQuickBadge');
+      if (quickBadge) {
+        function updateQuickBadge() {
+          var s = window.Store && window.Store.getSession ? window.Store.getSession() : null;
+          if (s) {
+            quickBadge.hidden = false;
+            quickBadge.textContent = s.role === 'super_admin' ? '👑 超管工作台' : '👤 管理工作台';
+          } else {
+            quickBadge.hidden = true;
+          }
+        }
+        quickBadge.addEventListener('click', function () {
+          if (window.Admin && window.Admin.open) window.Admin.open();
+        });
+        updateQuickBadge();
+        window.addEventListener('storage', updateQuickBadge);
+      }
     },
     Chat: Chat,
     Avatar: Avatar,
     Voice: Voice,
     Heritage: Heritage,
-    Access: AccessPanel
+    Access: AccessPanel,
+    setupPillScroller: Heritage.setupPillScroller
   };
 })();

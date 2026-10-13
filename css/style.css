@@ -97,6 +97,32 @@ input { font-family: inherit; }
   letter-spacing: 2px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.admin-quick-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #FEF3C7;
+  background: rgba(180, 105, 43, 0.4);
+  border: 1px solid rgba(252, 211, 77, 0.6);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.3px;
+}
+.admin-quick-badge:hover {
+  background: rgba(180, 105, 43, 0.7);
+  box-shadow: 0 0 8px rgba(252, 211, 77, 0.4);
+}
+.admin-quick-badge[hidden] { display: none; }
+
 .access-btn {
   flex-shrink: 0;
   font-size: 12px;
@@ -590,13 +616,13 @@ input { font-family: inherit; }
 /* ---------- Admin (compact) ---------- */
 .admin-mask { position: fixed; inset: 0; z-index: 300; background: rgba(20,28,25,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 8px; }
 .admin-mask[hidden] { display: none; }
-.admin-panel { background: var(--paper); border-radius: var(--radius-lg); width: 100%; max-width: 480px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow-lg); }
-.admin-login { padding: 32px 20px 20px; text-align: center; }
+.admin-panel { background: var(--paper); border-radius: var(--radius-lg); width: 100%; max-width: 480px; max-height: 92vh; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; box-shadow: var(--shadow-lg); -webkit-overflow-scrolling: touch; }
+.admin-login { padding: 24px 18px 18px; text-align: center; }
 .admin-login-icon { font-size: 28px; margin-bottom: 6px; }
-.admin-login-title { font-size: 15px; font-weight: 700; color: var(--primary-deep); margin-bottom: 14px; }
+.admin-login-title { font-size: 15px; font-weight: 700; color: var(--primary-deep); margin-bottom: 12px; }
 .admin-login input { width: 100%; height: 38px; border: 1.5px solid rgba(47,93,80,0.25); border-radius: var(--radius-sm); padding: 0 12px; font-size: 14px; text-align: center; outline: none; background: var(--card); }
 .admin-login input:focus { border-color: var(--primary); }
-.admin-login-error { height: 16px; font-size: 11px; color: #B5432A; margin-top: 3px; }
+.admin-login-error { min-height: 16px; font-size: 11px; color: #B5432A; margin-top: 3px; }
 .admin-login-btn { width: 100%; height: 38px; background: var(--primary); color: #FFF8EE; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; margin-top: 4px; }
 .admin-login-cancel { margin-top: 8px; font-size: 11px; color: var(--muted); background: none; }
 .admin-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--primary-deep); color: #FFF8EE; flex-shrink: 0; }
@@ -1098,8 +1124,66 @@ input { font-family: inherit; }
   width: 20px; height: 20px; border: none; background: transparent;
   color: var(--muted); font-size: 16px; cursor: pointer; line-height: 1;
 }
-.h-category-pills { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
-.h-category-pills::-webkit-scrollbar { display: none; }
+.pills-scroll-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+.pills-scroll-arrow {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--primary-deep);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  padding: 0;
+  z-index: 2;
+}
+.pills-scroll-arrow:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  transform: scale(1.06);
+}
+.pills-scroll-arrow:active {
+  transform: scale(0.95);
+}
+.pills-scroll-arrow.is-disabled {
+  opacity: 0.2;
+  cursor: default;
+  pointer-events: none;
+}
+.h-category-pills {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 6px;
+  scroll-behavior: smooth;
+  cursor: grab;
+  user-select: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(47,93,80,0.25) transparent;
+}
+.h-category-pills:active { cursor: grabbing; }
+.h-category-pills::-webkit-scrollbar { height: 4px; }
+.h-category-pills::-webkit-scrollbar-track { background: transparent; }
+.h-category-pills::-webkit-scrollbar-thumb { background: rgba(47,93,80,0.2); border-radius: 999px; }
+.h-category-pills:hover::-webkit-scrollbar-thumb { background: rgba(47,93,80,0.45); }
 .h-cat-pill {
   flex-shrink: 0; padding: 4px 10px; font-size: 11.5px; border-radius: 999px;
   background: var(--card); border: 1px solid var(--line); color: var(--ink-soft);
@@ -1142,8 +1226,26 @@ input { font-family: inherit; }
   width: 20px; height: 20px; border: none; background: transparent;
   color: var(--muted); font-size: 16px; cursor: pointer; line-height: 1;
 }
-.dl-filter-pills { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
-.dl-filter-pills::-webkit-scrollbar { display: none; }
+.dl-filter-pills {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 6px;
+  scroll-behavior: smooth;
+  cursor: grab;
+  user-select: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(47,93,80,0.25) transparent;
+}
+.dl-filter-pills:active { cursor: grabbing; }
+.dl-filter-pills::-webkit-scrollbar { height: 4px; }
+.dl-filter-pills::-webkit-scrollbar-track { background: transparent; }
+.dl-filter-pills::-webkit-scrollbar-thumb { background: rgba(47,93,80,0.2); border-radius: 999px; }
+.dl-filter-pills:hover::-webkit-scrollbar-thumb { background: rgba(47,93,80,0.45); }
 .dl-pill {
   flex-shrink: 0; padding: 4px 10px; font-size: 11.5px; border-radius: 999px;
   background: var(--card); border: 1px solid var(--line); color: var(--ink-soft);

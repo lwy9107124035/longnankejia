@@ -42,6 +42,12 @@
     var sInput = document.getElementById('dialectSearch');
     var sClear = document.getElementById('dialectSearchClear');
     var pills = document.getElementById('dialectFilterPills');
+    var leftBtn = document.getElementById('dialectPillLeft');
+    var rightBtn = document.getElementById('dialectPillRight');
+
+    if (pills && window.UI && window.UI.setupPillScroller) {
+      window.UI.setupPillScroller(pills, leftBtn, rightBtn);
+    }
 
     if (sInput) {
       sInput.addEventListener('input', function () {

@@ -20,7 +20,9 @@
   Object.keys(ROUTES).forEach(function (name) { BY_PANEL[ROUTES[name]] = name; });
 
   function current() {
-    var h = String(window.location.hash || '').replace(/^#\/?/, '');
+    var raw = String(window.location.hash || '');
+    if (raw.indexOf('admin-') !== -1) return 'chat';
+    var h = raw.replace(/^#\/?/, '');
     return ROUTES[h] ? h : 'chat';
   }
 

@@ -20,7 +20,10 @@
         <h1 class="header-title">龙南客家非遗数字助手</h1>
         <div class="header-sub">v2 · 扫码即用</div>
       </div>
-      <button class="access-btn" id="accessBtn" type="button" aria-label="查看访问地址与讲解链接">扫码访问</button>
+      <div class="header-actions">
+        <button class="admin-quick-badge" id="adminQuickBadge" type="button" title="点击进入管理工作台" hidden>⚙ 工作台</button>
+        <button class="access-btn" id="accessBtn" type="button" aria-label="查看访问地址与讲解链接">扫码访问</button>
+      </div>
     </header>
 
     <!-- ======== 可滚动内容区 ======== -->
@@ -107,12 +110,16 @@
             <input type="search" id="heritageSearch" class="h-search-input" placeholder="🔍 搜索科普卡片（蓝染、竹编、围屋、戏曲…）" autocomplete="off">
             <button type="button" id="heritageSearchClear" class="h-search-clear" hidden>×</button>
           </div>
-          <div class="h-category-pills" id="heritageCatPills">
-            <button type="button" class="h-cat-pill active" data-cat="all">全部 <span class="h-pill-count" id="hPillAll"></span></button>
-            <button type="button" class="h-cat-pill" data-cat="custom">✨ 馆藏新增 <span class="h-pill-count" id="hPillCustom"></span></button>
-            <button type="button" class="h-cat-pill" data-cat="craft">🧶 传统技艺</button>
-            <button type="button" class="h-cat-pill" data-cat="arch">🏯 建筑聚落</button>
-            <button type="button" class="h-cat-pill" data-cat="folk">🎭 民俗曲艺</button>
+          <div class="pills-scroll-wrapper">
+            <button type="button" class="pills-scroll-arrow pills-arrow-left" id="heritagePillLeft" aria-label="向左滚动分类" title="向左滚动">‹</button>
+            <div class="h-category-pills" id="heritageCatPills">
+              <button type="button" class="h-cat-pill active" data-cat="all">全部 <span class="h-pill-count" id="hPillAll"></span></button>
+              <button type="button" class="h-cat-pill" data-cat="custom">✨ 馆藏新增 <span class="h-pill-count" id="hPillCustom"></span></button>
+              <button type="button" class="h-cat-pill" data-cat="craft">🧶 传统技艺</button>
+              <button type="button" class="h-cat-pill" data-cat="arch">🏯 建筑聚落</button>
+              <button type="button" class="h-cat-pill" data-cat="folk">🎭 民俗曲艺</button>
+            </div>
+            <button type="button" class="pills-scroll-arrow pills-arrow-right" id="heritagePillRight" aria-label="向右滚动分类" title="向右滚动">›</button>
           </div>
         </div>
         <div class="heritage-grid" id="heritageGrid"></div>
@@ -246,12 +253,16 @@
             <input type="search" id="dialectSearch" class="dl-search-input" placeholder="🔍 检索方言语料/唱词/展品名称..." autocomplete="off">
             <button type="button" id="dialectSearchClear" class="dl-search-clear" hidden>×</button>
           </div>
-          <div class="dl-filter-pills" id="dialectFilterPills">
-            <button type="button" class="dl-pill active" data-filter="all">全部语料 <span class="dl-pill-count" id="dlPillAll"></span></button>
-            <button type="button" class="dl-pill" data-filter="audio">🔊 录音音频 <span class="dl-pill-count" id="dlPillAudio"></span></button>
-            <button type="button" class="dl-pill" data-filter="video">🎬 视频讲解 <span class="dl-pill-count" id="dlPillVideo"></span></button>
-            <button type="button" class="dl-pill" data-filter="custom">🎙️ 田野采风新增 <span class="dl-pill-count" id="dlPillCustom"></span></button>
-            <button type="button" class="dl-pill" data-filter="classic">📖 典籍传世原音 <span class="dl-pill-count" id="dlPillClassic"></span></button>
+          <div class="pills-scroll-wrapper">
+            <button type="button" class="pills-scroll-arrow pills-arrow-left" id="dialectPillLeft" aria-label="向左滚动分类" title="向左滚动">‹</button>
+            <div class="dl-filter-pills" id="dialectFilterPills">
+              <button type="button" class="dl-pill active" data-filter="all">全部语料 <span class="dl-pill-count" id="dlPillAll"></span></button>
+              <button type="button" class="dl-pill" data-filter="audio">🔊 录音音频 <span class="dl-pill-count" id="dlPillAudio"></span></button>
+              <button type="button" class="dl-pill" data-filter="video">🎬 视频讲解 <span class="dl-pill-count" id="dlPillVideo"></span></button>
+              <button type="button" class="dl-pill" data-filter="custom">🎙️ 田野采风新增 <span class="dl-pill-count" id="dlPillCustom"></span></button>
+              <button type="button" class="dl-pill" data-filter="classic">📖 典籍传世原音 <span class="dl-pill-count" id="dlPillClassic"></span></button>
+            </div>
+            <button type="button" class="pills-scroll-arrow pills-arrow-right" id="dialectPillRight" aria-label="向右滚动分类" title="向右滚动">›</button>
           </div>
         </div>
 
