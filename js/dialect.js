@@ -20,39 +20,180 @@
     });
   }
 
+  var curFilter = 'all';
+  var curSearch = '';
+  var dialectEventsBound = false;
+
+  function isAudioTrack(t) {
+    if (!t) return false;
+    if (t.mediaType === 'audio' || (t.item && t.item.mediaType === 'audio') || (t.item && t.item.audioUrl)) return true;
+    var url = (t.item && (t.item.videoUrl || t.item.audioUrl)) || '';
+    return /\.(mp3|wav|ogg|aac|m4a)(\?.*)?$/i.test(url);
+  }
+
+  function isCustomTrack(t) {
+    if (!t) return false;
+    return !!(t.isCustom || t.creatorTokenId || (t.id && String(t.id).indexOf('dl-') === 0));
+  }
+
+  function bindDialectEvents() {
+    if (dialectEventsBound) return;
+    dialectEventsBound = true;
+    var sInput = document.getElementById('dialectSearch');
+    var sClear = document.getElementById('dialectSearchClear');
+    var pills = document.getElementById('dialectFilterPills');
+
+    if (sInput) {
+      sInput.addEventListener('input', function () {
+        curSearch = sInput.value.trim().toLowerCase();
+        if (sClear) sClear.hidden = !curSearch;
+        render();
+      });
+    }
+    if (sClear) {
+      sClear.addEventListener('click', function () {
+        if (sInput) {
+          sInput.value = '';
+          curSearch = '';
+          sClear.hidden = true;
+          render();
+          sInput.focus();
+        }
+      });
+    }
+    if (pills) {
+      pills.querySelectorAll('.dl-pill').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          pills.querySelectorAll('.dl-pill').forEach(function (b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          curFilter = btn.getAttribute('data-filter') || 'all';
+          render();
+        });
+      });
+    }
+  }
+
   function select(i) {
     var t = tracks[i];
     if (!t) return;
     activeIndex = i;
+    var isAud = isAudioTrack(t);
+    var isCust = isCustomTrack(t);
+
     nowIdx.textContent = String(i + 1).padStart(2, '0');
     nowName.textContent = t.item.name;
-    nowMeta.textContent = t.chapter + ' · 典藏第 ' + t.item.page + ' 页';
-    listEl.querySelectorAll('.dl-track').forEach(function (row, k) {
-      row.classList.toggle('is-active', k === i);
+    var subOrigin = isCust ? '🎙️ 田野采风新增' : (t.chapter + ' · 典藏第 ' + t.item.page + ' 页');
+    nowMeta.textContent = subOrigin + (isAud ? ' · 纯录音音频' : ' · 视频讲解');
+
+    listEl.querySelectorAll('.dl-track').forEach(function (row) {
+      var rowIdx = parseInt(row.getAttribute('data-i'), 10);
+      row.classList.toggle('is-active', rowIdx === i);
     });
+
     frameEl.hidden = false;
-    frameEl.innerHTML =
-      '<iframe src="' + esc(t.item.videoUrl) + '" allow="autoplay; fullscreen" allowfullscreen></iframe>' +
-      '<a class="dl-open" href="' + esc(t.item.videoUrl) + '" target="_blank" rel="noopener">在新窗口打开讲解页 ↗</a>';
+    var targetUrl = (t.item.audioUrl || t.item.videoUrl || '');
+
+    if (isAud) {
+      frameEl.innerHTML =
+        '<div class="dl-audio-player-card">' +
+        '  <div class="dl-audio-header">' +
+        '    <span class="dl-media-badge dl-badge-audio">🔊 田野采风方言录音</span>' +
+        '    <span class="dl-audio-format">客家宁龙片原声收录</span>' +
+        '  </div>' +
+        '  <audio controls autoplay src="' + esc(targetUrl) + '" class="dl-audio-native"></audio>' +
+        '  <div class="dl-audio-hint">🎙️ 原汁原味客家方言发音与本土民俗记述。</div>' +
+        '</div>';
+    } else {
+      frameEl.innerHTML =
+        '<iframe src="' + esc(targetUrl) + '" allow="autoplay; fullscreen" allowfullscreen></iframe>' +
+        '<a class="dl-open" href="' + esc(targetUrl) + '" target="_blank" rel="noopener">在新窗口打开讲解页 ↗</a>';
+    }
   }
 
   function render() {
+    bindDialectEvents();
     if (!tracks.length) {
-      listEl.innerHTML = '<li class="dl-empty">暂无讲解视频</li>';
+      listEl.innerHTML = '<li class="dl-empty">暂无讲解视频或方言语料</li>';
       return;
     }
     countEl.textContent = tracks.length;
-    listEl.innerHTML = tracks.map(function (t, i) {
+
+    var audioCount = 0;
+    var videoCount = 0;
+    var customCount = 0;
+    var classicCount = 0;
+
+    tracks.forEach(function (t) {
+      if (isAudioTrack(t)) audioCount++; else videoCount++;
+      if (isCustomTrack(t)) customCount++; else classicCount++;
+    });
+
+    var pAll = document.getElementById('dlPillAll');
+    if (pAll) pAll.textContent = tracks.length;
+    var pAudio = document.getElementById('dlPillAudio');
+    if (pAudio) pAudio.textContent = audioCount;
+    var pVideo = document.getElementById('dlPillVideo');
+    if (pVideo) pVideo.textContent = videoCount;
+    var pCustom = document.getElementById('dlPillCustom');
+    if (pCustom) pCustom.textContent = customCount;
+    var pClassic = document.getElementById('dlPillClassic');
+    if (pClassic) pClassic.textContent = classicCount;
+
+    var filteredWithIndices = tracks.map(function (t, i) {
+      return { track: t, originalIndex: i };
+    }).filter(function (pair) {
+      var t = pair.track;
+      var isAud = isAudioTrack(t);
+      var isCust = isCustomTrack(t);
+
+      if (curFilter === 'audio' && !isAud) return false;
+      if (curFilter === 'video' && isAud) return false;
+      if (curFilter === 'custom' && !isCust) return false;
+      if (curFilter === 'classic' && isCust) return false;
+
+      if (curSearch) {
+        var text = ((t.item && t.item.name) + ' ' + (t.chapter || '') + ' ' + (t.item && (t.item.videoUrl || t.item.audioUrl))).toLowerCase();
+        if (text.indexOf(curSearch) === -1) return false;
+      }
+      return true;
+    });
+
+    if (!filteredWithIndices.length) {
+      listEl.innerHTML = '<li class="dl-empty">未找到符合条件的方言语料</li>';
+      return;
+    }
+
+    listEl.innerHTML = filteredWithIndices.map(function (pair) {
+      var t = pair.track;
+      var i = pair.originalIndex;
+      var isAud = isAudioTrack(t);
+      var isCust = isCustomTrack(t);
+
+      var mediaBadge = isAud
+        ? '<span class="dl-media-badge dl-badge-audio">🔊 录音音频</span>'
+        : '<span class="dl-media-badge dl-badge-video">🎬 视频讲解</span>';
+
+      var originBadge = isCust
+        ? '<span class="dl-origin-badge custom">🌟 田野采风</span>'
+        : '<span class="dl-origin-badge classic">📖 典籍原声</span>';
+
+      var subInfo = isCust
+        ? (esc(t.chapter || '客家方言') + ' · 田野调查录入')
+        : (esc(t.chapter) + ' · 典藏第 ' + esc(t.item.page) + ' 页');
+
+      var isActive = (i === activeIndex);
+
       return '<li>' +
-        '<button class="dl-track" type="button" data-i="' + i + '">' +
+        '<button class="dl-track' + (isActive ? ' is-active' : '') + '" type="button" data-i="' + i + '">' +
         '  <span class="dl-track-no">' + String(i + 1).padStart(2, '0') + '</span>' +
         '  <span class="dl-track-main">' +
-        '    <span class="dl-track-name">' + esc(t.item.name) + '</span>' +
-        '    <span class="dl-track-sub">' + esc(t.chapter) + ' · 第 ' + esc(t.item.page) + ' 页</span>' +
+        '    <span class="dl-track-name">' + mediaBadge + esc(t.item.name) + originBadge + '</span>' +
+        '    <span class="dl-track-sub">' + subInfo + '</span>' +
         '  </span>' +
-        '  <span class="dl-track-play">▶</span>' +
+        '  <span class="dl-track-play">' + (isAud ? '▶' : '🎬') + '</span>' +
         '</button></li>';
     }).join('');
+
     listEl.querySelectorAll('.dl-track').forEach(function (btn) {
       btn.addEventListener('click', function () {
         select(parseInt(btn.getAttribute('data-i'), 10));

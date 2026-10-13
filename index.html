@@ -102,7 +102,21 @@
 
       <!-- ======== 科普面板 ======== -->
       <div class="tab-panel" id="panelHeritage">
+        <div class="h-filter-bar">
+          <div class="h-search-box">
+            <input type="search" id="heritageSearch" class="h-search-input" placeholder="🔍 搜索科普卡片（蓝染、竹编、围屋、戏曲…）" autocomplete="off">
+            <button type="button" id="heritageSearchClear" class="h-search-clear" hidden>×</button>
+          </div>
+          <div class="h-category-pills" id="heritageCatPills">
+            <button type="button" class="h-cat-pill active" data-cat="all">全部 <span class="h-pill-count" id="hPillAll"></span></button>
+            <button type="button" class="h-cat-pill" data-cat="custom">✨ 馆藏新增 <span class="h-pill-count" id="hPillCustom"></span></button>
+            <button type="button" class="h-cat-pill" data-cat="craft">🧶 传统技艺</button>
+            <button type="button" class="h-cat-pill" data-cat="arch">🏯 建筑聚落</button>
+            <button type="button" class="h-cat-pill" data-cat="folk">🎭 民俗曲艺</button>
+          </div>
+        </div>
         <div class="heritage-grid" id="heritageGrid"></div>
+        <div id="heritageEmpty" class="h-empty-state" hidden>未找到符合条件的科普条目</div>
       </div>
 
       <!-- ======== 3D 面板 ======== -->
@@ -224,7 +238,21 @@
         </section>
 
         <div class="dl-section-divider">
-          <span>《文化典藏》展品客家话讲解视频（共 <strong id="dlCount">0</strong> 条）</span>
+          <span>客家方言语料与原声库（共 <strong id="dlCount">0</strong> 条）</span>
+        </div>
+
+        <div class="dl-filter-bar">
+          <div class="dl-search-box">
+            <input type="search" id="dialectSearch" class="dl-search-input" placeholder="🔍 检索方言语料/唱词/展品名称..." autocomplete="off">
+            <button type="button" id="dialectSearchClear" class="dl-search-clear" hidden>×</button>
+          </div>
+          <div class="dl-filter-pills" id="dialectFilterPills">
+            <button type="button" class="dl-pill active" data-filter="all">全部语料 <span class="dl-pill-count" id="dlPillAll"></span></button>
+            <button type="button" class="dl-pill" data-filter="audio">🔊 录音音频 <span class="dl-pill-count" id="dlPillAudio"></span></button>
+            <button type="button" class="dl-pill" data-filter="video">🎬 视频讲解 <span class="dl-pill-count" id="dlPillVideo"></span></button>
+            <button type="button" class="dl-pill" data-filter="custom">🎙️ 田野采风新增 <span class="dl-pill-count" id="dlPillCustom"></span></button>
+            <button type="button" class="dl-pill" data-filter="classic">📖 典籍传世原音 <span class="dl-pill-count" id="dlPillClassic"></span></button>
+          </div>
         </div>
 
         <div class="dl-now" id="dlNow">

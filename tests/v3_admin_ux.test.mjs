@@ -150,6 +150,18 @@ test('跨设备自校验令牌与密码大小写容错', () => {
   assert.equal(phoneTokenAuth.ok, true, '跨设备全新手机端应成功解析自校验令牌');
   assert.equal(phoneTokenAuth.role, 'editor');
   assert.equal(phoneTokenAuth.name, '外地非遗专家王教授');
+
+  // 3. 测试设备 B（手机端）手动输入 6 位简短通行码，且模拟微信复制带有引号和空格
+  const dirtyShortCode = `  “${signedTokenObj.shortCode}”  `;
+  const phoneShortAuth = envB.window.Store.verifyLogin(dirtyShortCode);
+  assert.equal(phoneShortAuth.ok, true, '跨设备全新手机端输入6位短码（含引号空格）应验签通过');
+  assert.equal(phoneShortAuth.role, 'editor');
+
+  // 4. 测试设备 B（手机端）单纯输入 6 位裸短码（不带 NFYJ-INV- 前缀）
+  const bareShortCode = signedTokenObj.shortCode.replace('NFYJ-INV-', '');
+  const phoneBareAuth = envB.window.Store.verifyLogin(bareShortCode);
+  assert.equal(phoneBareAuth.ok, true, '跨设备全新手机端输入纯6位字母数字短码应验签通过');
+  assert.equal(phoneBareAuth.role, 'editor');
 });
 
 test('AnswerEngine.ask 便捷方法调用正常响应', async () => {

@@ -36,7 +36,35 @@
     } catch (_) {}
   }
 
-  /* ==================== 登录模块 (支持邀请制令牌) ==================== */
+  /* ==================== 登录模块 (支持邀请制令牌与防刷锁定) ==================== */
+  var LOCK_STORAGE_KEY = 'nfyj_login_lock_state';
+
+  function getLoginLockState() {
+    try {
+      var raw = localStorage.getItem(LOCK_STORAGE_KEY);
+      if (!raw) return { count: 0, until: 0 };
+      var parsed = JSON.parse(raw);
+      return {
+        count: Number(parsed.count) || 0,
+        until: Number(parsed.until) || 0
+      };
+    } catch (_) {
+      return { count: 0, until: 0 };
+    }
+  }
+
+  function setLoginLockState(count, until) {
+    try {
+      localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify({ count: count, until: until }));
+    } catch (_) {}
+  }
+
+  function clearLoginLockState() {
+    try {
+      localStorage.removeItem(LOCK_STORAGE_KEY);
+    } catch (_) {}
+  }
+
   function showLogin() {
     var panel = $('#adminPanel');
     panel.innerHTML =
@@ -44,7 +72,10 @@
       '  <div class="admin-login-icon">🔐</div>' +
       '  <div class="admin-login-title">数智管理工作台</div>' +
       '  <div class="admin-login-hint">支持超级管理员主口令或受邀专属令牌登录</div>' +
-      '  <input type="password" id="adminPwInput" placeholder="请输入密码或邀请令牌" autocomplete="off">' +
+      '  <div class="admin-pw-wrap">' +
+      '    <input type="password" id="adminPwInput" placeholder="请输入密码或邀请令牌" autocomplete="off">' +
+      '    <button type="button" id="adminPwToggle" class="admin-pw-toggle" title="显示明文">👁️</button>' +
+      '  </div>' +
       '  <div class="admin-login-error" id="adminPwError"></div>' +
       '  <button class="admin-login-btn" id="adminLoginBtn">登 录</button>' +
       '  <button class="admin-login-cancel" id="adminCancelBtn">返回用户页面</button>' +
@@ -53,21 +84,74 @@
     var input = $('#adminPwInput');
     var btn = $('#adminLoginBtn');
     var err = $('#adminPwError');
+    var toggleBtn = $('#adminPwToggle');
 
-    var failedAttempts = 0;
-    var lockUntil = 0;
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function () {
+        if (input.type === 'password') {
+          input.type = 'text';
+          toggleBtn.textContent = '🙈';
+          toggleBtn.title = '隐藏明文';
+        } else {
+          input.type = 'password';
+          toggleBtn.textContent = '👁️';
+          toggleBtn.title = '显示明文';
+        }
+      });
+    }
+
+    var lockTimer = null;
+
+    function checkLockStatus() {
+      var state = getLoginLockState();
+      var now = Date.now();
+      if (state.until && now < state.until) {
+        var remainSec = Math.ceil((state.until - now) / 1000);
+        input.disabled = true;
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        err.className = 'admin-login-error admin-lock-countdown';
+        err.textContent = '⚠️ 输错超限，系统已锁定保护。请等待 ' + remainSec + ' 秒后再试（刷新页面不会重置锁定）';
+        if (!lockTimer) {
+          lockTimer = setInterval(function () {
+            var curState = getLoginLockState();
+            var curNow = Date.now();
+            if (curState.until && curNow < curState.until) {
+              var left = Math.ceil((curState.until - curNow) / 1000);
+              err.textContent = '⚠️ 输错超限，系统已锁定保护。请等待 ' + left + ' 秒后再试（刷新页面不会重置锁定）';
+            } else {
+              clearInterval(lockTimer);
+              lockTimer = null;
+              input.disabled = false;
+              btn.disabled = false;
+              btn.style.opacity = '';
+              err.className = 'admin-login-error';
+              err.textContent = '锁定已解除，请重新输入正确口令';
+              setLoginLockState(0, 0);
+            }
+          }, 1000);
+        }
+        return true;
+      } else {
+        if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
+        input.disabled = false;
+        btn.disabled = false;
+        btn.style.opacity = '';
+        err.className = 'admin-login-error';
+        return false;
+      }
+    }
+
+    checkLockStatus();
 
     function doLogin() {
-      var now = Date.now();
-      if (now < lockUntil) {
-        var remainSec = Math.ceil((lockUntil - now) / 1000);
-        err.textContent = '尝试次数过多，请 ' + remainSec + ' 秒后再试';
-        return;
-      }
-      var pw = input.value.trim();
+      if (checkLockStatus()) return;
+      var raw = input.value;
+      var pw = raw.trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
       var authResult = window.Store.verifyLogin(pw);
       if (authResult.ok) {
-        failedAttempts = 0;
+        clearLoginLockState();
+        if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
         authenticated = true;
         currentUser = authResult;
         if (window.Store && window.Store.saveSession) {
@@ -75,12 +159,16 @@
         }
         showMain();
       } else {
-        failedAttempts++;
-        if (failedAttempts >= 5) {
-          lockUntil = Date.now() + 30000;
-          err.textContent = '密码错误过多，系统已临时锁定 30 秒';
+        var state = getLoginLockState();
+        var nextCount = state.count + 1;
+        if (nextCount >= 5) {
+          var lockUntil = Date.now() + 60000;
+          setLoginLockState(nextCount, lockUntil);
+          checkLockStatus();
         } else {
-          err.textContent = '密码错误或邀请令牌无效，请重试（还剩 ' + (5 - failedAttempts) + ' 次机会）';
+          setLoginLockState(nextCount, 0);
+          err.className = 'admin-login-error';
+          err.textContent = '密码错误或邀请令牌无效，请重试（还剩 ' + (5 - nextCount) + ' 次机会）';
         }
         input.value = '';
         input.focus();
@@ -885,14 +973,19 @@
       } else {
         cList.innerHTML = filteredCustom.map(function (t) {
           var creatorTag = t.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(t.creatorName) + '</span>' : '';
+          var isAud = (t.mediaType === 'audio' || (t.item && t.item.mediaType === 'audio') || (t.item && t.item.audioUrl) || /\.(mp3|wav|ogg|aac|m4a)(\?.*)?$/i.test((t.item && (t.item.videoUrl || t.item.audioUrl)) || ''));
+          var mediaBadge = isAud
+            ? '<span class="admin-badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D">🔊 录音</span>'
+            : '<span class="admin-badge" style="background:#E0E7FF;color:#3730A3;border:1px solid #C7D2FE">🎬 视频</span>';
+          var targetUrl = (t.item && (t.item.audioUrl || t.item.videoUrl)) || '';
           return '<div class="admin-dialect-item" style="border-left: 3px solid var(--primary);">' +
             '<div>' +
-            '  <div class="admin-dialect-item-title">🔊 ' + esc(t.item.name) + ' (' + esc(t.chapter) + ' · 第' + esc(t.item.page) + '页) <span class="admin-badge admin-badge-custom">自定义</span>' + creatorTag + '</div>' +
-            '  <div class="admin-dialect-item-url">' + esc(t.item.videoUrl) + '</div>' +
+            '  <div class="admin-dialect-item-title">' + mediaBadge + ' ' + esc(t.item.name) + ' (' + esc(t.chapter) + ' · 第' + esc(t.item.page) + '页) <span class="admin-badge admin-badge-custom">自定义</span>' + creatorTag + '</div>' +
+            '  <div class="admin-dialect-item-url">' + esc(targetUrl) + '</div>' +
             '</div>' +
             '<div class="admin-kb-item-actions">' +
-            '  <button class="admin-btn-sm admin-btn-test" data-play-dialect="' + esc(t.item.videoUrl) + '">▶ 播放测试</button>' +
-            '  <button class="admin-btn-sm admin-btn-copy" data-copy-dialect="' + esc(t.item.videoUrl) + '">复制链接</button>' +
+            '  <button class="admin-btn-sm admin-btn-test" data-play-dialect="' + esc(targetUrl) + '">' + (isAud ? '▶ 试听' : '🎬 播放') + '</button>' +
+            '  <button class="admin-btn-sm admin-btn-copy" data-copy-dialect="' + esc(targetUrl) + '">复制链接</button>' +
             '  <button class="admin-btn-sm admin-btn-del" data-del-dialect="' + esc(t.id) + '">删除</button>' +
             '</div>' +
             '</div>';
@@ -940,9 +1033,9 @@
       } else {
         bList.innerHTML = filteredBase.map(function (t, i) {
           return '<div class="admin-dialect-item muted">' +
-            '<span>' + (i + 1) + '. ' + esc(t.item.name) + ' (' + esc(t.chapter) + ')</span>' +
+            '<span>' + (i + 1) + '. <span class="admin-badge" style="background:#E0E7FF;color:#3730A3;border:1px solid #C7D2FE">🎬 视频</span> ' + esc(t.item.name) + ' (' + esc(t.chapter) + ')</span>' +
             '<div style="display:flex;align-items:center;gap:6px">' +
-            '  <button class="admin-btn-sm admin-btn-test" data-play-dialect="' + esc(t.item.videoUrl) + '">▶ 试听</button>' +
+            '  <button class="admin-btn-sm admin-btn-test" data-play-dialect="' + esc(t.item.videoUrl) + '">🎬 观看</button>' +
             '  <span class="admin-badge admin-badge-default">内置</span>' +
             '</div>' +
             '</div>';
@@ -985,6 +1078,22 @@
       '  <input type="text" id="dlName" class="admin-input" placeholder="例如：黄姜豆腐制作口述">' +
       '  <div class="admin-form-row">' +
       '    <div style="flex:1">' +
+      '      <label class="admin-label">媒体形态 *</label>' +
+      '      <select id="dlMediaType" class="admin-input">' +
+      '        <option value="audio">🔊 纯音频录音 (田野采风原声)</option>' +
+      '        <option value="video">🎬 视频影像 (展品视听讲解)</option>' +
+      '      </select>' +
+      '    </div>' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">语料来源</label>' +
+      '      <select id="dlOriginType" class="admin-input">' +
+      '        <option value="custom">🎙️ 现代田野采风录入</option>' +
+      '        <option value="classic">📖 文献典籍补录</option>' +
+      '      </select>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="admin-form-row">' +
+      '    <div style="flex:1">' +
       '      <label class="admin-label">所属篇章 / 栏目</label>' +
       '      <input type="text" id="dlChapter" class="admin-input" value="客家风味" placeholder="例如：客家风味">' +
       '    </div>' +
@@ -1003,6 +1112,8 @@
 
     $('#dlSaveBtn').addEventListener('click', function () {
       var name = $('#dlName').value.trim();
+      var mediaType = $('#dlMediaType').value || 'audio';
+      var originType = $('#dlOriginType').value || 'custom';
       var chapter = $('#dlChapter').value.trim() || '客家方言';
       var page = Number($('#dlPage').value) || 1;
       var url = $('#dlUrl').value.trim();
@@ -1011,7 +1122,16 @@
       window.Store.addDialectTrack({
         id: 'dl-' + Date.now(),
         chapter: chapter,
-        item: { name: name, page: page, videoUrl: url }
+        mediaType: mediaType,
+        originType: originType,
+        isCustom: (originType === 'custom'),
+        item: {
+          name: name,
+          page: page,
+          videoUrl: (mediaType === 'video' ? url : ''),
+          audioUrl: (mediaType === 'audio' ? url : ''),
+          mediaType: mediaType
+        }
       }, currentUser);
       refreshFrontEnd();
       form.style.display = 'none';
@@ -1367,10 +1487,16 @@
         var activeText = t.lastActiveAt ? new Date(t.lastActiveAt).toLocaleString() : '尚未登录';
         var clientText = t.lastClient || '无记录';
 
+        var displayShortCode = t.shortCode || (t.token && t.token.slice(0, 15));
+
         return '<div class="admin-token-card ' + statusCls + '">' +
           '<div class="admin-token-card-top">' +
           '  <span class="admin-token-code">' + esc(t.token) + '</span>' +
           '  <span class="admin-token-badge ' + statusCls + '">' + t.statusText + '</span>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--accent);margin:4px 0 6px;font-weight:600">' +
+          '  📱 手机极简输入短码：<code style="background:var(--paper);padding:2px 8px;border-radius:4px;color:var(--primary-deep);font-size:13.5px;letter-spacing:1px;border:1px solid var(--line)">' + esc(displayShortCode) + '</code>' +
+          '  <span style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:6px">（手机键盘输入此6位码即可直接开通）</span>' +
           '</div>' +
           '<div class="admin-token-user">受邀人员：' + esc(t.name) + '</div>' +
           '<div class="admin-token-dates">签发时间：' + new Date(t.createdAt).toLocaleDateString() + ' · 到期：' + (t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : '长期') + '</div>' +
@@ -1381,9 +1507,10 @@
           '  <div class="admin-token-stat-item">📊 录入：<strong>知识 ' + t.kbCount + ' · 科普 ' + t.kepuCount + ' · 方言 ' + t.dialectCount + '</strong></div>' +
           '</div>' +
           '<div class="admin-token-actions">' +
-          '  <button class="admin-btn-sm admin-btn-copy" data-copy-token="' + esc(t.token) + '">📋 复制密钥</button>' +
+          '  <button class="admin-btn-sm admin-btn-copy" data-copy-token="' + esc(t.token) + '">📋 复制长密钥</button>' +
+          '  <button class="admin-btn-sm admin-btn-copy" data-copy-short="' + esc(displayShortCode) + '">📱 复制短码</button>' +
           '  <button class="admin-btn-sm admin-btn-copy" data-copy-link="' + esc(t.token) + '">🔗 专属链接</button>' +
-          '  <button class="admin-btn-sm admin-btn-test" data-qr-token="' + esc(t.token) + '" data-name="' + esc(t.name) + '">📱 手机扫码</button>' +
+          '  <button class="admin-btn-sm admin-btn-test" data-qr-token="' + esc(t.token) + '" data-name="' + esc(t.name) + '" data-short="' + esc(displayShortCode) + '">📱 手机扫码</button>' +
           (t.isPaused
             ? '  <button class="admin-btn-sm admin-btn-resume" data-resume-token="' + esc(t.id) + '">▶ 恢复授权</button>'
             : (!t.isRevoked ? '  <button class="admin-btn-sm admin-btn-pause" data-pause-token="' + esc(t.id) + '">⏸ 暂停授权</button>' : '')) +
@@ -1405,13 +1532,24 @@
         });
       });
 
+      list.querySelectorAll('[data-copy-short]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var code = btn.getAttribute('data-copy-short');
+          navigator.clipboard ? navigator.clipboard.writeText(code) : prompt('请复制通行短码：', code);
+          alert('已复制手机通行短码：' + code + '\n受邀老师在手机端管理入口输入此6位短码即可直接登录。');
+        });
+      });
+
       list.querySelectorAll('[data-copy-link]').forEach(function (btn) {
         btn.addEventListener('click', function () {
           var token = btn.getAttribute('data-copy-link');
-          var url = window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token);
+          var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
+          var url = isLocal
+            ? ('https://antigravity.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
+            : (window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token));
           if (navigator.clipboard) {
             navigator.clipboard.writeText(url).then(function () {
-              alert('专属免密邀请链接已复制到剪贴板！\n将此链接发送给受邀老师，打开即可直接进入工作台。');
+              alert('专属免密邀请链接已复制到剪贴板！\n链接已自动适配公网访问，发送给受邀老师打开即可直接进入工作台。');
             });
           } else {
             prompt('请复制专属链接：', url);
@@ -1423,8 +1561,12 @@
         btn.addEventListener('click', function () {
           var token = btn.getAttribute('data-qr-token');
           var name = btn.getAttribute('data-name');
-          var url = window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token);
-          showTokenQrModal(name, token, url);
+          var shortCode = btn.getAttribute('data-short') || token.slice(0, 15);
+          var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
+          var url = isLocal
+            ? ('https://antigravity.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
+            : (window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token));
+          showTokenQrModal(name, token, url, shortCode);
         });
       });
 
@@ -1713,9 +1855,11 @@
     URL.revokeObjectURL(a.href);
   }
 
-  function showTokenQrModal(name, token, url) {
+  function showTokenQrModal(name, token, url, shortCode) {
     var oldModal = document.getElementById('tokenQrModal');
     if (oldModal) oldModal.remove();
+
+    var codeText = shortCode || (token ? token.slice(0, 15) : '');
 
     var div = document.createElement('div');
     div.id = 'tokenQrModal';
@@ -1724,9 +1868,12 @@
     div.innerHTML =
       '<div style="background:var(--card,#FFFFFF);border-radius:8px;max-width:340px;width:100%;text-align:center;padding:20px;border:1px solid var(--line,#D8D0C5);box-shadow:0 8px 30px rgba(0,0,0,0.25)">' +
       '  <div style="font-size:16px;font-weight:700;color:var(--primary-deep,#2F5D50);margin-bottom:4px">📱 手机扫码直达工作台</div>' +
-      '  <div style="font-size:12px;color:var(--muted,#7A8B82);margin-bottom:12px">受邀人员：' + esc(name) + '</div>' +
-      '  <div id="tokenQrCanvasBox" style="display:flex;justify-content:center;align-items:center;margin:10px 0;min-height:180px"></div>' +
-      '  <div style="font-size:11px;color:var(--ink-soft,#3E4D44);line-height:1.5;margin-bottom:14px;background:var(--paper,#F5EFE6);padding:8px 10px;border-radius:4px">' +
+      '  <div style="font-size:12px;color:var(--muted,#7A8B82);margin-bottom:10px">受邀人员：' + esc(name) + '</div>' +
+      '  <div id="tokenQrCanvasBox" style="display:flex;justify-content:center;align-items:center;margin:8px 0;min-height:180px"></div>' +
+      '  <div style="font-size:12px;color:var(--accent);margin:8px 0 10px;font-weight:600;background:var(--paper,#F5EFE6);padding:6px 8px;border-radius:4px">' +
+      '    手机端键盘输入短码：<code style="font-size:14px;color:var(--primary-deep);letter-spacing:1px">' + esc(codeText) + '</code>' +
+      '  </div>' +
+      '  <div style="font-size:11px;color:var(--ink-soft,#3E4D44);line-height:1.5;margin-bottom:14px">' +
       '    受邀老师使用手机微信或相机扫码，即可免密登录并开通工作台权限。' +
       '  </div>' +
       '  <div style="display:flex;gap:6px;justify-content:center">' +

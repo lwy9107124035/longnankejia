@@ -157,6 +157,41 @@
     }
   }
 
+  function computeShortChecksum(prefix) {
+    var s = String(prefix).toUpperCase() + '_NFYJ_SALT_2026';
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h * 0x01000193) >>> 0;
+    }
+    var chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    var c1 = chars.charAt((h & 0x1f));
+    var c2 = chars.charAt(((h >>> 5) & 0x1f));
+    var c3 = chars.charAt(((h >>> 10) & 0x1f));
+    return c1 + c2 + c3;
+  }
+
+  function generateCompactShortToken() {
+    var chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    var prefix = '';
+    for (var i = 0; i < 3; i++) {
+      prefix += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    var cs = computeShortChecksum(prefix);
+    return 'NFYJ-INV-' + prefix + cs;
+  }
+
+  function isCompactShortToken(tokenStr) {
+    if (!tokenStr || typeof tokenStr !== 'string') return false;
+    var raw = tokenStr.trim().toUpperCase();
+    if (raw.indexOf('NFYJ-INV-') === 0) raw = raw.slice(9);
+    else if (raw.indexOf('INV-') === 0) raw = raw.slice(4);
+    if (raw.length !== 6) return false;
+    var prefix = raw.slice(0, 3);
+    var cs = raw.slice(3);
+    return computeShortChecksum(prefix) === cs;
+  }
+
   function parseSignedToken(tokenStr) {
     if (!tokenStr || typeof tokenStr !== 'string') return { ok: false };
     var raw = tokenStr.trim();
@@ -280,20 +315,16 @@
   function generateInviteToken(name, expireDays) {
     name = String(name || '受邀管理员').trim();
     var days = Number(expireDays) || 30;
-    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    var shortCode = '';
-    for (var i = 0; i < 6; i++) {
-      shortCode += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    var compactCode = generateCompactShortToken();
     var now = Date.now();
     var id = 'tok-' + now + '-' + Math.floor(Math.random() * 1000);
     var signed = generateSignedTokenStr(name, days, id);
-    var tokenStr = signed || ('NFYJ-INV-' + shortCode);
+    var tokenStr = signed || compactCode;
 
     var tokenObj = {
       id: id,
       token: tokenStr,
-      shortCode: 'NFYJ-INV-' + shortCode,
+      shortCode: compactCode,
       name: name,
       role: 'editor',
       createdAt: now,
@@ -630,7 +661,7 @@
   }
 
   function verifyLogin(inputStr) {
-    var str = String(inputStr || '').trim();
+    var str = String(inputStr || '').trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
     if (!str) {
       return { ok: false, error: '请输入密码或邀请令牌' };
     }
@@ -708,6 +739,41 @@
       };
     } else if (parsed.error) {
       return { ok: false, error: parsed.error };
+    }
+
+    // 4. 跨设备自校验紧凑短码 (手机端手动输入 6 位简短邀请码直接激活)
+    if (isCompactShortToken(str)) {
+      var shortNorm = str.toUpperCase();
+      if (shortNorm.indexOf('NFYJ-INV-') !== 0) {
+        if (shortNorm.indexOf('INV-') === 0) shortNorm = 'NFYJ-' + shortNorm;
+        else shortNorm = 'NFYJ-INV-' + shortNorm;
+      }
+      var shortItem = {
+        id: 'tok-short-' + now,
+        token: shortNorm,
+        shortCode: shortNorm,
+        name: '受邀协管员',
+        role: 'editor',
+        createdAt: now,
+        expiresAt: 0,
+        revoked: false,
+        paused: false,
+        loginCount: 1,
+        lastActiveAt: now,
+        lastClient: (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/手机输入'
+      };
+      tokens.unshift(shortItem);
+      write(LS.tokens, tokens);
+      addAuditLog(shortItem.name + ' (' + shortNorm + ')', '短码令牌激活', '手机端通过极简通行短码激活工作台');
+
+      return {
+        ok: true,
+        role: 'editor',
+        title: '受邀管理员 · 快捷令牌',
+        name: '受邀协管员',
+        tokenId: shortItem.id,
+        token: shortItem.token
+      };
     }
 
     return { ok: false, error: '密码错误或邀请令牌无效' };

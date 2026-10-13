@@ -392,19 +392,103 @@
     ];
 
     var onCardOpen = null;
+    var curCat = 'all';
+    var curKeyword = '';
+    var eventsBound = false;
+
+    function isCustomCard(c) {
+      return !!((c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员'));
+    }
+
+    function matchCategory(c, cat) {
+      if (cat === 'all') return true;
+      var isCust = isCustomCard(c);
+      if (cat === 'custom') return isCust;
+      var text = ((c.name || '') + ' ' + (c.tag || '') + ' ' + (c.detail || '')).toLowerCase();
+      if (cat === 'craft') {
+        return /染|竹|编|织|纸|木|手艺|技艺|器|物/.test(text);
+      }
+      if (cat === 'arch') {
+        return /围|屋|建筑|城|门|堡|关西/.test(text);
+      }
+      if (cat === 'folk') {
+        return /戏|歌|调|民俗|恳亲|节|曲|乐|会/.test(text);
+      }
+      return true;
+    }
+
+    function bindHeritageEvents() {
+      if (eventsBound) return;
+      eventsBound = true;
+      var sInput = document.getElementById('heritageSearch');
+      var sClear = document.getElementById('heritageSearchClear');
+      var pills = document.getElementById('heritageCatPills');
+
+      if (sInput) {
+        sInput.addEventListener('input', function () {
+          curKeyword = sInput.value.trim().toLowerCase();
+          if (sClear) sClear.hidden = !curKeyword;
+          render();
+        });
+      }
+      if (sClear) {
+        sClear.addEventListener('click', function () {
+          if (sInput) {
+            sInput.value = '';
+            curKeyword = '';
+            sClear.hidden = true;
+            render();
+            sInput.focus();
+          }
+        });
+      }
+      if (pills) {
+        pills.querySelectorAll('.h-cat-pill').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            pills.querySelectorAll('.h-cat-pill').forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            curCat = btn.getAttribute('data-cat') || 'all';
+            render();
+          });
+        });
+      }
+    }
 
     function render() {
       var grid = document.getElementById('heritageGrid');
       if (!grid) return;
+      bindHeritageEvents();
+
+      var allCards = (window.Store && window.Store.getHeritageCards) ? window.Store.getHeritageCards(CARDS) : CARDS;
+      var customCount = allCards.filter(isCustomCard).length;
+
+      var pillAll = document.getElementById('hPillAll');
+      if (pillAll) pillAll.textContent = allCards.length;
+      var pillCustom = document.getElementById('hPillCustom');
+      if (pillCustom) pillCustom.textContent = customCount;
+
+      var filtered = allCards.filter(function (c) {
+        if (!matchCategory(c, curCat)) return false;
+        if (curKeyword) {
+          var t = ((c.name || '') + ' ' + (c.tag || '') + ' ' + (c.detail || '')).toLowerCase();
+          if (t.indexOf(curKeyword) === -1) return false;
+        }
+        return true;
+      });
+
+      var emptyEl = document.getElementById('heritageEmpty');
+      if (emptyEl) emptyEl.hidden = filtered.length > 0;
+
       grid.innerHTML = '';
-      var cards = (window.Store && window.Store.getHeritageCards) ? window.Store.getHeritageCards(CARDS) : CARDS;
-      cards.forEach(function (card) {
+      filtered.forEach(function (card) {
+        var isCust = isCustomCard(card);
         var btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'h-card';
+        btn.className = 'h-card' + (isCust ? ' is-custom' : '');
         btn.style.setProperty('--card-accent', card.accent || '#2F5D50');
         btn.style.setProperty('--card-bg', card.bg || '#E4EFEA');
         btn.innerHTML =
+          (isCust ? '<span class="h-badge-custom">🌟 馆藏新增</span>' : '') +
           '<div class="h-icon">' + (card.icon || '🏮') + '</div>' +
           '<div class="h-name">' + (card.name || '未命名') + '</div>' +
           '<div class="h-tag">' + (card.tag || '客家非遗') + '</div>';
