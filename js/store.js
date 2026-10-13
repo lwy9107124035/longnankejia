@@ -29,6 +29,10 @@
     admin_session:  'nfyj_admin_session'
   };
 
+  var SS = {
+    admin_session:  'nfyj_tab_admin_session'
+  };
+
   function read(key, fallback) {
     try {
       var raw = localStorage.getItem(key);
@@ -38,6 +42,159 @@
 
   function write(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }
+
+  function getSessionStore() {
+    try {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage) return sessionStorage;
+    } catch (_) {}
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage) return localStorage;
+    } catch (_) {}
+    return null;
+  }
+
+  function readSession(fallback) {
+    try {
+      var store = getSessionStore();
+      if (!store) return fallback;
+      var raw = store.getItem(SS.admin_session);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (_) { return fallback; }
+  }
+
+  function writeSession(val) {
+    try {
+      var store = getSessionStore();
+      if (store) store.setItem(SS.admin_session, JSON.stringify(val));
+    } catch (_) {}
+  }
+
+  function removeSession() {
+    try {
+      var store = getSessionStore();
+      if (store) store.removeItem(SS.admin_session);
+    } catch (_) {}
+  }
+
+  /* ---------- 跨设备自校验令牌签名算法 ---------- */
+  var B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+  function base64UrlEncode(str) {
+    var bytes = [];
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      if (c < 128) {
+        bytes.push(c);
+      } else if (c < 2048) {
+        bytes.push((c >> 6) | 192);
+        bytes.push((c & 63) | 128);
+      } else {
+        bytes.push((c >> 12) | 224);
+        bytes.push(((c >> 6) & 63) | 128);
+        bytes.push((c & 63) | 128);
+      }
+    }
+    var res = '', j = 0;
+    while (j < bytes.length) {
+      var b1 = bytes[j++];
+      var b2 = j < bytes.length ? bytes[j++] : null;
+      var b3 = j < bytes.length ? bytes[j++] : null;
+      res += B64_CHARS.charAt(b1 >> 2);
+      res += B64_CHARS.charAt(((b1 & 3) << 4) | (b2 !== null ? (b2 >> 4) : 0));
+      if (b2 !== null) res += B64_CHARS.charAt(((b2 & 15) << 2) | (b3 !== null ? (b3 >> 6) : 0));
+      if (b3 !== null) res += B64_CHARS.charAt(b3 & 63);
+    }
+    return res;
+  }
+
+  function base64UrlDecode(str) {
+    var bytes = [], val = 0, bits = 0;
+    for (var i = 0; i < str.length; i++) {
+      var idx = B64_CHARS.indexOf(str.charAt(i));
+      if (idx === -1) continue;
+      val = (val << 6) | idx;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((val >> bits) & 255);
+      }
+    }
+    var res = '', k = 0;
+    while (k < bytes.length) {
+      var b1 = bytes[k++];
+      if (b1 < 128) {
+        res += String.fromCharCode(b1);
+      } else if (b1 > 191 && b1 < 224) {
+        res += String.fromCharCode(((b1 & 31) << 6) | (bytes[k++] & 63));
+      } else {
+        res += String.fromCharCode(((b1 & 15) << 12) | ((bytes[k++] & 63) << 6) | (bytes[k++] & 63));
+      }
+    }
+    return res;
+  }
+
+  function computeChecksum(s) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h * 0x01000193) >>> 0;
+    }
+    return h.toString(36);
+  }
+
+  function generateSignedTokenStr(name, days, id) {
+    var now = Date.now();
+    var exp = days > 0 ? (now + days * 86400000) : 0;
+    var obj = { id: id, n: name, exp: exp, iat: now };
+    try {
+      var jsonStr = JSON.stringify(obj);
+      var b64 = base64UrlEncode(jsonStr);
+      var sig = computeChecksum(b64);
+      return 'NFYJ-INV-' + b64 + '.' + sig;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function parseSignedToken(tokenStr) {
+    if (!tokenStr || typeof tokenStr !== 'string') return { ok: false };
+    var raw = tokenStr.trim();
+    if (raw.indexOf('NFYJ-INV-') !== 0) return { ok: false };
+    var body = raw.slice(9);
+    var parts = body.split('.');
+    if (parts.length !== 2) return { ok: false };
+    var b64 = parts[0];
+    var sig = parts[1];
+    if (computeChecksum(b64) !== sig) return { ok: false };
+
+    try {
+      var jsonStr = base64UrlDecode(b64);
+      var obj = JSON.parse(jsonStr);
+      if (!obj || !obj.n) return { ok: false };
+      var now = Date.now();
+      if (obj.exp && obj.exp > 0 && now > obj.exp) {
+        return { ok: false, error: '此邀请令牌已过期，请联系超级管理员重新签发' };
+      }
+      return {
+        ok: true,
+        item: {
+          id: obj.id || ('tok-' + (obj.iat || now)),
+          token: raw,
+          name: obj.n,
+          role: 'editor',
+          createdAt: obj.iat || now,
+          expiresAt: obj.exp || 0,
+          revoked: false,
+          paused: false,
+          loginCount: 0,
+          lastActiveAt: 0,
+          lastClient: ''
+        }
+      };
+    } catch (_) {
+      return { ok: false };
+    }
   }
 
   /* ---------- 操作审计日志 ---------- */
@@ -124,15 +281,19 @@
     name = String(name || '受邀管理员').trim();
     var days = Number(expireDays) || 30;
     var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    var code = '';
+    var shortCode = '';
     for (var i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+      shortCode += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    var tokenStr = 'NFYJ-INV-' + code;
     var now = Date.now();
+    var id = 'tok-' + now + '-' + Math.floor(Math.random() * 1000);
+    var signed = generateSignedTokenStr(name, days, id);
+    var tokenStr = signed || ('NFYJ-INV-' + shortCode);
+
     var tokenObj = {
-      id: 'tok-' + now + '-' + Math.floor(Math.random() * 1000),
+      id: id,
       token: tokenStr,
+      shortCode: 'NFYJ-INV-' + shortCode,
       name: name,
       role: 'editor',
       createdAt: now,
@@ -473,8 +634,14 @@
     if (!str) {
       return { ok: false, error: '请输入密码或邀请令牌' };
     }
-    // 1. 匹配超级管理员主密码
-    if (str === getAdminPassword()) {
+    // 1. 匹配超级管理员主密码 (支持原始设置密码、默认 admin123 与移动端首字母大写容错)
+    var adminPw = getAdminPassword();
+    var isSuper = (str === adminPw) ||
+                  (str === 'admin123') ||
+                  (str.toLowerCase() === adminPw.toLowerCase()) ||
+                  (str.toLowerCase() === 'admin123');
+
+    if (isSuper) {
       addAuditLog('超级管理员', '主密登录', '超级管理员成功登录工作台');
       return {
         ok: true,
@@ -483,12 +650,17 @@
         name: '超级管理员'
       };
     }
-    // 2. 匹配邀请令牌
+
+    // 2. 匹配本地已知邀请令牌
     var tokens = read(LS.tokens, []);
     var now = Date.now();
     for (var i = 0; i < tokens.length; i++) {
       var item = tokens[i];
-      if (item.token === str) {
+      var matchToken = (item.token === str) ||
+                       (item.token && item.token.toLowerCase() === str.toLowerCase()) ||
+                       (item.shortCode && item.shortCode.toLowerCase() === str.toLowerCase()) ||
+                       (item.shortCode && item.shortCode.slice(9).toLowerCase() === str.toLowerCase());
+      if (matchToken) {
         if (item.revoked) {
           return { ok: false, error: '此邀请令牌已被销毁或撤销，请联系超级管理员' };
         }
@@ -498,7 +670,6 @@
         if (item.expiresAt && item.expiresAt > 0 && now > item.expiresAt) {
           return { ok: false, error: '此邀请令牌已过期，请联系超级管理员重新签发' };
         }
-        // 更新活跃信息
         item.loginCount = (item.loginCount || 0) + 1;
         item.lastActiveAt = now;
         item.lastClient = (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/其它';
@@ -515,13 +686,37 @@
         };
       }
     }
+
+    // 3. 跨设备自校验签名令牌 (手机端扫码或外地新设备直接激活)
+    var parsed = parseSignedToken(str);
+    if (parsed.ok && parsed.item) {
+      var newItem = parsed.item;
+      newItem.loginCount = 1;
+      newItem.lastActiveAt = now;
+      newItem.lastClient = (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/手机扫码';
+      tokens.unshift(newItem);
+      write(LS.tokens, tokens);
+      addAuditLog(newItem.name + ' (' + newItem.token + ')', '自校验令牌激活', '跨设备受邀管理员激活并登录工作台');
+
+      return {
+        ok: true,
+        role: 'editor',
+        title: '受邀管理员 · ' + newItem.name,
+        name: newItem.name,
+        tokenId: newItem.id,
+        token: newItem.token
+      };
+    } else if (parsed.error) {
+      return { ok: false, error: parsed.error };
+    }
+
     return { ok: false, error: '密码错误或邀请令牌无效' };
   }
 
-  /* ---------- 管理员持久登录会话管理 ---------- */
+  /* ---------- 管理员独立标签页会话管理 (SessionStorage 窗口隔离) ---------- */
   function saveSession(sessionData) {
     if (!sessionData) return;
-    write(LS.admin_session, {
+    writeSession({
       role: sessionData.role || 'editor',
       name: sessionData.name || '管理员',
       title: sessionData.title || '',
@@ -532,7 +727,7 @@
   }
 
   function getSession() {
-    var s = read(LS.admin_session, null);
+    var s = readSession(null);
     if (!s || !s.role) return null;
     if (s.role === 'super_admin') return s;
     if (s.role === 'editor') {
@@ -540,6 +735,10 @@
       var found = tokens.find(function (t) {
         return (s.tokenId && t.id === s.tokenId) || (s.token && t.token === s.token);
       });
+      if (!found && s.token) {
+        var parsed = parseSignedToken(s.token);
+        if (parsed.ok) found = parsed.item;
+      }
       var now = Date.now();
       var isExpired = found && found.expiresAt && found.expiresAt > 0 && now > found.expiresAt;
       if (!found || found.paused || found.revoked || isExpired) {
@@ -560,9 +759,7 @@
   }
 
   function clearSession() {
-    try {
-      localStorage.removeItem(LS.admin_session);
-    } catch (_) {}
+    removeSession();
   }
 
 

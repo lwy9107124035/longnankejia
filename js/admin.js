@@ -448,12 +448,45 @@
       });
 
       item.querySelector('[data-action="test"]').addEventListener('click', function () {
+        var btn = item.querySelector('[data-action="test"]');
         var entry = window.Store.getEntries().find(function (e) { return e.id === id; });
-        if (entry && window.AnswerEngine) {
-          var testQ = entry.title;
-          window.AnswerEngine.ask(testQ).then(function (res) {
-            alert('【阿蓝针对「' + testQ + '」的回答效果】\n\n' + (res.answer || res.text || '暂无命中') + '\n\n来源：' + (res.source || '本地资料库'));
+        if (!entry) { alert('未找到该条目'); return; }
+
+        var testQ = (entry.title || '').trim();
+        if (!testQ && entry.keywords && entry.keywords.length) testQ = entry.keywords[0];
+        if (!testQ) { alert('条目标题为空，无法提问'); return; }
+
+        var oldText = btn.textContent;
+        btn.textContent = '⏳ 测试中…';
+        btn.disabled = true;
+
+        try {
+          var engine = (window.AnswerEngine && window.AnswerEngine.getEngine)
+            ? window.AnswerEngine.getEngine()
+            : window.AnswerEngine;
+
+          if (!engine || !engine.ask) {
+            btn.textContent = oldText;
+            btn.disabled = false;
+            alert('问答引擎暂未就绪，请刷新重试');
+            return;
+          }
+
+          engine.ask(testQ).then(function (res) {
+            btn.textContent = oldText;
+            btn.disabled = false;
+            var reply = (res && (res.answer || res.text)) || '阿蓝已核实该条目，未直接命中现成问答规则。';
+            var source = (res && (res.source || res.label)) || '知识库';
+            alert('【阿蓝针对「' + testQ + '」的回答测试】\n\n' + reply + '\n\n来源判定：' + source);
+          }).catch(function (err) {
+            btn.textContent = oldText;
+            btn.disabled = false;
+            alert('测试提问遇到错误：' + (err.message || err));
           });
+        } catch (e) {
+          btn.textContent = oldText;
+          btn.disabled = false;
+          alert('测试提问调用异常：' + (e.message || e));
         }
       });
 
@@ -1348,7 +1381,9 @@
           '  <div class="admin-token-stat-item">📊 录入：<strong>知识 ' + t.kbCount + ' · 科普 ' + t.kepuCount + ' · 方言 ' + t.dialectCount + '</strong></div>' +
           '</div>' +
           '<div class="admin-token-actions">' +
-          '  <button class="admin-btn-sm admin-btn-copy" data-copy-token="' + esc(t.token) + '">📋 复制</button>' +
+          '  <button class="admin-btn-sm admin-btn-copy" data-copy-token="' + esc(t.token) + '">📋 复制密钥</button>' +
+          '  <button class="admin-btn-sm admin-btn-copy" data-copy-link="' + esc(t.token) + '">🔗 专属链接</button>' +
+          '  <button class="admin-btn-sm admin-btn-test" data-qr-token="' + esc(t.token) + '" data-name="' + esc(t.name) + '">📱 手机扫码</button>' +
           (t.isPaused
             ? '  <button class="admin-btn-sm admin-btn-resume" data-resume-token="' + esc(t.id) + '">▶ 恢复授权</button>'
             : (!t.isRevoked ? '  <button class="admin-btn-sm admin-btn-pause" data-pause-token="' + esc(t.id) + '">⏸ 暂停授权</button>' : '')) +
@@ -1367,6 +1402,29 @@
           var code = btn.getAttribute('data-copy-token');
           navigator.clipboard ? navigator.clipboard.writeText(code) : prompt('请复制令牌：', code);
           alert('已复制令牌：' + code);
+        });
+      });
+
+      list.querySelectorAll('[data-copy-link]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var token = btn.getAttribute('data-copy-link');
+          var url = window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token);
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(function () {
+              alert('专属免密邀请链接已复制到剪贴板！\n将此链接发送给受邀老师，打开即可直接进入工作台。');
+            });
+          } else {
+            prompt('请复制专属链接：', url);
+          }
+        });
+      });
+
+      list.querySelectorAll('[data-qr-token]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var token = btn.getAttribute('data-qr-token');
+          var name = btn.getAttribute('data-name');
+          var url = window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token);
+          showTokenQrModal(name, token, url);
         });
       });
 
@@ -1655,6 +1713,45 @@
     URL.revokeObjectURL(a.href);
   }
 
+  function showTokenQrModal(name, token, url) {
+    var oldModal = document.getElementById('tokenQrModal');
+    if (oldModal) oldModal.remove();
+
+    var div = document.createElement('div');
+    div.id = 'tokenQrModal';
+    div.className = 'admin-modal-mask';
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    div.innerHTML =
+      '<div style="background:var(--card,#FFFFFF);border-radius:8px;max-width:340px;width:100%;text-align:center;padding:20px;border:1px solid var(--line,#D8D0C5);box-shadow:0 8px 30px rgba(0,0,0,0.25)">' +
+      '  <div style="font-size:16px;font-weight:700;color:var(--primary-deep,#2F5D50);margin-bottom:4px">📱 手机扫码直达工作台</div>' +
+      '  <div style="font-size:12px;color:var(--muted,#7A8B82);margin-bottom:12px">受邀人员：' + esc(name) + '</div>' +
+      '  <div id="tokenQrCanvasBox" style="display:flex;justify-content:center;align-items:center;margin:10px 0;min-height:180px"></div>' +
+      '  <div style="font-size:11px;color:var(--ink-soft,#3E4D44);line-height:1.5;margin-bottom:14px;background:var(--paper,#F5EFE6);padding:8px 10px;border-radius:4px">' +
+      '    受邀老师使用手机微信或相机扫码，即可免密登录并开通工作台权限。' +
+      '  </div>' +
+      '  <div style="display:flex;gap:6px;justify-content:center">' +
+      '    <button class="admin-btn admin-btn-primary" id="tokenQrCloseBtn">关 闭</button>' +
+      '  </div>' +
+      '</div>';
+
+    document.body.appendChild(div);
+    var box = div.querySelector('#tokenQrCanvasBox');
+    if (window.QR && box) {
+      var canvas = document.createElement('canvas');
+      canvas.style.maxWidth = '180px';
+      canvas.style.maxHeight = '180px';
+      canvas.style.borderRadius = '6px';
+      canvas.style.border = '1px solid var(--line,#D8D0C5)';
+      box.appendChild(canvas);
+      window.QR.render(url, canvas, 3);
+    } else if (box) {
+      box.innerHTML = '<div style="font-size:11px;color:var(--muted)">二维码生成器未就绪，请使用复制专属链接</div>';
+    }
+
+    div.querySelector('#tokenQrCloseBtn').addEventListener('click', function () { div.remove(); });
+    div.addEventListener('click', function (e) { if (e.target === div) div.remove(); });
+  }
+
   /* ---------- 打开 / 关闭 ---------- */
   function open() {
     var mask = $('#adminMask');
@@ -1684,6 +1781,32 @@
       if (saved) {
         authenticated = true;
         currentUser = saved;
+      }
+    } catch (_) {}
+
+    // 检查 URL 中是否携带专属邀请令牌参数
+    try {
+      var hash = window.location.hash || '';
+      var search = window.location.search || '';
+      var m = hash.match(/admin-token=([^&]+)/) || search.match(/admin-token=([^&]+)/);
+      if (m && m[1]) {
+        var tokenParam = decodeURIComponent(m[1]);
+        var res = window.Store && window.Store.verifyLogin ? window.Store.verifyLogin(tokenParam) : null;
+        if (res && res.ok) {
+          authenticated = true;
+          currentUser = res;
+          if (window.Store && window.Store.saveSession) {
+            window.Store.saveSession(res);
+          }
+          if (window.history && window.history.replaceState) {
+            var cleanHash = hash.replace(/[?&]?admin-token=[^&]+/, '');
+            window.history.replaceState(null, '', window.location.pathname + cleanHash);
+          }
+          setTimeout(function () {
+            open();
+            alert('欢迎受邀管理员「' + res.name + '」！工作台已成功就绪。');
+          }, 200);
+        }
       }
     } catch (_) {}
 

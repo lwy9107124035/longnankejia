@@ -339,5 +339,5 @@
     return response.then(function(answer){local.remember(question,resolved,answer);return answer;});
   };
   var current=null;
-  window.AnswerEngine={RulesEngine:RulesEngine,ApiEngine:ApiEngine,getEngine:function(){if(!current){var cfg=window.Store?window.Store.getEffectiveAi():((window.APP_CONFIG && window.APP_CONFIG.ai)||{});current=cfg.mode==='api'?new ApiEngine():new RulesEngine();}return current;},reset:function(){current=null;}};
+  window.AnswerEngine={RulesEngine:RulesEngine,ApiEngine:ApiEngine,getEngine:function(){if(!current){var cfg=window.Store?window.Store.getEffectiveAi():((window.APP_CONFIG && window.APP_CONFIG.ai)||{});current=cfg.mode==='api'?new ApiEngine():new RulesEngine();}return current;},ask:function(q){return this.getEngine().ask(q);},reset:function(){current=null;}};
 })();
