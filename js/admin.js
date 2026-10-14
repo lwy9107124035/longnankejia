@@ -121,32 +121,7 @@
 
     var lockTimer = null;
 
-    function bindSelfUnlockBtn() {
-      var selfUnlockBtn = document.getElementById('adminSelfUnlockBtn');
-      if (selfUnlockBtn) {
-        selfUnlockBtn.onclick = function (e) {
-          e.preventDefault();
-          var pw = prompt('请输入超级管理员主口令以解除本设备封锁：');
-          if (!pw) return;
-          var res = window.Store.verifyLogin(pw);
-          if (res.ok && res.role === 'super_admin') {
-            clearLoginLockState();
-            if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
-            if (window.Store && window.Store.unlockClient) {
-              var myInfo = window.Store.detectClientInfo();
-              window.Store.unlockClient(myInfo.ip);
-            }
-            checkLockStatus();
-            err.className = 'admin-login-error';
-            err.textContent = '✅ 超级管理员身份验证通过，封锁已即刻解除！';
-            input.value = pw;
-            input.focus();
-          } else {
-            alert('超级管理员密码验证失败，无法解除封锁！');
-          }
-        };
-      }
-    }
+    var lastCloudSync = 0;
 
     function checkLockStatus() {
       if (window.Store && window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
@@ -156,7 +131,7 @@
         btn.disabled = false;
         btn.style.opacity = '';
         err.className = 'admin-login-error';
-        err.textContent = '✅ 管理员已手动解除对此设备的登录封锁，可直接输入';
+        err.textContent = '✅ 管理员已手动解除锁定，请重新输入口令';
         return false;
       }
 
@@ -168,13 +143,26 @@
         btn.disabled = true;
         btn.style.opacity = '0.5';
         err.className = 'admin-login-error admin-lock-countdown';
-        err.innerHTML = '⚠️ 输错超限，系统已锁定保护。请等待 <strong>' + remainSec + '</strong> 秒后再试（刷新页面不会重置锁定）' +
-          '<div style="margin-top:8px;font-size:12px;color:var(--text-muted, #8c8275);">' +
-          '如果是超级管理员误触被锁，可<button type="button" id="adminSelfUnlockBtn" style="background:none;border:none;color:var(--primary, #b83b26);text-decoration:underline;cursor:pointer;font-size:12px;padding:0 4px;">点此验证主密即刻解除</button>' +
-          '</div>';
-        bindSelfUnlockBtn();
+        err.textContent = '⚠️ 连续输错超限，系统已锁定保护。请等待 ' + remainSec + ' 秒后再试（刷新页面不会重置锁定）';
         if (!lockTimer) {
           lockTimer = setInterval(function () {
+            var curNow = Date.now();
+            if (window.Store && window.Store.syncWithCloud && curNow - lastCloudSync > 2500) {
+              lastCloudSync = curNow;
+              window.Store.syncWithCloud(function () {
+                if (window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
+                  clearInterval(lockTimer);
+                  lockTimer = null;
+                  clearLoginLockState();
+                  input.disabled = false;
+                  btn.disabled = false;
+                  btn.style.opacity = '';
+                  err.className = 'admin-login-error';
+                  err.textContent = '✅ 管理员已手动解除锁定，请重新输入口令';
+                }
+              });
+            }
+
             if (window.Store && window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
               clearInterval(lockTimer);
               lockTimer = null;
@@ -183,18 +171,13 @@
               btn.disabled = false;
               btn.style.opacity = '';
               err.className = 'admin-login-error';
-              err.textContent = '✅ 管理员已手动解除对此设备的登录封锁，可直接输入';
+              err.textContent = '✅ 管理员已手动解除锁定，请重新输入口令';
               return;
             }
             var curState = getLoginLockState();
-            var curNow = Date.now();
             if (curState.until && curNow < curState.until) {
               var left = Math.ceil((curState.until - curNow) / 1000);
-              err.innerHTML = '⚠️ 输错超限，系统已锁定保护。请等待 <strong>' + left + '</strong> 秒后再试（刷新页面不会重置锁定）' +
-                '<div style="margin-top:8px;font-size:12px;color:var(--text-muted, #8c8275);">' +
-                '如果是超级管理员误触被锁，可<button type="button" id="adminSelfUnlockBtn" style="background:none;border:none;color:var(--primary, #b83b26);text-decoration:underline;cursor:pointer;font-size:12px;padding:0 4px;">点此验证主密即刻解除</button>' +
-                '</div>';
-              bindSelfUnlockBtn();
+              err.textContent = '⚠️ 连续输错超限，系统已锁定保护。请等待 ' + left + ' 秒后再试（刷新页面不会重置锁定）';
             } else {
               clearInterval(lockTimer);
               lockTimer = null;
@@ -1559,7 +1542,7 @@
           ? '<span class="admin-token-badge expired">🚨 锁定中（剩 ' + leftSec + ' 秒）</span>'
           : '<span class="admin-token-badge active">✅ 正常 / 已解除</span>';
         var actionBtn = isLocked
-          ? '<button class="admin-btn-sm admin-btn-resume" data-unlock-client="' + esc(l.id) + '" data-ip="' + esc(l.ip) + '">🔓 手动解除锁定</button>'
+          ? '<button class="admin-btn-sm admin-btn-resume" data-unlock-client="' + esc(l.id) + '" data-ip="' + esc(l.ip) + '" data-cid="' + esc(l.clientId || '') + '">🔓 手动解除锁定</button>'
           : '<span style="font-size:12px;color:var(--text-muted, #8c8275);padding:4px 8px;">已恢复访问</span>';
 
         return '<div class="admin-token-card ' + (isLocked ? 'expired' : 'active') + '">' +
@@ -1849,8 +1832,9 @@
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-unlock-client');
         var ip = btn.getAttribute('data-ip');
+        var cid = btn.getAttribute('data-cid');
         if (window.Store && window.Store.unlockClient) {
-          window.Store.unlockClient(id || ip);
+          window.Store.unlockClient(cid || id || ip);
         }
         alert('已手动解除客户端 [' + ip + '] 的登录封锁，该设备现已可正常登录！');
         renderTab();
@@ -1873,11 +1857,17 @@
     var refreshLocksBtn = $('#refreshLocksBtn');
     if (refreshLocksBtn) {
       refreshLocksBtn.addEventListener('click', function () {
+        refreshLocksBtn.disabled = true;
+        refreshLocksBtn.textContent = '⏳ 正在刷新...';
         if (window.Store && window.Store.syncWithCloud) {
           window.Store.syncWithCloud(function () {
+            refreshLocksBtn.disabled = false;
+            refreshLocksBtn.textContent = '🔄 刷新监控';
             renderTab();
           });
         } else {
+          refreshLocksBtn.disabled = false;
+          refreshLocksBtn.textContent = '🔄 刷新监控';
           renderTab();
         }
       });

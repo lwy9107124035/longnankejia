@@ -363,6 +363,33 @@
 
   /* ---------- 全站跨设备多端云同步与客户端锁定管理 ---------- */
 
+  function getSyncEndpoint() {
+    if (typeof window !== 'undefined' && window.location) {
+      var h = window.location.hostname;
+      if (h === '127.0.0.1' || h === 'localhost') {
+        return '/api/admin/sync';
+      }
+      if (h === 'antigravity.longnankejia-dev.pages.dev') {
+        return '/api/admin/sync';
+      }
+    }
+    return 'https://antigravity.longnankejia-dev.pages.dev/api/admin/sync';
+  }
+
+  function getClientId() {
+    var cid = '';
+    try {
+      cid = localStorage.getItem('nfyj_client_id');
+      if (!cid) {
+        cid = 'cid-' + Date.now() + '-' + Math.floor(Math.random() * 1000000).toString(36);
+        localStorage.setItem('nfyj_client_id', cid);
+      }
+    } catch (_) {
+      cid = 'cid-temp-' + Date.now();
+    }
+    return cid;
+  }
+
   function detectClientInfo() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
     var platform = '电脑端';
@@ -386,6 +413,7 @@
     } catch (_) {}
 
     return {
+      clientId: getClientId(),
       ip: cachedIp || '127.0.0.1 (本机/局域网)',
       geo: cachedGeo || '局域网/当前网络',
       device: platform + ' · ' + browser,
@@ -396,7 +424,7 @@
   function syncTokensToCloud(tokens) {
     if (typeof fetch === 'undefined') return;
     try {
-      fetch('/api/admin/sync', {
+      fetch(getSyncEndpoint(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update_tokens', tokens: tokens })
@@ -407,7 +435,7 @@
   function syncPasswordToCloud(pwHash) {
     if (typeof fetch === 'undefined') return;
     try {
-      fetch('/api/admin/sync', {
+      fetch(getSyncEndpoint(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update_password', pwHash: pwHash })
@@ -420,8 +448,14 @@
       if (typeof callback === 'function') callback(null);
       return;
     }
-    fetch('/api/admin/sync')
-      .then(function (res) { return res.json(); })
+    var endpoint = getSyncEndpoint();
+    var myCid = getClientId();
+
+    fetch(endpoint)
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
       .then(function (data) {
         if (!data || !data.ok) {
           if (typeof callback === 'function') callback(null);
@@ -448,6 +482,15 @@
             if (!found) {
               localToks.unshift(dt);
               merged = true;
+            } else {
+              if (dt.paused !== undefined && found.paused !== dt.paused) {
+                found.paused = dt.paused;
+                merged = true;
+              }
+              if (dt.revoked !== undefined && found.revoked !== dt.revoked) {
+                found.revoked = dt.revoked;
+                merged = true;
+              }
             }
           });
           if (merged) write(LS.tokens, localToks);
@@ -455,9 +498,23 @@
         if (data.lockouts && Array.isArray(data.lockouts)) {
           write(LS.locked_clients, data.lockouts);
           var myIp = data.clientIp;
-          var myLock = data.lockouts.find(function (l) { return l.ip === myIp; });
+          var myLock = data.lockouts.find(function (l) {
+            return (l.clientId && l.clientId === myCid) || (myIp && l.ip === myIp);
+          });
           if (myLock && myLock.status === 'unlocked') {
-            try { localStorage.removeItem('nfyj_login_lock_state'); } catch (_) {}
+            try {
+              localStorage.removeItem('nfyj_login_lock_state');
+              localStorage.setItem('nfyj_client_unlocked', '1');
+            } catch (_) {}
+          }
+        }
+        if (data.allUnlockedAt) {
+          var state = read('nfyj_login_lock_state', null);
+          if (state && state.lockedAt && state.lockedAt < data.allUnlockedAt) {
+            try {
+              localStorage.removeItem('nfyj_login_lock_state');
+              localStorage.setItem('nfyj_client_unlocked', '1');
+            } catch (_) {}
           }
         }
         if (typeof callback === 'function') callback(data);
@@ -475,6 +532,7 @@
     var info = detectClientInfo();
     var lockItem = {
       id: 'lock-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      clientId: info.clientId,
       ip: info.ip,
       geo: info.geo,
       device: info.device,
@@ -484,17 +542,25 @@
       status: 'locked'
     };
 
+    try {
+      localStorage.removeItem('nfyj_client_unlocked');
+    } catch (_) {}
+
     var list = read(LS.locked_clients, []);
-    list = [lockItem].concat(list.filter(function (l) { return l.ip !== lockItem.ip; })).slice(0, 50);
+    list = [lockItem].concat(list.filter(function (l) {
+      return l.clientId !== lockItem.clientId && l.ip !== lockItem.ip;
+    })).slice(0, 50);
     write(LS.locked_clients, list);
     addAuditLog('系统防御', '触发锁定', '客户端 [' + lockItem.ip + ' · ' + lockItem.device + '] 连续输错 ' + (attempts || 5) + ' 次，已执行锁定拦截');
 
     if (typeof fetch !== 'undefined') {
-      fetch('/api/admin/sync', {
+      fetch(getSyncEndpoint(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'report_lock',
+          id: lockItem.id,
+          clientId: lockItem.clientId,
           ip: lockItem.ip,
           geo: lockItem.geo,
           device: lockItem.device,
@@ -507,11 +573,11 @@
     return lockItem;
   }
 
-  function unlockClient(lockIdOrIp) {
+  function unlockClient(lockIdOrIpOrCid) {
     var list = read(LS.locked_clients, []);
     var target = null;
     list = list.map(function (l) {
-      if (l.id === lockIdOrIp || l.ip === lockIdOrIp) {
+      if (l.id === lockIdOrIpOrCid || l.ip === lockIdOrIpOrCid || l.clientId === lockIdOrIpOrCid) {
         l.status = 'unlocked';
         l.unlockedAt = Date.now();
         l.unlockedBy = '超级管理员手动解除';
@@ -523,6 +589,7 @@
 
     try {
       localStorage.removeItem('nfyj_login_lock_state');
+      localStorage.setItem('nfyj_client_unlocked', '1');
     } catch (_) {}
 
     if (target) {
@@ -530,13 +597,14 @@
     }
 
     if (typeof fetch !== 'undefined') {
-      fetch('/api/admin/sync', {
+      fetch(getSyncEndpoint(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'unlock',
-          id: target ? target.id : lockIdOrIp,
-          ip: target ? target.ip : lockIdOrIp
+          id: target ? target.id : lockIdOrIpOrCid,
+          ip: target ? target.ip : lockIdOrIpOrCid,
+          clientId: target ? target.clientId : ''
         })
       }).catch(function () {});
     }
@@ -556,12 +624,13 @@
 
     try {
       localStorage.removeItem('nfyj_login_lock_state');
+      localStorage.setItem('nfyj_client_unlocked', '1');
     } catch (_) {}
 
     addAuditLog('超级管理员', '全部解锁', '超级管理员执行了一键解除全部客户端登录锁定');
 
     if (typeof fetch !== 'undefined') {
-      fetch('/api/admin/sync', {
+      fetch(getSyncEndpoint(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'unlock_all' })
@@ -572,11 +641,20 @@
   }
 
   function isClientUnlocked() {
+    var cid = getClientId();
     var cachedIp = '';
     try { cachedIp = sessionStorage.getItem('nfyj_client_ip') || localStorage.getItem('nfyj_client_ip') || ''; } catch (_) {}
-    if (!cachedIp) return false;
+    
+    var localUnlocked = false;
+    try {
+      localUnlocked = !!sessionStorage.getItem('nfyj_client_unlocked') || !!localStorage.getItem('nfyj_client_unlocked');
+    } catch (_) {}
+    if (localUnlocked) return true;
+
     var list = read(LS.locked_clients, []);
-    var myLock = list.find(function (l) { return l.ip === cachedIp; });
+    var myLock = list.find(function (l) {
+      return (l.clientId && l.clientId === cid) || (cachedIp && l.ip === cachedIp);
+    });
     return !!(myLock && myLock.status === 'unlocked');
   }
 

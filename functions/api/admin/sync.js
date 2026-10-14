@@ -6,7 +6,8 @@
 let inMemoryState = {
   pwHash: null,
   tokens: [],
-  lockouts: [] // { id, ip, geo, device, attempts, lockedAt, lockedUntil, status: 'locked'|'unlocked', unlockedBy }
+  lockouts: [], // { id, clientId, ip, geo, device, attempts, lockedAt, lockedUntil, status: 'locked'|'unlocked', unlockedBy }
+  allUnlockedAt: 0
 };
 
 function json(status, value) {
@@ -48,7 +49,8 @@ export async function onRequestGet({ request }) {
     clientGeo,
     pwHash: inMemoryState.pwHash,
     tokens: inMemoryState.tokens,
-    lockouts: inMemoryState.lockouts
+    lockouts: inMemoryState.lockouts,
+    allUnlockedAt: inMemoryState.allUnlockedAt
   });
 }
 
@@ -85,7 +87,8 @@ export async function onRequestPost({ request }) {
 
   if (action === 'report_lock') {
     const lockItem = {
-      id: 'lock-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      id: body.id || ('lock-' + Date.now() + '-' + Math.floor(Math.random() * 1000)),
+      clientId: body.clientId || '',
       ip: body.ip || clientIp,
       geo: body.geo || clientGeo,
       device: body.device || '移动端/未知终端',
@@ -94,15 +97,23 @@ export async function onRequestPost({ request }) {
       lockedUntil: body.lockedUntil || (Date.now() + 60000),
       status: 'locked'
     };
-    inMemoryState.lockouts = [lockItem, ...inMemoryState.lockouts.filter(l => l.ip !== lockItem.ip)].slice(0, 50);
+    inMemoryState.lockouts = [
+      lockItem,
+      ...inMemoryState.lockouts.filter(l => {
+        const isSameDevice = (lockItem.clientId && l.clientId === lockItem.clientId) ||
+                             (lockItem.ip && l.ip === lockItem.ip);
+        return !isSameDevice;
+      })
+    ].slice(0, 50);
     return json(200, { ok: true, lockouts: inMemoryState.lockouts });
   }
 
   if (action === 'unlock') {
     const targetId = body.id;
     const targetIp = body.ip;
+    const targetCid = body.clientId;
     inMemoryState.lockouts = inMemoryState.lockouts.map(l => {
-      if ((targetId && l.id === targetId) || (targetIp && l.ip === targetIp)) {
+      if ((targetId && l.id === targetId) || (targetIp && l.ip === targetIp) || (targetCid && l.clientId === targetCid)) {
         return { ...l, status: 'unlocked', unlockedAt: Date.now(), unlockedBy: '超级管理员手动解除' };
       }
       return l;
@@ -111,13 +122,14 @@ export async function onRequestPost({ request }) {
   }
 
   if (action === 'unlock_all') {
+    inMemoryState.allUnlockedAt = Date.now();
     inMemoryState.lockouts = inMemoryState.lockouts.map(l => ({
       ...l,
       status: 'unlocked',
       unlockedAt: Date.now(),
       unlockedBy: '超级管理员一键解除全部'
     }));
-    return json(200, { ok: true, lockouts: inMemoryState.lockouts });
+    return json(200, { ok: true, lockouts: inMemoryState.lockouts, allUnlockedAt: inMemoryState.allUnlockedAt });
   }
 
   return json(400, { ok: false, error: 'Unknown action' });
