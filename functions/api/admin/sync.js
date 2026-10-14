@@ -11,7 +11,19 @@ let inMemoryState = {
   pwHash: null,
   tokens: [],
   lockouts: [], // { id, clientId, ip, geo, device, attempts, lockedAt, lockedUntil, status: 'locked'|'unlocked', unlockedBy }
-  allUnlockedAt: 0
+  allUnlockedAt: 0,
+  // 全站自定义内容多端实时同步
+  kbCustom: [],
+  kbEdited: {},
+  kbDeleted: [],
+  kepuCustom: [],
+  kepuEdited: {},
+  kepuDeleted: [],
+  dialectCustom: [],
+  apiConfig: {},
+  workflowConfig: {},
+  auditLogs: [],
+  customUpdatedAt: 0
 };
 
 async function fetchWithTimeout(url, options, timeoutMs = 2000) {
@@ -45,6 +57,17 @@ async function loadPersistedState() {
         if (Array.isArray(parsed.tokens)) inMemoryState.tokens = parsed.tokens;
         if (Array.isArray(parsed.lockouts)) inMemoryState.lockouts = parsed.lockouts;
         if (parsed.allUnlockedAt !== undefined) inMemoryState.allUnlockedAt = parsed.allUnlockedAt;
+        if (Array.isArray(parsed.kbCustom)) inMemoryState.kbCustom = parsed.kbCustom;
+        if (parsed.kbEdited && typeof parsed.kbEdited === 'object') inMemoryState.kbEdited = parsed.kbEdited;
+        if (Array.isArray(parsed.kbDeleted)) inMemoryState.kbDeleted = parsed.kbDeleted;
+        if (Array.isArray(parsed.kepuCustom)) inMemoryState.kepuCustom = parsed.kepuCustom;
+        if (parsed.kepuEdited && typeof parsed.kepuEdited === 'object') inMemoryState.kepuEdited = parsed.kepuEdited;
+        if (Array.isArray(parsed.kepuDeleted)) inMemoryState.kepuDeleted = parsed.kepuDeleted;
+        if (Array.isArray(parsed.dialectCustom)) inMemoryState.dialectCustom = parsed.dialectCustom;
+        if (parsed.apiConfig && typeof parsed.apiConfig === 'object') inMemoryState.apiConfig = parsed.apiConfig;
+        if (parsed.workflowConfig && typeof parsed.workflowConfig === 'object') inMemoryState.workflowConfig = parsed.workflowConfig;
+        if (Array.isArray(parsed.auditLogs)) inMemoryState.auditLogs = parsed.auditLogs;
+        if (parsed.customUpdatedAt !== undefined) inMemoryState.customUpdatedAt = parsed.customUpdatedAt;
       }
     }
   } catch (_) {}
@@ -106,7 +129,18 @@ export async function onRequestGet({ request }) {
     pwHash: inMemoryState.pwHash,
     tokens: inMemoryState.tokens,
     lockouts: inMemoryState.lockouts,
-    allUnlockedAt: inMemoryState.allUnlockedAt
+    allUnlockedAt: inMemoryState.allUnlockedAt,
+    kbCustom: inMemoryState.kbCustom || [],
+    kbEdited: inMemoryState.kbEdited || {},
+    kbDeleted: inMemoryState.kbDeleted || [],
+    kepuCustom: inMemoryState.kepuCustom || [],
+    kepuEdited: inMemoryState.kepuEdited || {},
+    kepuDeleted: inMemoryState.kepuDeleted || [],
+    dialectCustom: inMemoryState.dialectCustom || [],
+    apiConfig: inMemoryState.apiConfig || {},
+    workflowConfig: inMemoryState.workflowConfig || {},
+    auditLogs: inMemoryState.auditLogs || [],
+    customUpdatedAt: inMemoryState.customUpdatedAt || 0
   });
 }
 
@@ -127,6 +161,22 @@ export async function onRequestPost({ request }) {
   }
 
   const { action } = body;
+
+  if (action === 'update_custom_bundle') {
+    if (Array.isArray(body.kbCustom)) inMemoryState.kbCustom = body.kbCustom;
+    if (body.kbEdited && typeof body.kbEdited === 'object') inMemoryState.kbEdited = body.kbEdited;
+    if (Array.isArray(body.kbDeleted)) inMemoryState.kbDeleted = body.kbDeleted;
+    if (Array.isArray(body.kepuCustom)) inMemoryState.kepuCustom = body.kepuCustom;
+    if (body.kepuEdited && typeof body.kepuEdited === 'object') inMemoryState.kepuEdited = body.kepuEdited;
+    if (Array.isArray(body.kepuDeleted)) inMemoryState.kepuDeleted = body.kepuDeleted;
+    if (Array.isArray(body.dialectCustom)) inMemoryState.dialectCustom = body.dialectCustom;
+    if (body.apiConfig && typeof body.apiConfig === 'object') inMemoryState.apiConfig = body.apiConfig;
+    if (body.workflowConfig && typeof body.workflowConfig === 'object') inMemoryState.workflowConfig = body.workflowConfig;
+    if (Array.isArray(body.auditLogs)) inMemoryState.auditLogs = body.auditLogs;
+    inMemoryState.customUpdatedAt = Number(body.customUpdatedAt) || Date.now();
+    await savePersistedState();
+    return json(200, { ok: true, customUpdatedAt: inMemoryState.customUpdatedAt });
+  }
 
   if (action === 'update_password') {
     if (body.pwHash && typeof body.pwHash === 'string') {

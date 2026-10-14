@@ -432,4 +432,84 @@ test('手机端锁定解除后再次输错密码，机会次数正常递减（4-
   assert.equal(window.Store.isClientUnlocked(), false, '旧的解封凭据绝不能穿透解封新锁');
 });
 
+test('电脑端新增自定义内容（知识库、科普、方言），手机端通过云端同步全量获取', async () => {
+  // 1. 模拟云端存储数据库
+  const cloudDb = {
+    ok: true,
+    clientIp: '127.0.0.1',
+    kbCustom: [],
+    kepuCustom: [],
+    dialectCustom: [],
+    customUpdatedAt: 0
+  };
+
+  // 2. 电脑端环境 A
+  const envA = setupEnvironment();
+  envA.sandbox.fetch = async (url, opts) => {
+    if (opts && opts.method === 'POST') {
+      const body = JSON.parse(opts.body);
+      if (body.action === 'update_custom_bundle') {
+        cloudDb.kbCustom = body.kbCustom || [];
+        cloudDb.kepuCustom = body.kepuCustom || [];
+        cloudDb.dialectCustom = body.dialectCustom || [];
+        cloudDb.customUpdatedAt = body.customUpdatedAt;
+        return { ok: true, json: async () => ({ ok: true, customUpdatedAt: cloudDb.customUpdatedAt }) };
+      }
+    }
+    return { ok: true, json: async () => cloudDb };
+  };
+
+  // 电脑端添加自定义知识库、科普卡片、方言语音
+  envA.window.Store.addEntry({
+    title: '关西新围历史新考',
+    keywords: ['关西新围', '新考'],
+    answer: '关西新围是客家围屋的典范代表。'
+  });
+  envA.window.Store.addHeritageCard({
+    name: '龙南烫皮客家风味',
+    cat: 'craft',
+    desc: '烫皮具有浓郁的米香。'
+  });
+  envA.window.Store.addDialectTrack({
+    name: '关西新围客家童谣原声',
+    item: { name: '关西新围客家童谣原声' },
+    url: 'https://example.com/audio.mp3'
+  });
+
+  // 确认电脑端已存入
+  assert.equal(envA.window.Store.getEntries().length, 3);
+  assert.equal(envA.window.Store.getHeritageCards([]).length, 1);
+  assert.equal(envA.window.Store.getCustomDialectTracks().length, 1);
+  assert.equal(cloudDb.kbCustom.length, 1, '电脑端修改应自动同步到云端数据库');
+  assert.equal(cloudDb.kepuCustom.length, 1);
+  assert.equal(cloudDb.dialectCustom.length, 1);
+
+  // 3. 手机端环境 B（全新空白设备）
+  const envB = setupEnvironment();
+  envB.sandbox.fetch = async () => ({ ok: true, json: async () => cloudDb });
+
+  // 手机端初始状态为空白
+  assert.equal(envB.window.Store.getEntries().length, 2);
+  assert.equal(envB.window.Store.getHeritageCards([]).length, 0);
+  assert.equal(envB.window.Store.getCustomDialectTracks().length, 0);
+
+  // 手机端执行云同步
+  await new Promise(resolve => {
+    envB.window.Store.syncWithCloud(resolve);
+  });
+
+  // 同步后手机端必须完全呈现电脑端录入的自定义内容
+  const phoneEntries = envB.window.Store.getEntries();
+  assert.equal(phoneEntries.length, 3, '手机端应成功同步知识库自定义条目');
+  assert.ok(phoneEntries.find(e => e.title === '关西新围历史新考'));
+
+  const phoneCards = envB.window.Store.getHeritageCards([]);
+  assert.equal(phoneCards.length, 1, '手机端应成功同步科普卡片');
+  assert.equal(phoneCards[0].name, '龙南烫皮客家风味');
+
+  const phoneTracks = envB.window.Store.getCustomDialectTracks();
+  assert.equal(phoneTracks.length, 1, '手机端应成功同步方言语音');
+  assert.equal(phoneTracks[0].name, '关西新围客家童谣原声');
+});
+
 

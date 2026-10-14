@@ -225,6 +225,12 @@
           window.Store.saveSession(authResult);
         }
         showMain();
+        if (window.Store && window.Store.syncWithCloud) {
+          window.Store.syncWithCloud(function () {
+            refreshFrontEnd();
+            renderTab();
+          });
+        }
       } else {
         var state = getLoginLockState();
         var nextCount = (Number(state.count) || 0) + 1;
@@ -338,6 +344,12 @@
     });
 
     renderTab();
+    if (window.Store && window.Store.syncWithCloud) {
+      window.Store.syncWithCloud(function () {
+        refreshFrontEnd();
+        renderTab();
+      });
+    }
   }
 
   function renderTab() {

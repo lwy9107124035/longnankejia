@@ -440,6 +440,93 @@
     } catch (_) {}
   }
 
+  function mergeItemLists(localList, cloudList) {
+    var map = {};
+    (localList || []).forEach(function (item) {
+      if (item && item.id) map[item.id] = item;
+    });
+    (cloudList || []).forEach(function (item) {
+      if (!item || !item.id) return;
+      if (!map[item.id]) {
+        map[item.id] = item;
+      } else {
+        var localTime = map[item.id].updatedAt || map[item.id].createdAt || 0;
+        var cloudTime = item.updatedAt || item.createdAt || 0;
+        if (cloudTime >= localTime) {
+          map[item.id] = Object.assign({}, map[item.id], item);
+        }
+      }
+    });
+    var result = [];
+    for (var id in map) {
+      if (Object.prototype.hasOwnProperty.call(map, id)) {
+        result.push(map[id]);
+      }
+    }
+    return result;
+  }
+
+  function mergeIdArrays(localArr, cloudArr) {
+    var set = {};
+    (localArr || []).forEach(function (id) { if (id) set[id] = true; });
+    (cloudArr || []).forEach(function (id) { if (id) set[id] = true; });
+    return Object.keys(set);
+  }
+
+  function mergeEditedObjects(localObj, cloudObj) {
+    return Object.assign({}, localObj || {}, cloudObj || {});
+  }
+
+  function mergeAuditLogs(localLogs, cloudLogs) {
+    var map = {};
+    (localLogs || []).forEach(function (l) { if (l && l.id) map[l.id] = l; });
+    (cloudLogs || []).forEach(function (l) { if (l && l.id) map[l.id] = l; });
+    var result = [];
+    for (var id in map) {
+      if (Object.prototype.hasOwnProperty.call(map, id)) {
+        result.push(map[id]);
+      }
+    }
+    result.sort(function (a, b) { return (b.time || 0) - (a.time || 0); });
+    return result.slice(0, 200);
+  }
+
+  function triggerFrontEndRefresh() {
+    try {
+      var h = window.Heritage || (window.UI && window.UI.Heritage);
+      if (h && h.render) h.render();
+      if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+      if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+    } catch (_) {}
+  }
+
+  function syncCustomToCloud() {
+    if (typeof fetch === 'undefined') return;
+    var now = Date.now();
+    var payload = {
+      action: 'update_custom_bundle',
+      kbCustom: read(LS.custom, []),
+      kbEdited: read(LS.edited, {}),
+      kbDeleted: read(LS.deleted, []),
+      kepuCustom: read(LS.kepu_custom, []),
+      kepuEdited: read(LS.kepu_edited, {}),
+      kepuDeleted: read(LS.kepu_deleted, []),
+      dialectCustom: read(LS.dialect_custom, []),
+      apiConfig: getApiOverrides(),
+      workflowConfig: getWorkflowConfig(),
+      auditLogs: read(LS.audit_logs, []),
+      customUpdatedAt: now
+    };
+    try {
+      localStorage.setItem('nfyj_custom_updated_at', String(now));
+      fetch(getSyncEndpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(function () {});
+    } catch (_) {}
+  }
+
   function syncWithCloud(callback) {
     if (typeof fetch === 'undefined') {
       if (typeof callback === 'function') callback(null);
@@ -506,6 +593,89 @@
             } catch (_) {}
           }
         }
+
+        // 跨设备全站自定义内容双向同步与智能合并（知识库、科普卡片、方言语音、AI配置、审计日志）
+        var hasCloudCustom = !!(
+          (data.kbCustom && data.kbCustom.length) ||
+          (data.kepuCustom && data.kepuCustom.length) ||
+          (data.dialectCustom && data.dialectCustom.length) ||
+          (data.customUpdatedAt && data.customUpdatedAt > 0)
+        );
+
+        var localKbList = read(LS.custom, []);
+        var localKepuList = read(LS.kepu_custom, []);
+        var localDialectList = read(LS.dialect_custom, []);
+        var localCustomCount = localKbList.length + localKepuList.length + localDialectList.length;
+        var localUpdatedAt = Number(localStorage.getItem('nfyj_custom_updated_at')) || 0;
+        var cloudUpdatedAt = Number(data.customUpdatedAt) || 0;
+
+        if (hasCloudCustom && (cloudUpdatedAt >= localUpdatedAt || localCustomCount === 0)) {
+          var updatedAny = false;
+
+          // 1. 知识库
+          if (Array.isArray(data.kbCustom)) {
+            var mergedKb = mergeItemLists(localKbList, data.kbCustom);
+            write(LS.custom, mergedKb);
+            if (mergedKb.length !== localKbList.length) updatedAny = true;
+          }
+          if (data.kbEdited && typeof data.kbEdited === 'object') {
+            write(LS.edited, mergeEditedObjects(read(LS.edited, {}), data.kbEdited));
+            updatedAny = true;
+          }
+          if (Array.isArray(data.kbDeleted) && data.kbDeleted.length > 0) {
+            write(LS.deleted, mergeIdArrays(read(LS.deleted, []), data.kbDeleted));
+            updatedAny = true;
+          }
+
+          // 2. 科普卡片
+          if (Array.isArray(data.kepuCustom)) {
+            var mergedKepu = mergeItemLists(localKepuList, data.kepuCustom);
+            write(LS.kepu_custom, mergedKepu);
+            if (mergedKepu.length !== localKepuList.length) updatedAny = true;
+          }
+          if (data.kepuEdited && typeof data.kepuEdited === 'object') {
+            write(LS.kepu_edited, mergeEditedObjects(read(LS.kepu_edited, {}), data.kepuEdited));
+            updatedAny = true;
+          }
+          if (Array.isArray(data.kepuDeleted) && data.kepuDeleted.length > 0) {
+            write(LS.kepu_deleted, mergeIdArrays(read(LS.kepu_deleted, []), data.kepuDeleted));
+            updatedAny = true;
+          }
+
+          // 3. 方言语音
+          if (Array.isArray(data.dialectCustom)) {
+            var mergedDialect = mergeItemLists(localDialectList, data.dialectCustom);
+            write(LS.dialect_custom, mergedDialect);
+            if (mergedDialect.length !== localDialectList.length) updatedAny = true;
+          }
+
+          // 4. AI 与工作流
+          if (data.apiConfig && typeof data.apiConfig === 'object' && Object.keys(data.apiConfig).length > 0) {
+            write(LS.api, Object.assign({}, read(LS.api, {}), data.apiConfig));
+            updatedAny = true;
+          }
+          if (data.workflowConfig && typeof data.workflowConfig === 'object' && Object.keys(data.workflowConfig).length > 0) {
+            write(LS.workflow, Object.assign({}, read(LS.workflow, {}), data.workflowConfig));
+            updatedAny = true;
+          }
+
+          // 5. 审计流水
+          if (Array.isArray(data.auditLogs) && data.auditLogs.length > 0) {
+            write(LS.audit_logs, mergeAuditLogs(read(LS.audit_logs, []), data.auditLogs));
+          }
+
+          if (cloudUpdatedAt > 0) {
+            try { localStorage.setItem('nfyj_custom_updated_at', String(cloudUpdatedAt)); } catch (_) {}
+          }
+
+          if (updatedAny) {
+            triggerFrontEndRefresh();
+          }
+        } else if (localCustomCount > 0 && (!hasCloudCustom || localUpdatedAt > cloudUpdatedAt)) {
+          // 当前终端（例如电脑端）已有自定义内容，但云端尚无或当前终端更新，自动推送到云端持久化共享给所有设备
+          syncCustomToCloud();
+        }
+
         if (typeof callback === 'function') callback(data);
       })
       .catch(function () {
@@ -901,6 +1071,7 @@
 
     var totalRemoved = removedKb + removedKepu + removedDialect;
     addAuditLog('超级管理员', '撤销修改', '回滚撤销了令牌 [' + tokCode + ' · ' + tokName + '] 录入的全部内容，共清除 ' + totalRemoved + ' 项数据');
+    syncCustomToCloud();
 
     // 发送全量撤回通知至该令牌
     if (totalRemoved > 0) {
@@ -1063,6 +1234,7 @@
       });
     }
 
+    syncCustomToCloud();
     return {
       ok: true,
       itemTitle: itemTitle,
@@ -1315,6 +1487,7 @@
     custom.push(entry);
     write(LS.custom, custom);
     addAuditLog(entry.creatorName, '新增知识', '新增知识条目「' + entry.title + '」');
+    syncCustomToCloud();
     return entry;
   }
 
@@ -1325,6 +1498,7 @@
         custom[i] = Object.assign({}, custom[i], patch, { id: id });
         write(LS.custom, custom);
         addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '更新知识', '更新了知识条目「' + custom[i].title + '」');
+        syncCustomToCloud();
         return true;
       }
     }
@@ -1334,6 +1508,7 @@
     edited[id] = Object.assign({}, base, patch, { id: id });
     write(LS.edited, edited);
     addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '更新知识', '编辑内置知识条目「' + edited[id].title + '」');
+    syncCustomToCloud();
     return true;
   }
 
@@ -1344,6 +1519,7 @@
     if (custom.length < before) {
       write(LS.custom, custom);
       addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除知识', '删除了自定义条目 ID:' + id);
+      syncCustomToCloud();
       return true;
     }
     var deleted = read(LS.deleted, []);
@@ -1355,6 +1531,7 @@
     delete edited[id];
     write(LS.edited, edited);
     addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除知识', '删除了内置条目 ID:' + id);
+    syncCustomToCloud();
     return true;
   }
 
@@ -1363,6 +1540,7 @@
       localStorage.removeItem(LS.custom);
       localStorage.removeItem(LS.deleted);
       localStorage.removeItem(LS.edited);
+      syncCustomToCloud();
     } catch (e) {}
   }
 
@@ -1389,6 +1567,7 @@
       write(LS.custom, cleaned);
       write(LS.deleted, []);
       write(LS.edited, {});
+      syncCustomToCloud();
       return true;
     } catch (e) { return false; }
   }
@@ -1421,6 +1600,7 @@
     custom.push(card);
     write(LS.kepu_custom, custom);
     addAuditLog(card.creatorName, '新增科普', '新增非遗卡片「' + card.name + '」');
+    syncCustomToCloud();
     return card;
   }
 
@@ -1430,12 +1610,14 @@
       if (custom[i].id === id) {
         custom[i] = Object.assign({}, custom[i], patch, { id: id });
         write(LS.kepu_custom, custom);
+        syncCustomToCloud();
         return true;
       }
     }
     var edited = read(LS.kepu_edited, {});
     edited[id] = Object.assign({}, patch, { id: id });
     write(LS.kepu_edited, edited);
+    syncCustomToCloud();
     return true;
   }
 
@@ -1446,6 +1628,7 @@
     if (custom.length < before) {
       write(LS.kepu_custom, custom);
       addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除科普', '删除科普卡片 ID:' + id);
+      syncCustomToCloud();
       return true;
     }
     var deleted = read(LS.kepu_deleted, []);
@@ -1457,6 +1640,7 @@
     delete edited[id];
     write(LS.kepu_edited, edited);
     addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除科普', '删除科普卡片 ID:' + id);
+    syncCustomToCloud();
     return true;
   }
 
@@ -1480,6 +1664,7 @@
     write(LS.dialect_custom, list);
     var trackName = (track.item && track.item.name) || track.name || '';
     addAuditLog(track.creatorName, '新增方言', '新增客家方言讲解「' + trackName + '」');
+    syncCustomToCloud();
     return track;
   }
 
@@ -1488,6 +1673,7 @@
     var filtered = list.filter(function (t) { return (t.id || t.item && t.item.name) !== id; });
     write(LS.dialect_custom, filtered);
     addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除方言', '删除方言展品语音 ID:' + id);
+    syncCustomToCloud();
     return filtered.length < list.length;
   }
 
@@ -1500,12 +1686,14 @@
   function setApiOverrides(patch) {
     var cur = read(LS.api, {});
     write(LS.api, Object.assign(cur, patch));
+    syncCustomToCloud();
   }
 
   function resetApi() {
     try {
       localStorage.removeItem(LS.api);
       localStorage.removeItem(LS.workflow);
+      syncCustomToCloud();
     } catch (e) {}
   }
 
@@ -1521,6 +1709,7 @@
   function setWorkflowConfig(patch) {
     var cur = getWorkflowConfig();
     write(LS.workflow, Object.assign(cur, patch));
+    syncCustomToCloud();
   }
 
   function getEffectiveAi() {
@@ -1577,6 +1766,7 @@
       if (data.workflowConfig) {
         write(LS.workflow, data.workflowConfig);
       }
+      syncCustomToCloud();
       return true;
     } catch (e) {
       return false;
@@ -1656,6 +1846,7 @@
     isClientUnlocked: isClientUnlocked,
     consumeClientUnlock: consumeClientUnlock,
     syncWithCloud: syncWithCloud,
+    syncCustomToCloud: syncCustomToCloud,
     syncTokensToCloud: syncTokensToCloud,
     syncPasswordToCloud: syncPasswordToCloud
   };
