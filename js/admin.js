@@ -55,7 +55,11 @@
 
   function setLoginLockState(count, until) {
     try {
-      localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify({ count: count, until: until }));
+      localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify({
+        count: count,
+        until: until,
+        lockedAt: Date.now()
+      }));
     } catch (_) {}
   }
 
@@ -1590,16 +1594,10 @@
         var activeText = t.lastActiveAt ? new Date(t.lastActiveAt).toLocaleString() : '尚未登录';
         var clientText = t.lastClient || '无记录';
 
-        var displayShortCode = t.shortCode || (t.token && t.token.slice(0, 15));
-
         return '<div class="admin-token-card ' + statusCls + '">' +
           '<div class="admin-token-card-top">' +
           '  <span class="admin-token-code">' + esc(t.token) + '</span>' +
           '  <span class="admin-token-badge ' + statusCls + '">' + t.statusText + '</span>' +
-          '</div>' +
-          '<div style="font-size:12px;color:var(--accent);margin:4px 0 6px;font-weight:600">' +
-          '  📱 手机极简输入短码：<code style="background:var(--paper);padding:2px 8px;border-radius:4px;color:var(--primary-deep);font-size:13.5px;letter-spacing:1px;border:1px solid var(--line)">' + esc(displayShortCode) + '</code>' +
-          '  <span style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:6px">（手机键盘输入此6位码即可直接开通）</span>' +
           '</div>' +
           '<div class="admin-token-user">受邀人员：' + esc(t.name) + '</div>' +
           '<div class="admin-token-dates">签发时间：' + new Date(t.createdAt).toLocaleDateString() + ' · 到期：' + (t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : '长期') + '</div>' +
@@ -1611,9 +1609,8 @@
           '</div>' +
           '<div class="admin-token-actions">' +
           '  <button class="admin-btn-sm admin-btn-copy" data-copy-token="' + esc(t.token) + '">📋 复制长密钥</button>' +
-          '  <button class="admin-btn-sm admin-btn-copy" data-copy-short="' + esc(displayShortCode) + '">📱 复制短码</button>' +
           '  <button class="admin-btn-sm admin-btn-copy" data-copy-link="' + esc(t.token) + '">🔗 专属链接</button>' +
-          '  <button class="admin-btn-sm admin-btn-test" data-qr-token="' + esc(t.token) + '" data-name="' + esc(t.name) + '" data-short="' + esc(displayShortCode) + '">📱 手机扫码</button>' +
+          '  <button class="admin-btn-sm admin-btn-test" data-qr-token="' + esc(t.token) + '" data-name="' + esc(t.name) + '">📱 手机扫码</button>' +
           (t.isPaused
             ? '  <button class="admin-btn-sm admin-btn-resume" data-resume-token="' + esc(t.id) + '">▶ 恢复授权</button>'
             : (!t.isRevoked ? '  <button class="admin-btn-sm admin-btn-pause" data-pause-token="' + esc(t.id) + '">⏸ 暂停授权</button>' : '')) +
@@ -1632,14 +1629,6 @@
           var code = btn.getAttribute('data-copy-token');
           navigator.clipboard ? navigator.clipboard.writeText(code) : prompt('请复制令牌：', code);
           alert('已复制令牌：' + code);
-        });
-      });
-
-      list.querySelectorAll('[data-copy-short]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var code = btn.getAttribute('data-copy-short');
-          navigator.clipboard ? navigator.clipboard.writeText(code) : prompt('请复制通行短码：', code);
-          alert('已复制手机通行短码：' + code + '\n受邀老师在手机端管理入口输入此6位短码即可直接登录。');
         });
       });
 
@@ -1664,12 +1653,11 @@
         btn.addEventListener('click', function () {
           var token = btn.getAttribute('data-qr-token');
           var name = btn.getAttribute('data-name');
-          var shortCode = btn.getAttribute('data-short') || token.slice(0, 15);
           var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
           var url = isLocal
             ? ('https://antigravity.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
             : (window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token));
-          showTokenQrModal(name, token, url, shortCode);
+          showTokenQrModal(name, token, url);
         });
       });
 
@@ -2003,11 +1991,10 @@
     URL.revokeObjectURL(a.href);
   }
 
-  function showTokenQrModal(name, token, url, shortCode) {
+  function showTokenQrModal(name, token, url) {
     var oldModal = document.getElementById('tokenQrModal');
     if (oldModal) oldModal.remove();
 
-    var codeText = shortCode || (token ? token.slice(0, 15) : '');
     var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
     if (!url) {
       url = isLocal
@@ -2024,9 +2011,6 @@
       '  <div style="font-size:16px;font-weight:700;color:var(--primary-deep,#2F5D50);margin-bottom:4px">📱 手机扫码直达工作台</div>' +
       '  <div style="font-size:12px;color:var(--muted,#7A8B82);margin-bottom:10px">受邀人员：' + esc(name) + '</div>' +
       '  <div id="tokenQrCanvasBox" style="display:flex;justify-content:center;align-items:center;margin:8px 0;min-height:180px"></div>' +
-      '  <div style="font-size:12px;color:var(--accent);margin:8px 0 10px;font-weight:600;background:var(--paper,#F5EFE6);padding:6px 8px;border-radius:4px">' +
-      '    手机端键盘输入短码：<code style="font-size:14px;color:var(--primary-deep);letter-spacing:1px">' + esc(codeText) + '</code>' +
-      '  </div>' +
       '  <div style="font-size:11px;color:var(--ink-soft,#3E4D44);line-height:1.5;margin-bottom:14px">' +
       '    受邀老师使用手机微信或相机扫码，即可免密登录并开通工作台权限。' +
       '  </div>' +

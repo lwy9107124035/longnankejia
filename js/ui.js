@@ -713,11 +713,7 @@
         var cfg = window.APP_CONFIG && window.APP_CONFIG.app;
         t = normalizeUrl((cfg && cfg.canonicalUrl) || '');
       }
-      var syncPayload = window.Store && window.Store.buildSyncPayload ? window.Store.buildSyncPayload() : '';
-      if (syncPayload) {
-        t = t.split('#')[0] + '#' + syncPayload;
-      }
-      return t;
+      return t.split('#')[0];
     }
 
     function copyAddress() {

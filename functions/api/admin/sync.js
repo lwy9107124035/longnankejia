@@ -3,12 +3,55 @@
  * 提供跨设备全站凭证同步、登录安全防御监控与客户端 IP 锁定手动解除
  */
 
+const REDIS_URL = 'https://fair-humpback-233231.upstash.io';
+const REDIS_TOKEN = 'gQAAAAAAA48PAQIgcDE5ZTU3Y2Q4ZmEzYTk0MGUwYTdmOTJmNWFkN2VlNDcwZg';
+const REDIS_KEY = 'nfyj:sync:state';
+
 let inMemoryState = {
   pwHash: null,
   tokens: [],
   lockouts: [], // { id, clientId, ip, geo, device, attempts, lockedAt, lockedUntil, status: 'locked'|'unlocked', unlockedBy }
   allUnlockedAt: 0
 };
+
+async function loadPersistedState() {
+  try {
+    const res = await fetch(REDIS_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + REDIS_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(['GET', REDIS_KEY])
+    });
+    if (!res.ok) return inMemoryState;
+    const data = await res.json();
+    if (data && data.result && typeof data.result === 'string') {
+      const parsed = JSON.parse(data.result);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.pwHash !== undefined) inMemoryState.pwHash = parsed.pwHash;
+        if (Array.isArray(parsed.tokens)) inMemoryState.tokens = parsed.tokens;
+        if (Array.isArray(parsed.lockouts)) inMemoryState.lockouts = parsed.lockouts;
+        if (parsed.allUnlockedAt !== undefined) inMemoryState.allUnlockedAt = parsed.allUnlockedAt;
+      }
+    }
+  } catch (_) {}
+  return inMemoryState;
+}
+
+async function savePersistedState() {
+  try {
+    const payload = JSON.stringify(inMemoryState);
+    await fetch(REDIS_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + REDIS_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(['SET', REDIS_KEY, payload])
+    });
+  } catch (_) {}
+}
 
 function json(status, value) {
   return new Response(JSON.stringify(value), {
@@ -36,6 +79,7 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestGet({ request }) {
+  await loadPersistedState();
   const clientIp = request.headers.get('CF-Connecting-IP') ||
                    request.headers.get('x-real-ip') ||
                    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
@@ -55,6 +99,7 @@ export async function onRequestGet({ request }) {
 }
 
 export async function onRequestPost({ request }) {
+  await loadPersistedState();
   const clientIp = request.headers.get('CF-Connecting-IP') ||
                    request.headers.get('x-real-ip') ||
                    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
@@ -75,6 +120,7 @@ export async function onRequestPost({ request }) {
     if (body.pwHash && typeof body.pwHash === 'string') {
       inMemoryState.pwHash = body.pwHash;
     }
+    await savePersistedState();
     return json(200, { ok: true, pwHash: inMemoryState.pwHash });
   }
 
@@ -82,6 +128,7 @@ export async function onRequestPost({ request }) {
     if (Array.isArray(body.tokens)) {
       inMemoryState.tokens = body.tokens;
     }
+    await savePersistedState();
     return json(200, { ok: true, tokens: inMemoryState.tokens });
   }
 
@@ -105,6 +152,7 @@ export async function onRequestPost({ request }) {
         return !isSameDevice;
       })
     ].slice(0, 50);
+    await savePersistedState();
     return json(200, { ok: true, lockouts: inMemoryState.lockouts });
   }
 
@@ -118,6 +166,7 @@ export async function onRequestPost({ request }) {
       }
       return l;
     });
+    await savePersistedState();
     return json(200, { ok: true, lockouts: inMemoryState.lockouts });
   }
 
@@ -129,6 +178,7 @@ export async function onRequestPost({ request }) {
       unlockedAt: Date.now(),
       unlockedBy: '超级管理员一键解除全部'
     }));
+    await savePersistedState();
     return json(200, { ok: true, lockouts: inMemoryState.lockouts, allUnlockedAt: inMemoryState.allUnlockedAt });
   }
 

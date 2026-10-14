@@ -259,7 +259,6 @@
         return {
           i: t.id,
           k: t.token,
-          s: t.shortCode || '',
           n: t.name || '受邀管理员',
           e: t.expiresAt || 0,
           p: t.paused ? 1 : 0
@@ -305,7 +304,9 @@
       }
 
       if (payload.t && Array.isArray(payload.t)) {
-        var existing = read(LS.tokens, []);
+        var existing = read(LS.tokens, []).filter(function (t) {
+          return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
+        });
         var now = Date.now();
         payload.t.forEach(function (t) {
           if (!t.k) return;
@@ -314,7 +315,6 @@
             existing.unshift({
               id: t.i || ('tok-' + now),
               token: t.k,
-              shortCode: t.s || '',
               name: t.n || '受邀管理员',
               role: 'editor',
               createdAt: now,
@@ -475,25 +475,10 @@
           try { localStorage.setItem(LS.pw_hash, data.pwHash); } catch (_) {}
         }
         if (data.tokens && Array.isArray(data.tokens) && data.tokens.length > 0) {
-          var localToks = read(LS.tokens, []);
-          var merged = false;
-          data.tokens.forEach(function (dt) {
-            var found = localToks.find(function (lt) { return lt.id === dt.id || lt.token === dt.token; });
-            if (!found) {
-              localToks.unshift(dt);
-              merged = true;
-            } else {
-              if (dt.paused !== undefined && found.paused !== dt.paused) {
-                found.paused = dt.paused;
-                merged = true;
-              }
-              if (dt.revoked !== undefined && found.revoked !== dt.revoked) {
-                found.revoked = dt.revoked;
-                merged = true;
-              }
-            }
+          var cleanTokens = data.tokens.filter(function (t) {
+            return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
           });
-          if (merged) write(LS.tokens, localToks);
+          write(LS.tokens, cleanTokens);
         }
         if (data.lockouts && Array.isArray(data.lockouts)) {
           write(LS.locked_clients, data.lockouts);
@@ -510,7 +495,7 @@
         }
         if (data.allUnlockedAt) {
           var state = read('nfyj_login_lock_state', null);
-          if (state && state.lockedAt && state.lockedAt < data.allUnlockedAt) {
+          if (state && (state.lockedAt || 0) <= data.allUnlockedAt) {
             try {
               localStorage.removeItem('nfyj_login_lock_state');
               localStorage.setItem('nfyj_client_unlocked', '1');
@@ -703,7 +688,9 @@
   }
 
   function getInviteTokens() {
-    var list = read(LS.tokens, []);
+    var list = read(LS.tokens, []).filter(function (t) {
+      return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
+    });
     var now = Date.now();
     var customKb = read(LS.custom, []);
     var customKepu = read(LS.kepu_custom, []);
@@ -746,16 +733,13 @@
   function generateInviteToken(name, expireDays) {
     name = String(name || '受邀管理员').trim();
     var days = Number(expireDays) || 30;
-    var compactCode = generateCompactShortToken();
     var now = Date.now();
     var id = 'tok-' + now + '-' + Math.floor(Math.random() * 1000);
-    var signed = generateSignedTokenStr(name, days, id);
-    var tokenStr = signed || compactCode;
+    var tokenStr = generateSignedTokenStr(name, days, id);
 
     var tokenObj = {
       id: id,
       token: tokenStr,
-      shortCode: compactCode,
       name: name,
       role: 'editor',
       createdAt: now,
@@ -766,7 +750,9 @@
       lastActiveAt: 0,
       lastClient: ''
     };
-    var list = read(LS.tokens, []);
+    var list = read(LS.tokens, []).filter(function (t) {
+      return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
+    });
     list.unshift(tokenObj);
     write(LS.tokens, list);
     syncTokensToCloud(list);
@@ -1142,22 +1128,19 @@
     // 严禁硬编码后门通用密码（彻底杜绝 guest123 等），普通管理员只能凭有效邀请令牌/短码鉴权
 
     // 2. 匹配本地已知邀请令牌
-    var tokens = read(LS.tokens, []);
+    var tokens = read(LS.tokens, []).filter(function (t) {
+      return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
+    });
     var now = Date.now();
     var cleanStr = str.toUpperCase().replace(/[\s_\-]+/g, '');
 
     for (var i = 0; i < tokens.length; i++) {
       var item = tokens[i];
       var itemTokClean = String(item.token || '').toUpperCase().replace(/[\s_\-]+/g, '');
-      var itemShortClean = String(item.shortCode || '').toUpperCase().replace(/[\s_\-]+/g, '');
 
       var matchToken = (item.token === str) ||
                        (item.token && item.token.toLowerCase() === sLower) ||
-                       (item.shortCode && item.shortCode.toLowerCase() === sLower) ||
-                       (itemTokClean && cleanStr && itemTokClean === cleanStr) ||
-                       (itemShortClean && cleanStr && itemShortClean === cleanStr) ||
-                       (itemTokClean && cleanStr && itemTokClean.indexOf(cleanStr) !== -1 && cleanStr.length >= 4) ||
-                       (itemShortClean && cleanStr && cleanStr.indexOf(itemShortClean) !== -1);
+                       (itemTokClean && cleanStr && itemTokClean === cleanStr);
 
       if (matchToken) {
         if (item.revoked) {
@@ -1207,41 +1190,6 @@
       };
     } else if (parsed.error) {
       return { ok: false, error: parsed.error };
-    }
-
-    // 4. 跨设备自校验紧凑短码 (手机端手动输入 6 位简短邀请码直接激活)
-    if (isCompactShortToken(str)) {
-      var shortNorm = str.toUpperCase();
-      if (shortNorm.indexOf('NFYJ-INV-') !== 0) {
-        if (shortNorm.indexOf('INV-') === 0) shortNorm = 'NFYJ-' + shortNorm;
-        else shortNorm = 'NFYJ-INV-' + shortNorm;
-      }
-      var shortItem = {
-        id: 'tok-short-' + now,
-        token: shortNorm,
-        shortCode: shortNorm,
-        name: '受邀协管员',
-        role: 'editor',
-        createdAt: now,
-        expiresAt: 0,
-        revoked: false,
-        paused: false,
-        loginCount: 1,
-        lastActiveAt: now,
-        lastClient: (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/手机输入'
-      };
-      tokens.unshift(shortItem);
-      write(LS.tokens, tokens);
-      addAuditLog(shortItem.name + ' (' + shortNorm + ')', '短码令牌激活', '手机端通过简短邀请码激活工作台');
-
-      return {
-        ok: true,
-        role: 'editor',
-        title: '受邀管理员 · 快捷令牌',
-        name: '受邀协管员',
-        tokenId: shortItem.id,
-        token: shortItem.token
-      };
     }
 
     return { ok: false, error: '密码错误或邀请令牌无效' };
