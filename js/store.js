@@ -643,70 +643,33 @@
         var localUpdatedAt = Number(localStorage.getItem('nfyj_custom_updated_at')) || 0;
         var cloudUpdatedAt = Number(data.customUpdatedAt) || 0;
 
-        if (hasCloudCustom && (cloudUpdatedAt >= localUpdatedAt || localCustomCount === 0)) {
-          var updatedAny = false;
+        if (cloudUpdatedAt > localUpdatedAt || (localCustomCount === 0 && hasCloudCustom)) {
+          // 云端版本比本地新（或本地为空）：全量以云端最新状态为准（彻底支持跨端删除、增添与编辑，不残留已删除条目）
+          write(LS.custom, Array.isArray(data.kbCustom) ? data.kbCustom : []);
+          write(LS.edited, (data.kbEdited && typeof data.kbEdited === 'object') ? data.kbEdited : {});
+          write(LS.deleted, Array.isArray(data.kbDeleted) ? data.kbDeleted : []);
+          write(LS.kepu_custom, Array.isArray(data.kepuCustom) ? data.kepuCustom : []);
+          write(LS.kepu_edited, (data.kepuEdited && typeof data.kepuEdited === 'object') ? data.kepuEdited : {});
+          write(LS.kepu_deleted, Array.isArray(data.kepuDeleted) ? data.kepuDeleted : []);
+          write(LS.dialect_custom, Array.isArray(data.dialectCustom) ? data.dialectCustom : []);
 
-          // 1. 知识库
-          if (Array.isArray(data.kbCustom)) {
-            var mergedKb = mergeItemLists(localKbList, data.kbCustom);
-            write(LS.custom, mergedKb);
-            if (mergedKb.length !== localKbList.length) updatedAny = true;
+          if (data.apiConfig && typeof data.apiConfig === 'object') {
+            write(LS.api, Object.assign({}, read(LS.api, {}), data.apiConfig));
           }
-          if (data.kbEdited && typeof data.kbEdited === 'object') {
-            write(LS.edited, mergeEditedObjects(localKbEdited, data.kbEdited));
-            updatedAny = true;
+          if (data.workflowConfig && typeof data.workflowConfig === 'object') {
+            write(LS.workflow, Object.assign({}, read(LS.workflow, {}), data.workflowConfig));
           }
-          if (Array.isArray(data.kbDeleted) && data.kbDeleted.length > 0) {
-            write(LS.deleted, mergeIdArrays(localKbDeleted, data.kbDeleted));
-            updatedAny = true;
-          }
-
-          // 2. 科普卡片
-          if (Array.isArray(data.kepuCustom)) {
-            var mergedKepu = mergeItemLists(localKepuList, data.kepuCustom);
-            write(LS.kepu_custom, mergedKepu);
-            if (mergedKepu.length !== localKepuList.length) updatedAny = true;
-          }
-          if (data.kepuEdited && typeof data.kepuEdited === 'object') {
-            write(LS.kepu_edited, mergeEditedObjects(localKepuEdited, data.kepuEdited));
-            updatedAny = true;
-          }
-          if (Array.isArray(data.kepuDeleted) && data.kepuDeleted.length > 0) {
-            write(LS.kepu_deleted, mergeIdArrays(localKepuDeleted, data.kepuDeleted));
-            updatedAny = true;
+          if (Array.isArray(data.auditLogs)) {
+            write(LS.audit_logs, data.auditLogs);
           }
 
-          // 3. 方言语音
-          if (Array.isArray(data.dialectCustom)) {
-            var mergedDialect = mergeItemLists(localDialectList, data.dialectCustom);
-            write(LS.dialect_custom, mergedDialect);
-            if (mergedDialect.length !== localDialectList.length) updatedAny = true;
+          localStorage.setItem('nfyj_custom_updated_at', String(cloudUpdatedAt));
+          triggerFrontEndRefresh();
+          if (window.Admin && window.Admin.refreshCurrentView) {
+            window.Admin.refreshCurrentView();
           }
-
-          // 4. AI 与工作流
-          if (data.apiConfig && typeof data.apiConfig === 'object' && Object.keys(data.apiConfig).length > 0) {
-            write(LS.api, Object.assign({}, localApi, data.apiConfig));
-            updatedAny = true;
-          }
-          if (data.workflowConfig && typeof data.workflowConfig === 'object' && Object.keys(data.workflowConfig).length > 0) {
-            write(LS.workflow, Object.assign({}, localWorkflow, data.workflowConfig));
-            updatedAny = true;
-          }
-
-          // 5. 审计流水
-          if (Array.isArray(data.auditLogs) && data.auditLogs.length > 0) {
-            write(LS.audit_logs, mergeAuditLogs(read(LS.audit_logs, []), data.auditLogs));
-          }
-
-          if (cloudUpdatedAt > 0) {
-            try { localStorage.setItem('nfyj_custom_updated_at', String(cloudUpdatedAt)); } catch (_) {}
-          }
-
-          if (updatedAny) {
-            triggerFrontEndRefresh();
-          }
-        } else if (localCustomCount > 0 && (!hasCloudCustom || localUpdatedAt >= cloudUpdatedAt)) {
-          // 当前终端（例如电脑端）已有自定义内容，但云端尚无或当前终端更新，自动推送到云端持久化共享给所有设备
+        } else if (localUpdatedAt > cloudUpdatedAt || (localCustomCount > 0 && !hasCloudCustom)) {
+          // 本地版本比云端新（或者本地已有内容而云端为空）：自动上报推送到云端持久化共享给所有设备
           syncCustomToCloud();
         }
 
@@ -1886,9 +1849,19 @@
     triggerFrontEndRefresh: triggerFrontEndRefresh
   };
 
-  // 页面载入时自动解析并应用单二维码凭证同步包，并与云端同步最新令牌与安全状态
+  // 页面载入时自动解析并应用单二维码凭证同步包，并与云端同步最新令牌与安全状态，并启动秒级全自动无感静默同步
   try {
     applySyncPayload();
     syncWithCloud();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', function () { syncWithCloud(); });
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') syncWithCloud();
+        });
+      }
+      setInterval(function () { syncWithCloud(); }, 2500);
+    }
   } catch (_) {}
 })();
+

@@ -101,7 +101,7 @@
       '      <button type="button" id="adminPwToggle" class="admin-pw-toggle" title="显示明文">👁️</button>' +
       '    </div>' +
       '    <div class="admin-login-error" id="adminPwError"></div>' +
-      '    <button type="submit" class="admin-login-btn" id="adminLoginBtn">登 录</button>' +
+      '    <button type="button" class="admin-login-btn" id="adminLoginBtn">登 录</button>' +
       '    <button type="button" class="admin-login-cancel" id="adminCancelBtn">返回用户页面</button>' +
       '  </form>' +
       '</div>';
@@ -213,8 +213,14 @@
 
     function doLogin() {
       if (checkLockStatus()) return;
-      var raw = input.value;
+      var raw = input.value || '';
       var pw = raw.trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
+      if (!pw) {
+        err.className = 'admin-login-error';
+        err.textContent = '请输入登录密码或邀请令牌';
+        input.focus();
+        return;
+      }
       var authResult = window.Store.verifyLogin(pw);
       if (authResult.ok) {
         clearLoginLockState();
@@ -251,14 +257,25 @@
       }
     }
 
-    btn.addEventListener('click', doLogin);
-    if (form) {
-      form.addEventListener('submit', function (e) {
-        e.preventDefault();
+    var isLoggingIn = false;
+    function safeLogin(e) {
+      if (e) {
+        if (e.preventDefault) e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
+      }
+      if (isLoggingIn) return;
+      isLoggingIn = true;
+      try {
         doLogin();
-      });
+      } finally {
+        setTimeout(function () { isLoggingIn = false; }, 0);
+      }
     }
-    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+
+    btn.addEventListener('click', safeLogin);
+    if (form) {
+      form.addEventListener('submit', safeLogin);
+    }
     $('#adminCancelBtn').addEventListener('click', close);
     setTimeout(function () { input.focus(); }, 100);
   }
@@ -2194,5 +2211,16 @@
     }
   }
 
-  window.Admin = { init: init, open: open, close: close };
+  window.Admin = {
+    init: init,
+    open: open,
+    close: close,
+    refreshCurrentView: function () {
+      refreshFrontEnd();
+      var mask = document.getElementById('adminMask');
+      if (authenticated && mask && !mask.hidden) {
+        renderTab();
+      }
+    }
+  };
 })();
