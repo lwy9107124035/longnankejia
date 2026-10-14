@@ -87,19 +87,21 @@
       '<div class="admin-login">' +
       '  <div class="admin-login-icon">🔐</div>' +
       '  <div class="admin-login-title">数智管理工作台</div>' +
-      '  <div class="admin-login-hint">支持超级管理员口令（默认 admin123）或受邀码</div>' +
+      '  <div class="admin-login-hint">支持超级管理员主口令或受邀协管员通行码</div>' +
       '  <form class="admin-login-form" id="adminLoginForm" onsubmit="return false;">' +
       '    <div class="admin-pw-wrap">' +
-      '      <input type="password" id="adminPwInput" placeholder="输入口令(默认admin123)或邀请码" autocomplete="off">' +
+      '      <input type="password" id="adminPwInput" placeholder="输入口令(如 admin123 或 guest123)" autocomplete="off">' +
       '      <button type="button" id="adminPwToggle" class="admin-pw-toggle" title="显示明文">👁️</button>' +
       '    </div>' +
       '    <div class="admin-login-error" id="adminPwError"></div>' +
       '    <button type="submit" class="admin-login-btn" id="adminLoginBtn">登 录</button>' +
       '    <button type="button" class="admin-login-cancel" id="adminCancelBtn">返回用户页面</button>' +
       '  </form>' +
-      '  <div style="font-size:11px;color:var(--muted);margin-top:14px;line-height:1.5;background:var(--card);padding:8px 10px;border-radius:6px;border:1px dashed var(--line);text-align:left">' +
-      '    💡 <strong>手机登录提示：</strong><br>' +
-      '    支持直接输入超级管理员口令 <code>admin123</code> 或 6 位受邀码；若电脑已登录，也可在电脑工作台点击「📱 手机扫码」直接免密进入。' +
+      '  <div style="font-size:11px;color:var(--muted);margin-top:14px;line-height:1.6;background:var(--card);padding:10px 12px;border-radius:6px;border:1px dashed var(--line);text-align:left">' +
+      '    💡 <strong>登录口令说明（全站唯一扫码入口）：</strong><br>' +
+      '    👑 <strong>超级管理员：</strong>输入主口令（默认 <code>admin123</code>）<br>' +
+      '    👤 <strong>普通协管员：</strong>输入通用口令（如 <code>guest123</code>）或 6 位受邀码<br>' +
+      '    📱 手机端只需扫顶栏唯一的「扫码访问」二维码打开本站，点击底部「管理入口」即可直接输入上述口令登录。' +
       '  </div>' +
       '</div>';
 
@@ -252,7 +254,6 @@
       '    ' + userBadge +
       '  </div>' +
       '  <div class="admin-header-right">' +
-      '    <button class="admin-btn-logout" id="adminHeaderPhoneQrBtn" title="手机扫码免密直达工作台" style="background:rgba(255,248,238,0.22)">📱 手机扫码</button>' +
       '    <button class="admin-btn-logout" id="adminHeaderLogoutBtn" title="退出当前登录状态">🚪 退出登录</button>' +
       '    <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
       '  </div>' +
@@ -271,17 +272,6 @@
 
     $('#adminCloseBtn').addEventListener('click', close);
     $('#adminHeaderLogoutBtn').addEventListener('click', doLogout);
-
-    var phoneQrBtn = $('#adminHeaderPhoneQrBtn');
-    if (phoneQrBtn) {
-      phoneQrBtn.addEventListener('click', function () {
-        if (isSuper) {
-          showSuperSyncQrModal();
-        } else {
-          showTokenQrModal(currentUser.name, currentUser.token, '', currentUser.token);
-        }
-      });
-    }
 
     var ackBtn = $('#ackNotifBtn');
     if (ackBtn) {
@@ -1946,53 +1936,7 @@
     div.addEventListener('click', function (e) { if (e.target === div) div.remove(); });
   }
 
-  function showSuperSyncQrModal() {
-    var oldModal = document.getElementById('tokenQrModal');
-    if (oldModal) oldModal.remove();
 
-    var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
-    var pw = window.Store && window.Store.getAdminPassword ? window.Store.getAdminPassword() : 'admin123';
-    var url = isLocal
-      ? ('https://antigravity.longnankejia-dev.pages.dev/#admin-auth=super&key=' + encodeURIComponent(pw))
-      : (window.location.origin + window.location.pathname + '#admin-auth=super&key=' + encodeURIComponent(pw));
-
-    var div = document.createElement('div');
-    div.id = 'tokenQrModal';
-    div.className = 'admin-modal-mask';
-    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
-    div.innerHTML =
-      '<div style="background:var(--card,#FFFFFF);border-radius:8px;max-width:340px;width:100%;text-align:center;padding:20px;border:1px solid var(--line,#D8D0C5);box-shadow:0 8px 30px rgba(0,0,0,0.25)">' +
-      '  <div style="font-size:16px;font-weight:700;color:var(--primary-deep,#2F5D50);margin-bottom:4px">📱 手机端超管扫码同步</div>' +
-      '  <div style="font-size:12px;color:var(--muted,#7A8B82);margin-bottom:10px">身份：超级管理员 · 免密同步</div>' +
-      '  <div id="tokenQrCanvasBox" style="display:flex;justify-content:center;align-items:center;margin:8px 0;min-height:180px"></div>' +
-      '  <div style="font-size:12px;color:var(--accent);margin:8px 0 10px;font-weight:600;background:var(--paper,#F5EFE6);padding:6px 8px;border-radius:4px">' +
-      '    手机端键盘输入口令：<code style="font-size:14px;color:var(--primary-deep);letter-spacing:1px">' + esc(pw) + '</code>' +
-      '  </div>' +
-      '  <div style="font-size:11px;color:var(--ink-soft,#3E4D44);line-height:1.5;margin-bottom:14px">' +
-      '    使用手机微信或相机扫码打开，将自动免密登录并直接进入超级管理员工作台。' +
-      '  </div>' +
-      '  <div style="display:flex;gap:6px;justify-content:center">' +
-      '    <button class="admin-btn admin-btn-primary" id="tokenQrCloseBtn">关 闭</button>' +
-      '  </div>' +
-      '</div>';
-
-    document.body.appendChild(div);
-    var box = div.querySelector('#tokenQrCanvasBox');
-    if (window.QR && box) {
-      var canvas = document.createElement('canvas');
-      canvas.style.maxWidth = '180px';
-      canvas.style.maxHeight = '180px';
-      canvas.style.borderRadius = '6px';
-      canvas.style.border = '1px solid var(--line,#D8D0C5)';
-      box.appendChild(canvas);
-      window.QR.render(url, canvas, 3);
-    } else if (box) {
-      box.innerHTML = '<div style="font-size:11px;color:var(--muted)">二维码生成器未就绪</div>';
-    }
-
-    div.querySelector('#tokenQrCloseBtn').addEventListener('click', function () { div.remove(); });
-    div.addEventListener('click', function (e) { if (e.target === div) div.remove(); });
-  }
 
   /* ---------- 打开 / 关闭 ---------- */
   function open() {

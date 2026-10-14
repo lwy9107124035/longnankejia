@@ -118,6 +118,9 @@
 
   function render() {
     bindDialectEvents();
+    if (window.UI && window.UI.updateAllPillScrollers) {
+      setTimeout(window.UI.updateAllPillScrollers, 60);
+    }
     if (!tracks.length) {
       listEl.innerHTML = '<li class="dl-empty">暂无讲解视频或方言语料</li>';
       return;

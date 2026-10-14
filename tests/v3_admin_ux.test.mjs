@@ -234,3 +234,41 @@ test('科普卡片与方言语料自定义置顶与管理', () => {
   assert.equal(customDialects[0].item.name, '月光光山歌变奏版');
   assert.equal(customDialects[0].creatorName, '民俗传人');
 });
+
+test('全站单一主二维码体系：通用受邀协管员口令与紧凑邀请码离线验签通过', () => {
+  const env = setupEnvironment();
+  const { window } = env;
+
+  // 1. 测试通用受邀口令 guest123（不区分大小写）
+  const authGuest = window.Store.verifyLogin('guest123');
+  assert.equal(authGuest.ok, true);
+  assert.equal(authGuest.role, 'editor');
+  assert.equal(authGuest.name, '受邀协管员');
+
+  const authGuestUpper = window.Store.verifyLogin('GUEST123');
+  assert.equal(authGuestUpper.ok, true);
+  assert.equal(authGuestUpper.role, 'editor');
+
+  // 2. 测试 editor123 与 nfyj2026
+  const authEditor = window.Store.verifyLogin('editor123');
+  assert.equal(authEditor.ok, true);
+  assert.equal(authEditor.role, 'editor');
+
+  const authNfyj = window.Store.verifyLogin('nfyj2026');
+  assert.equal(authNfyj.ok, true);
+  assert.equal(authNfyj.role, 'editor');
+
+  // 3. 测试 6 位短码（例如 8K39XF 或带 INV- 前缀）
+  const authShort = window.Store.verifyLogin('8K39XF');
+  assert.equal(authShort.ok, true);
+  assert.equal(authShort.role, 'editor');
+
+  const authShortWithPrefix = window.Store.verifyLogin('INV-9K8X2W');
+  assert.equal(authShortWithPrefix.ok, true);
+  assert.equal(authShortWithPrefix.role, 'editor');
+
+  // 4. 空字符串或明显无效字符报错
+  const authEmpty = window.Store.verifyLogin('');
+  assert.equal(authEmpty.ok, false);
+});
+

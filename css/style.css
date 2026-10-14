@@ -1128,18 +1128,22 @@ input { font-family: inherit; }
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .pills-scroll-arrow {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   border-radius: 50%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--primary);
   background: var(--card);
   color: var(--primary-deep);
   font-size: 16px;
+  font-weight: 700;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -1147,25 +1151,31 @@ input { font-family: inherit; }
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  -webkit-user-select: none;
+  box-shadow: 0 1px 3px rgba(31,66,56,0.12);
   padding: 0;
   z-index: 2;
 }
 .pills-scroll-arrow:hover {
-  background: var(--primary-soft);
-  border-color: var(--primary);
-  transform: scale(1.06);
+  background: var(--primary);
+  color: #FFF8EE;
+  border-color: var(--primary-deep);
+  transform: scale(1.08);
 }
 .pills-scroll-arrow:active {
-  transform: scale(0.95);
+  transform: scale(0.92);
 }
 .pills-scroll-arrow.is-disabled {
-  opacity: 0.2;
+  opacity: 0.25;
   cursor: default;
   pointer-events: none;
+  border-color: var(--line);
+  color: var(--muted);
+  box-shadow: none;
 }
 .h-category-pills {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   gap: 6px;
   overflow-x: auto;
@@ -1174,6 +1184,7 @@ input { font-family: inherit; }
   scroll-behavior: smooth;
   cursor: grab;
   user-select: none;
+  -webkit-user-select: none;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
   scrollbar-width: thin;
@@ -1227,7 +1238,8 @@ input { font-family: inherit; }
   color: var(--muted); font-size: 16px; cursor: pointer; line-height: 1;
 }
 .dl-filter-pills {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   gap: 6px;
   overflow-x: auto;
@@ -1236,6 +1248,7 @@ input { font-family: inherit; }
   scroll-behavior: smooth;
   cursor: grab;
   user-select: none;
+  -webkit-user-select: none;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
   scrollbar-width: thin;
@@ -1247,7 +1260,7 @@ input { font-family: inherit; }
 .dl-filter-pills::-webkit-scrollbar-thumb { background: rgba(47,93,80,0.2); border-radius: 999px; }
 .dl-filter-pills:hover::-webkit-scrollbar-thumb { background: rgba(47,93,80,0.45); }
 .dl-pill {
-  flex-shrink: 0; padding: 4px 10px; font-size: 11.5px; border-radius: 999px;
+  flex-shrink: 0; white-space: nowrap; padding: 4px 10px; font-size: 11.5px; border-radius: 999px;
   background: var(--card); border: 1px solid var(--line); color: var(--ink-soft);
   cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px;
 }

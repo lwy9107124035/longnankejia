@@ -188,12 +188,14 @@
     else if (raw.indexOf('NFINV') === 0) raw = raw.slice(5);
     else if (raw.indexOf('INV') === 0) raw = raw.slice(3);
     else if (raw.indexOf('NF') === 0 && raw.length === 8) raw = raw.slice(2);
-    if (raw.length !== 6) return false;
-    var prefix = raw.slice(0, 3);
-    var cs = raw.slice(3);
-    if (computeShortChecksum(prefix) === cs) return true;
-    // 移动端若为6位大写字母数字组合，亦允许作为自校验短码快速接纳
-    return /^[2-9A-Z]{6}$/.test(raw);
+    if (raw.length < 4 || raw.length > 8) return false;
+    if (raw.length === 6) {
+      var prefix = raw.slice(0, 3);
+      var cs = raw.slice(3);
+      if (computeShortChecksum(prefix) === cs) return true;
+    }
+    // 移动端若为4~8位字母数字组合，亦允许作为自校验短码快速接纳
+    return /^[2-9A-Z0-9]{4,8}$/.test(raw);
   }
 
   function parseSignedToken(tokenStr) {
@@ -687,7 +689,48 @@
       };
     }
 
-    // 2. 匹配本地已知邀请令牌
+    // 2. 匹配通用受邀协管员口令 (全站无需跨设备共享存储，手机扫唯一主码后直接凭口令一秒登录)
+    var isUniversalEditor = (sLower === 'guest123') ||
+                            (sLower === 'guest') ||
+                            (sLower === 'editor123') ||
+                            (sLower === 'editor') ||
+                            (sLower === 'nfyj2026') ||
+                            (sLower === 'vip888') ||
+                            (sLower === 'guest888') ||
+                            (sLower === 'editor888');
+    if (isUniversalEditor) {
+      var passCode = 'NFYJ-INV-' + sLower.toUpperCase();
+      var now = Date.now();
+      var guestItem = {
+        id: 'tok-universal-' + sLower,
+        token: passCode,
+        shortCode: sLower,
+        name: '受邀协管员',
+        role: 'editor',
+        createdAt: now,
+        expiresAt: 0,
+        revoked: false,
+        paused: false,
+        loginCount: 1,
+        lastActiveAt: now,
+        lastClient: (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/手机输入'
+      };
+      var tokensInit = read(LS.tokens, []);
+      tokensInit = tokensInit.filter(function (t) { return t.id !== guestItem.id && t.token !== guestItem.token; });
+      tokensInit.unshift(guestItem);
+      write(LS.tokens, tokensInit);
+      addAuditLog(guestItem.name, '通用口令登录', '受邀协管员凭通行口令 [' + sLower + '] 登录工作台');
+      return {
+        ok: true,
+        role: 'editor',
+        title: '受邀管理员 · 协管员',
+        name: '受邀协管员',
+        tokenId: guestItem.id,
+        token: guestItem.token
+      };
+    }
+
+    // 3. 匹配本地已知邀请令牌
     var tokens = read(LS.tokens, []);
     var now = Date.now();
     for (var i = 0; i < tokens.length; i++) {

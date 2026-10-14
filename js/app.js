@@ -144,6 +144,10 @@
     });
     var main = document.getElementById('main');
     if (main) main.scrollTop = 0;
+    if (window.UI && window.UI.updateAllPillScrollers) {
+      setTimeout(window.UI.updateAllPillScrollers, 50);
+      setTimeout(window.UI.updateAllPillScrollers, 200);
+    }
     // 3D 的引擎与贴图（约 13MB）不在首屏拉，第一次切到本视图才加载
     if (panelId === 'panel3d' && window.Showcase3D && window.Showcase3D.reveal) {
       window.Showcase3D.reveal();

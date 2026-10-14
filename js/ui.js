@@ -417,33 +417,59 @@
       return true;
     }
 
+    var pillScrollerUpdaters = [];
+
     function setupPillScroller(pillsEl, leftBtn, rightBtn) {
       if (!pillsEl) return;
+
       function updateArrows() {
+        if (!pillsEl || pillsEl.clientWidth === 0) return;
         var max = pillsEl.scrollWidth - pillsEl.clientWidth;
+        if (max <= 2) {
+          if (leftBtn) leftBtn.classList.add('is-disabled');
+          if (rightBtn) rightBtn.classList.add('is-disabled');
+          return;
+        }
         if (leftBtn) {
-          if (pillsEl.scrollLeft <= 2) leftBtn.classList.add('is-disabled');
+          if (pillsEl.scrollLeft <= 3) leftBtn.classList.add('is-disabled');
           else leftBtn.classList.remove('is-disabled');
         }
         if (rightBtn) {
-          if (pillsEl.scrollLeft >= max - 2) rightBtn.classList.add('is-disabled');
+          if (pillsEl.scrollLeft >= max - 3) rightBtn.classList.add('is-disabled');
           else rightBtn.classList.remove('is-disabled');
         }
       }
+
+      pillScrollerUpdaters.push(updateArrows);
+
       if (leftBtn) {
-        leftBtn.addEventListener('click', function () {
-          pillsEl.scrollBy({ left: -160, behavior: 'smooth' });
+        leftBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          var step = Math.max(130, Math.floor(pillsEl.clientWidth * 0.65));
+          pillsEl.scrollBy({ left: -step, behavior: 'smooth' });
           setTimeout(updateArrows, 280);
         });
       }
       if (rightBtn) {
-        rightBtn.addEventListener('click', function () {
-          pillsEl.scrollBy({ left: 160, behavior: 'smooth' });
+        rightBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          var step = Math.max(130, Math.floor(pillsEl.clientWidth * 0.65));
+          pillsEl.scrollBy({ left: step, behavior: 'smooth' });
           setTimeout(updateArrows, 280);
         });
       }
       pillsEl.addEventListener('scroll', updateArrows);
       setTimeout(updateArrows, 100);
+      setTimeout(updateArrows, 350);
+
+      if (typeof ResizeObserver !== 'undefined') {
+        try {
+          var ro = new ResizeObserver(function () {
+            updateArrows();
+          });
+          ro.observe(pillsEl);
+        } catch (_) {}
+      }
 
       // 滚轮横向滚动支持
       pillsEl.addEventListener('wheel', function (e) {
@@ -453,6 +479,31 @@
           updateArrows();
         }
       }, { passive: false });
+
+      // 触屏滑动手势支持
+      var touchStartX = 0;
+      var touchStartScroll = 0;
+      var touchMoved = false;
+
+      pillsEl.addEventListener('touchstart', function (e) {
+        if (e.touches && e.touches[0]) {
+          touchStartX = e.touches[0].pageX;
+          touchStartScroll = pillsEl.scrollLeft;
+          touchMoved = false;
+        }
+      }, { passive: true });
+
+      pillsEl.addEventListener('touchmove', function (e) {
+        if (e.touches && e.touches[0]) {
+          var diff = e.touches[0].pageX - touchStartX;
+          if (Math.abs(diff) > 5) touchMoved = true;
+          updateArrows();
+        }
+      }, { passive: true });
+
+      pillsEl.addEventListener('touchend', function () {
+        setTimeout(updateArrows, 150);
+      }, { passive: true });
 
       // 鼠标拖拽横向抓取滑动
       var isDown = false;
@@ -471,15 +522,26 @@
       pillsEl.addEventListener('mousemove', function (e) {
         if (!isDown) return;
         var x = e.pageX - pillsEl.offsetLeft;
-        var walk = (x - startX) * 1.2;
+        var walk = (x - startX) * 1.3;
         if (Math.abs(walk) > 3) hasMoved = true;
         pillsEl.scrollLeft = startScrollLeft - walk;
         updateArrows();
       });
+
       pillsEl.addEventListener('click', function (e) {
-        if (hasMoved) {
+        if (hasMoved || touchMoved) {
           e.stopPropagation();
           hasMoved = false;
+          touchMoved = false;
+          return;
+        }
+        var pill = e.target.closest('.dl-pill, .h-cat-pill');
+        if (pill) {
+          var pRect = pill.getBoundingClientRect();
+          var cRect = pillsEl.getBoundingClientRect();
+          var offset = (pRect.left + pRect.width / 2) - (cRect.left + cRect.width / 2);
+          pillsEl.scrollBy({ left: offset, behavior: 'smooth' });
+          setTimeout(updateArrows, 320);
         }
       }, true);
     }
@@ -581,7 +643,26 @@
       return (window.Store && window.Store.getHeritageCards) ? window.Store.getHeritageCards(CARDS) : CARDS;
     }
 
-    return { init: init, render: render, list: list, setupPillScroller: setupPillScroller };
+    function updateAllPillScrollers() {
+      pillScrollerUpdaters.forEach(function (fn) {
+        try { fn(); } catch (_) {}
+      });
+    }
+
+    window.addEventListener('resize', function () {
+      setTimeout(updateAllPillScrollers, 60);
+    });
+    window.addEventListener('orientationchange', function () {
+      setTimeout(updateAllPillScrollers, 100);
+    });
+
+    return {
+      init: init,
+      render: render,
+      list: list,
+      setupPillScroller: setupPillScroller,
+      updateAllPillScrollers: updateAllPillScrollers
+    };
   })();
 
   /* ================================================================
@@ -779,6 +860,7 @@
     Voice: Voice,
     Heritage: Heritage,
     Access: AccessPanel,
-    setupPillScroller: Heritage.setupPillScroller
+    setupPillScroller: Heritage.setupPillScroller,
+    updateAllPillScrollers: Heritage.updateAllPillScrollers
   };
 })();
