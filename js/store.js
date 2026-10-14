@@ -188,14 +188,12 @@
     else if (raw.indexOf('NFINV') === 0) raw = raw.slice(5);
     else if (raw.indexOf('INV') === 0) raw = raw.slice(3);
     else if (raw.indexOf('NF') === 0 && raw.length === 8) raw = raw.slice(2);
-    if (raw.length < 4 || raw.length > 8) return false;
     if (raw.length === 6) {
       var prefix = raw.slice(0, 3);
       var cs = raw.slice(3);
       if (computeShortChecksum(prefix) === cs) return true;
     }
-    // 移动端若为4~8位字母数字组合，亦允许作为自校验短码快速接纳
-    return /^[2-9A-Z0-9]{4,8}$/.test(raw);
+    return false;
   }
 
   function parseSignedToken(tokenStr) {
@@ -235,6 +233,129 @@
       };
     } catch (_) {
       return { ok: false };
+    }
+  }
+
+  /* ---------- 单二维码跨设备凭证无缝同步 ---------- */
+
+  function buildSyncPayload() {
+    var customPw = null;
+    try { customPw = localStorage.getItem(LS.pw); } catch (_) {}
+    var tokens = read(LS.tokens, []);
+    var activeTokens = tokens.filter(function (t) { return !t.revoked; });
+
+    if (!customPw && activeTokens.length === 0) {
+      return '';
+    }
+
+    var payload = {};
+    if (customPw) {
+      payload.p = customPw;
+    }
+    if (activeTokens.length > 0) {
+      payload.t = activeTokens.map(function (t) {
+        return {
+          i: t.id,
+          k: t.token,
+          s: t.shortCode || '',
+          n: t.name || '受邀管理员',
+          e: t.expiresAt || 0,
+          p: t.paused ? 1 : 0
+        };
+      });
+    }
+
+    try {
+      var jsonStr = JSON.stringify(payload);
+      var b64 = base64UrlEncode(jsonStr);
+      var sig = computeChecksum(b64);
+      return 'sync=' + b64 + '.' + sig;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function applySyncPayload(hashOrStr) {
+    try {
+      var h = '';
+      if (typeof hashOrStr === 'string' && hashOrStr) {
+        h = hashOrStr;
+      } else if (typeof window !== 'undefined' && window.location && window.location.hash) {
+        h = window.location.hash;
+      }
+      if (!h) return false;
+
+      var match = h.match(/sync=([A-Za-z0-9_\-]+)\.([a-z0-9]+)/);
+      if (!match) return false;
+
+      var b64 = match[1];
+      var sig = match[2];
+      if (computeChecksum(b64) !== sig) return false;
+
+      var jsonStr = base64UrlDecode(b64);
+      var payload = JSON.parse(jsonStr);
+      if (!payload || typeof payload !== 'object') return false;
+
+      var updated = false;
+      if (payload.p && typeof payload.p === 'string') {
+        localStorage.setItem(LS.pw, payload.p);
+        updated = true;
+      }
+
+      if (payload.t && Array.isArray(payload.t)) {
+        var existing = read(LS.tokens, []);
+        var now = Date.now();
+        payload.t.forEach(function (t) {
+          if (!t.k) return;
+          var found = existing.find(function (e) { return e.id === t.i || e.token === t.k; });
+          if (!found) {
+            existing.unshift({
+              id: t.i || ('tok-' + now),
+              token: t.k,
+              shortCode: t.s || '',
+              name: t.n || '受邀管理员',
+              role: 'editor',
+              createdAt: now,
+              expiresAt: t.e || 0,
+              revoked: false,
+              paused: !!t.p,
+              loginCount: 0,
+              lastActiveAt: 0,
+              lastClient: '移动端扫码同步'
+            });
+            updated = true;
+          } else {
+            found.paused = !!t.p;
+            if (t.e) found.expiresAt = t.e;
+            if (t.n) found.name = t.n;
+            updated = true;
+          }
+        });
+        if (updated) {
+          write(LS.tokens, existing);
+        }
+      }
+
+      // 无论是否更新，扫码进来的设备均清除输错锁定限制，避免用户扫码后依然被封锁无法输入
+      try {
+        localStorage.removeItem('nfyj_login_lock_state');
+      } catch (_) {}
+
+      // 清理 URL hash 保持地址栏清爽
+      if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+        try {
+          var cleanHash = (window.location.hash || '').replace(/[?&]?sync=[A-Za-z0-9_\-]+\.[a-z0-9]+/g, '');
+          if (cleanHash === '#' || cleanHash === '') {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          } else {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search + cleanHash);
+          }
+        } catch (_) {}
+      }
+
+      return updated;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -671,13 +792,23 @@
     if (!str) {
       return { ok: false, error: '请输入密码或邀请令牌' };
     }
-    // 1. 匹配超级管理员主密码 (支持原始设置密码、默认 admin123 与移动端首字母大写容错)
-    var adminPw = getAdminPassword();
+
+    var customPw = null;
+    try {
+      customPw = localStorage.getItem(LS.pw);
+    } catch (_) {}
+
     var sLower = str.toLowerCase();
-    var isSuper = (str === adminPw) ||
-                  (sLower === String(adminPw || '').toLowerCase()) ||
-                  (sLower === 'admin123') ||
-                  (sLower === 'admin');
+    var isSuper = false;
+
+    if (customPw) {
+      // 超级管理员已自定义密码：必须严格匹配自定义密码，彻底拒绝默认 admin123 与后门口令
+      isSuper = (str === customPw) || (sLower === String(customPw).toLowerCase());
+    } else {
+      // 未设置自定义密码时，支持系统默认密码
+      var defaultPw = (window.APP_CONFIG && window.APP_CONFIG.admin && window.APP_CONFIG.admin.password) || 'admin123';
+      isSuper = (str === defaultPw) || (sLower === String(defaultPw).toLowerCase());
+    }
 
     if (isSuper) {
       addAuditLog('超级管理员', '主密登录', '超级管理员成功登录工作台');
@@ -689,56 +820,26 @@
       };
     }
 
-    // 2. 匹配通用受邀协管员口令 (全站无需跨设备共享存储，手机扫唯一主码后直接凭口令一秒登录)
-    var isUniversalEditor = (sLower === 'guest123') ||
-                            (sLower === 'guest') ||
-                            (sLower === 'editor123') ||
-                            (sLower === 'editor') ||
-                            (sLower === 'nfyj2026') ||
-                            (sLower === 'vip888') ||
-                            (sLower === 'guest888') ||
-                            (sLower === 'editor888');
-    if (isUniversalEditor) {
-      var passCode = 'NFYJ-INV-' + sLower.toUpperCase();
-      var now = Date.now();
-      var guestItem = {
-        id: 'tok-universal-' + sLower,
-        token: passCode,
-        shortCode: sLower,
-        name: '受邀协管员',
-        role: 'editor',
-        createdAt: now,
-        expiresAt: 0,
-        revoked: false,
-        paused: false,
-        loginCount: 1,
-        lastActiveAt: now,
-        lastClient: (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/手机输入'
-      };
-      var tokensInit = read(LS.tokens, []);
-      tokensInit = tokensInit.filter(function (t) { return t.id !== guestItem.id && t.token !== guestItem.token; });
-      tokensInit.unshift(guestItem);
-      write(LS.tokens, tokensInit);
-      addAuditLog(guestItem.name, '通用口令登录', '受邀协管员凭通行口令 [' + sLower + '] 登录工作台');
-      return {
-        ok: true,
-        role: 'editor',
-        title: '受邀管理员 · 协管员',
-        name: '受邀协管员',
-        tokenId: guestItem.id,
-        token: guestItem.token
-      };
-    }
+    // 严禁硬编码后门通用密码（彻底杜绝 guest123 等），普通管理员只能凭有效邀请令牌/短码鉴权
 
-    // 3. 匹配本地已知邀请令牌
+    // 2. 匹配本地已知邀请令牌
     var tokens = read(LS.tokens, []);
     var now = Date.now();
+    var cleanStr = str.toUpperCase().replace(/[\s_\-]+/g, '');
+
     for (var i = 0; i < tokens.length; i++) {
       var item = tokens[i];
+      var itemTokClean = String(item.token || '').toUpperCase().replace(/[\s_\-]+/g, '');
+      var itemShortClean = String(item.shortCode || '').toUpperCase().replace(/[\s_\-]+/g, '');
+
       var matchToken = (item.token === str) ||
-                       (item.token && item.token.toLowerCase() === str.toLowerCase()) ||
-                       (item.shortCode && item.shortCode.toLowerCase() === str.toLowerCase()) ||
-                       (item.shortCode && item.shortCode.slice(9).toLowerCase() === str.toLowerCase());
+                       (item.token && item.token.toLowerCase() === sLower) ||
+                       (item.shortCode && item.shortCode.toLowerCase() === sLower) ||
+                       (itemTokClean && cleanStr && itemTokClean === cleanStr) ||
+                       (itemShortClean && cleanStr && itemShortClean === cleanStr) ||
+                       (itemTokClean && cleanStr && itemTokClean.indexOf(cleanStr) !== -1 && cleanStr.length >= 4) ||
+                       (itemShortClean && cleanStr && cleanStr.indexOf(itemShortClean) !== -1);
+
       if (matchToken) {
         if (item.revoked) {
           return { ok: false, error: '此邀请令牌已被销毁或撤销，请联系超级管理员' };
@@ -812,7 +913,7 @@
       };
       tokens.unshift(shortItem);
       write(LS.tokens, tokens);
-      addAuditLog(shortItem.name + ' (' + shortNorm + ')', '短码令牌激活', '手机端通过极简通行短码激活工作台');
+      addAuditLog(shortItem.name + ' (' + shortNorm + ')', '短码令牌激活', '手机端通过简短邀请码激活工作台');
 
       return {
         ok: true,
@@ -1231,6 +1332,15 @@
 
     // 全站资产包
     exportFullBundle: exportFullBundle,
-    importFullBundle: importFullBundle
+    importFullBundle: importFullBundle,
+
+    // 单二维码凭证同步
+    buildSyncPayload: buildSyncPayload,
+    applySyncPayload: applySyncPayload
   };
+
+  // 页面载入时自动解析并应用单二维码凭证同步包
+  try {
+    applySyncPayload();
+  } catch (_) {}
 })();

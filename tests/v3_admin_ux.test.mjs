@@ -235,39 +235,75 @@ test('科普卡片与方言语料自定义置顶与管理', () => {
   assert.equal(customDialects[0].creatorName, '民俗传人');
 });
 
-test('全站单一主二维码体系：通用受邀协管员口令与紧凑邀请码离线验签通过', () => {
+test('全站单一主二维码体系与自定义密码及令牌跨设备同步', () => {
   const env = setupEnvironment();
   const { window } = env;
 
-  // 1. 测试通用受邀口令 guest123（不区分大小写）
-  const authGuest = window.Store.verifyLogin('guest123');
-  assert.equal(authGuest.ok, true);
-  assert.equal(authGuest.role, 'editor');
-  assert.equal(authGuest.name, '受邀协管员');
+  // 1. 未设置自定义密码时，支持系统默认密码 admin123
+  const defaultAuth = window.Store.verifyLogin('admin123');
+  assert.equal(defaultAuth.ok, true);
+  assert.equal(defaultAuth.role, 'super_admin');
 
-  const authGuestUpper = window.Store.verifyLogin('GUEST123');
-  assert.equal(authGuestUpper.ok, true);
-  assert.equal(authGuestUpper.role, 'editor');
+  // 2. 超级管理员设置自定义密码
+  window.Store.setAdminPassword('MyCustomAdminPass2026!');
 
-  // 2. 测试 editor123 与 nfyj2026
-  const authEditor = window.Store.verifyLogin('editor123');
-  assert.equal(authEditor.ok, true);
-  assert.equal(authEditor.role, 'editor');
+  // 3. 设置自定义密码后，默认 admin123 必须被彻底拒绝！
+  const rejectedDefault = window.Store.verifyLogin('admin123');
+  assert.equal(rejectedDefault.ok, false, '设置自定义密码后，默认 admin123 必须被拒绝');
 
-  const authNfyj = window.Store.verifyLogin('nfyj2026');
-  assert.equal(authNfyj.ok, true);
-  assert.equal(authNfyj.role, 'editor');
+  // 4. 正确的自定义密码（含手机键盘大小写容错）成功登录
+  const customAuth = window.Store.verifyLogin('MyCustomAdminPass2026!');
+  assert.equal(customAuth.ok, true, '自定义密码必须鉴权通过');
+  assert.equal(customAuth.role, 'super_admin');
 
-  // 3. 测试 6 位短码（例如 8K39XF 或带 INV- 前缀）
-  const authShort = window.Store.verifyLogin('8K39XF');
-  assert.equal(authShort.ok, true);
-  assert.equal(authShort.role, 'editor');
+  const customAuthLower = window.Store.verifyLogin('mycustomadminpass2026!');
+  assert.equal(customAuthLower.ok, true, '大小写容错时自定义密码亦应鉴权通过');
 
-  const authShortWithPrefix = window.Store.verifyLogin('INV-9K8X2W');
-  assert.equal(authShortWithPrefix.ok, true);
-  assert.equal(authShortWithPrefix.role, 'editor');
+  // 5. 彻底杜绝 guest123 等硬编码后门通用密码
+  const rejectedGuest = window.Store.verifyLogin('guest123');
+  assert.equal(rejectedGuest.ok, false, '硬编码通用口令 guest123 必须被彻底拒绝');
+  const rejectedEditor = window.Store.verifyLogin('editor123');
+  assert.equal(rejectedEditor.ok, false, '硬编码通用口令 editor123 必须被彻底拒绝');
 
-  // 4. 空字符串或明显无效字符报错
+  // 6. 电脑端签发邀请令牌
+  const tokenObj = window.Store.generateInviteToken('龙南文化馆张老师', 14);
+  assert.ok(tokenObj && tokenObj.token);
+
+  // 7. 电脑端全站单一主二维码：生成同步 Payload
+  const syncHash = window.Store.buildSyncPayload();
+  assert.ok(syncHash && syncHash.startsWith('sync='), '存在自定义密码或令牌时必须生成同步负载');
+
+  // 8. 手机端模拟：全新设备，无任何本地记录，且之前由于输错存在锁定状态
+  const phoneEnv = setupEnvironment();
+  phoneEnv.localStorageMap.set('nfyj_login_lock_state', JSON.stringify({ count: 5, until: Date.now() + 60000 }));
+
+  // 手机端扫码打开页面（应用单二维码中的 sync payload）
+  const synced = phoneEnv.window.Store.applySyncPayload('#' + syncHash);
+  assert.equal(synced, true, '手机端扫码后必须成功同步凭证');
+
+  // 手机端输错锁定应被立即清空解除
+  assert.equal(phoneEnv.sandbox.localStorage.getItem('nfyj_login_lock_state'), null, '扫码后应清除输错锁定限制');
+
+  // 手机端输入电脑端相同的超级管理员密码，成功登录！
+  const phoneSuperAuth = phoneEnv.window.Store.verifyLogin('MyCustomAdminPass2026!');
+  assert.equal(phoneSuperAuth.ok, true, '手机端输入电脑端相同的超管密码必须成功登录');
+  assert.equal(phoneSuperAuth.role, 'super_admin');
+
+  // 手机端输入电脑端相同的邀请令牌，成功登录！
+  const phoneTokenAuth = phoneEnv.window.Store.verifyLogin(tokenObj.token);
+  assert.equal(phoneTokenAuth.ok, true, '手机端输入电脑端相同的邀请令牌必须成功登录');
+  assert.equal(phoneTokenAuth.role, 'editor');
+  assert.equal(phoneTokenAuth.name, '龙南文化馆张老师');
+
+  // 手机端输入 6 位短码（忽略前缀与大小写），成功登录！
+  const phoneShortAuth = phoneEnv.window.Store.verifyLogin(tokenObj.shortCode);
+  assert.equal(phoneShortAuth.ok, true, '手机端输入电脑端签发的短码必须成功登录');
+
+  // 手机端上默认 admin123 同样被拒绝！
+  const phoneRejectAdmin = phoneEnv.window.Store.verifyLogin('admin123');
+  assert.equal(phoneRejectAdmin.ok, false, '手机端同步后默认 admin123 必须被拒绝');
+
+  // 9. 空字符串或明显无效口令报错
   const authEmpty = window.Store.verifyLogin('');
   assert.equal(authEmpty.ok, false);
 });

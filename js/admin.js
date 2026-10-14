@@ -87,22 +87,16 @@
       '<div class="admin-login">' +
       '  <div class="admin-login-icon">🔐</div>' +
       '  <div class="admin-login-title">数智管理工作台</div>' +
-      '  <div class="admin-login-hint">支持超级管理员主口令或受邀协管员通行码</div>' +
+      '  <div class="admin-login-hint">请输入超级管理员密码或邀请令牌</div>' +
       '  <form class="admin-login-form" id="adminLoginForm" onsubmit="return false;">' +
       '    <div class="admin-pw-wrap">' +
-      '      <input type="password" id="adminPwInput" placeholder="输入口令(如 admin123 或 guest123)" autocomplete="off">' +
+      '      <input type="password" id="adminPwInput" placeholder="请输入密码或邀请码" autocomplete="off">' +
       '      <button type="button" id="adminPwToggle" class="admin-pw-toggle" title="显示明文">👁️</button>' +
       '    </div>' +
       '    <div class="admin-login-error" id="adminPwError"></div>' +
       '    <button type="submit" class="admin-login-btn" id="adminLoginBtn">登 录</button>' +
       '    <button type="button" class="admin-login-cancel" id="adminCancelBtn">返回用户页面</button>' +
       '  </form>' +
-      '  <div style="font-size:11px;color:var(--muted);margin-top:14px;line-height:1.6;background:var(--card);padding:10px 12px;border-radius:6px;border:1px dashed var(--line);text-align:left">' +
-      '    💡 <strong>登录口令说明（全站唯一扫码入口）：</strong><br>' +
-      '    👑 <strong>超级管理员：</strong>输入主口令（默认 <code>admin123</code>）<br>' +
-      '    👤 <strong>普通协管员：</strong>输入通用口令（如 <code>guest123</code>）或 6 位受邀码<br>' +
-      '    📱 手机端只需扫顶栏唯一的「扫码访问」二维码打开本站，点击底部「管理入口」即可直接输入上述口令登录。' +
-      '  </div>' +
       '</div>';
 
     var input = $('#adminPwInput');
@@ -226,8 +220,8 @@
     var panel = $('#adminPanel');
     var isSuper = currentUser && currentUser.role === 'super_admin';
     var userBadge = isSuper
-      ? '<span class="admin-role-badge super">👑 超级管理员</span>'
-      : '<span class="admin-role-badge guest">👤 受邀：' + esc(currentUser.name) + '</span>';
+      ? '<span class="admin-role-badge super">超级管理员</span>'
+      : '<span class="admin-role-badge guest">受邀：' + esc(currentUser.name) + '</span>';
 
     var notifs = (!isSuper && currentUser) ? window.Store.getTokenNotifications(currentUser.tokenId || currentUser.token) : [];
     var notifBanner = '';
@@ -1964,7 +1958,7 @@
       var s = window.Store && window.Store.getSession ? window.Store.getSession() : null;
       if (s) {
         qb.hidden = false;
-        qb.textContent = s.role === 'super_admin' ? '👑 超管工作台' : '👤 管理工作台';
+        qb.textContent = s.role === 'super_admin' ? '超管工作台' : '管理工作台';
       } else {
         qb.hidden = true;
       }
@@ -1988,8 +1982,15 @@
       if (authSuperMatch) {
         var keyMatch = hash.match(/key=([^&]+)/) || search.match(/key=([^&]+)/);
         var keyParam = keyMatch ? decodeURIComponent(keyMatch[1]) : '';
-        var actualPw = window.Store && window.Store.getAdminPassword ? window.Store.getAdminPassword() : 'admin123';
-        var validKey = !keyParam || keyParam === actualPw || keyParam === 'admin123' || keyParam === 'super' || keyParam.toLowerCase() === 'admin123' || keyParam.toLowerCase() === 'admin';
+        var customPw = null;
+        try { customPw = localStorage.getItem('nfyj_admin_pw'); } catch (_) {}
+        var validKey = false;
+        if (customPw) {
+          validKey = (keyParam === customPw) || (keyParam.toLowerCase() === customPw.toLowerCase());
+        } else {
+          var actualPw = window.Store && window.Store.getAdminPassword ? window.Store.getAdminPassword() : 'admin123';
+          validKey = !keyParam || keyParam === actualPw || keyParam.toLowerCase() === actualPw.toLowerCase();
+        }
         if (validKey) {
           clearLoginLockState();
           authenticated = true;

@@ -713,6 +713,10 @@
         var cfg = window.APP_CONFIG && window.APP_CONFIG.app;
         t = normalizeUrl((cfg && cfg.canonicalUrl) || '');
       }
+      var syncPayload = window.Store && window.Store.buildSyncPayload ? window.Store.buildSyncPayload() : '';
+      if (syncPayload) {
+        t = t.split('#')[0] + '#' + syncPayload;
+      }
       return t;
     }
 
@@ -744,8 +748,7 @@
     }
 
     function renderAddress() {
-      var pub = normalizeUrl(getPublicUrl());
-      var t = pub || currentUrl();
+      var t = target();
       if (isHttpUrl(t)) {
         addrRow.innerHTML =
           '<a class="addr-link" href="' + esc(t) + '" target="_blank" rel="noopener">' + esc(t) + '</a>' +
@@ -843,7 +846,7 @@
           var s = window.Store && window.Store.getSession ? window.Store.getSession() : null;
           if (s) {
             quickBadge.hidden = false;
-            quickBadge.textContent = s.role === 'super_admin' ? '👑 超管工作台' : '👤 管理工作台';
+            quickBadge.textContent = s.role === 'super_admin' ? '超管工作台' : '管理工作台';
           } else {
             quickBadge.hidden = true;
           }
