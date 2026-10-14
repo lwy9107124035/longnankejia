@@ -26,7 +26,7 @@ let inMemoryState = {
   customUpdatedAt: 0
 };
 
-async function fetchWithTimeout(url, options, timeoutMs = 2000) {
+async function fetchWithTimeout(url, options, timeoutMs = 4000) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -47,7 +47,7 @@ async function loadPersistedState() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(['GET', REDIS_KEY])
-    }, 2000);
+    }, 4000);
     if (!res || !res.ok) return inMemoryState;
     const data = await res.json();
     if (data && data.result && typeof data.result === 'string') {
@@ -84,7 +84,7 @@ async function savePersistedState() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(['SET', REDIS_KEY, payload])
-    }, 2000);
+    }, 4000);
   } catch (_) {}
 }
 
@@ -179,8 +179,8 @@ export async function onRequestPost({ request }) {
   }
 
   if (action === 'update_password') {
-    if (body.pwHash && typeof body.pwHash === 'string') {
-      inMemoryState.pwHash = body.pwHash;
+    if (body.pwHash !== undefined) {
+      inMemoryState.pwHash = body.pwHash || null;
     }
     await savePersistedState();
     return json(200, { ok: true, pwHash: inMemoryState.pwHash });

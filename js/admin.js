@@ -305,6 +305,7 @@
       '    ' + userBadge +
       '  </div>' +
       '  <div class="admin-header-right">' +
+      '    <button class="admin-btn-sync" id="adminHeaderSyncBtn" title="与云端双向同步数据（手机端与电脑端实时互通）" style="background:var(--primary-deep,#2F5D50);color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:12px;cursor:pointer;margin-right:6px">☁️ 立即同步云端</button>' +
       '    <button class="admin-btn-logout" id="adminHeaderLogoutBtn" title="退出当前登录状态">🚪 退出登录</button>' +
       '    <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
       '  </div>' +
@@ -323,6 +324,34 @@
 
     $('#adminCloseBtn').addEventListener('click', close);
     $('#adminHeaderLogoutBtn').addEventListener('click', doLogout);
+
+    var syncBtn = $('#adminHeaderSyncBtn');
+    if (syncBtn) {
+      syncBtn.addEventListener('click', function () {
+        syncBtn.disabled = true;
+        syncBtn.textContent = '⏳ 同步中...';
+        if (window.Store && window.Store.syncCustomToCloud) {
+          window.Store.syncCustomToCloud(function () {
+            if (window.Store.syncWithCloud) {
+              window.Store.syncWithCloud(function (data) {
+                syncBtn.disabled = false;
+                syncBtn.textContent = '☁️ 立即同步云端';
+                refreshFrontEnd();
+                renderTab();
+                if (data && data.ok) {
+                  alert('✅ 双向云同步成功！\n电脑端与手机端自定义内容已全量同步完成。');
+                } else {
+                  alert('⚠️ 已提交同步请求，请确保两端网络通畅。');
+                }
+              });
+            } else {
+              syncBtn.disabled = false;
+              syncBtn.textContent = '☁️ 立即同步云端';
+            }
+          });
+        }
+      });
+    }
 
     var ackBtn = $('#ackNotifBtn');
     if (ackBtn) {

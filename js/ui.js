@@ -707,6 +707,10 @@
     }
 
     function target() {
+      var isLocal = (typeof window !== 'undefined' && window.location && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname || window.location.protocol === 'file:'));
+      if (isLocal) {
+        return 'https://antigravity.longnankejia-dev.pages.dev/';
+      }
       var t = normalizeUrl(getPublicUrl()) || currentUrl();
       if (!isHttpUrl(t)) {
         // 双击 index.html 直接预览时 location 是 file://，扫不出也打不开，退回永久地址

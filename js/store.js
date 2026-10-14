@@ -365,12 +365,20 @@
 
   function getSyncEndpoint() {
     if (typeof window !== 'undefined' && window.location) {
-      var proto = window.location.protocol;
-      if (proto === 'http:' || proto === 'https:') {
+      var h = window.location.hostname || '';
+      var port = window.location.port || '';
+      // 自动化测试环境（run_site_tests 专用端口 8931）优先走测试服务内置 mock
+      if (port === '8931') {
+        return window.location.origin + '/api/admin/sync';
+      }
+      if (h === 'antigravity.longnankejia-dev.pages.dev') {
+        return 'https://antigravity.longnankejia-dev.pages.dev/api/admin/sync';
+      }
+      if (h && h.indexOf('longnankejia-dev.pages.dev') !== -1) {
         return window.location.origin + '/api/admin/sync';
       }
     }
-    return 'https://longnankejia.pages.dev/api/admin/sync';
+    return 'https://antigravity.longnankejia-dev.pages.dev/api/admin/sync';
   }
 
   function getClientId() {
@@ -500,8 +508,11 @@
     } catch (_) {}
   }
 
-  function syncCustomToCloud() {
-    if (typeof fetch === 'undefined') return;
+  function syncCustomToCloud(callback) {
+    if (typeof fetch === 'undefined') {
+      if (typeof callback === 'function') callback(false);
+      return;
+    }
     var now = Date.now();
     var payload = {
       action: 'update_custom_bundle',
@@ -523,8 +534,15 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-      }).catch(function () {});
-    } catch (_) {}
+      }).then(function (res) {
+        var ok = !!(res && res.ok);
+        if (typeof callback === 'function') callback(ok);
+      }).catch(function () {
+        if (typeof callback === 'function') callback(false);
+      });
+    } catch (_) {
+      if (typeof callback === 'function') callback(false);
+    }
   }
 
   function syncWithCloud(callback) {
@@ -596,16 +614,32 @@
 
         // 跨设备全站自定义内容双向同步与智能合并（知识库、科普卡片、方言语音、AI配置、审计日志）
         var hasCloudCustom = !!(
-          (data.kbCustom && data.kbCustom.length) ||
-          (data.kepuCustom && data.kepuCustom.length) ||
-          (data.dialectCustom && data.dialectCustom.length) ||
+          (data.kbCustom && data.kbCustom.length > 0) ||
+          (data.kbEdited && Object.keys(data.kbEdited).length > 0) ||
+          (data.kbDeleted && data.kbDeleted.length > 0) ||
+          (data.kepuCustom && data.kepuCustom.length > 0) ||
+          (data.kepuEdited && Object.keys(data.kepuEdited).length > 0) ||
+          (data.kepuDeleted && data.kepuDeleted.length > 0) ||
+          (data.dialectCustom && data.dialectCustom.length > 0) ||
+          (data.apiConfig && Object.keys(data.apiConfig).length > 0) ||
+          (data.workflowConfig && Object.keys(data.workflowConfig).length > 0) ||
           (data.customUpdatedAt && data.customUpdatedAt > 0)
         );
 
         var localKbList = read(LS.custom, []);
+        var localKbEdited = read(LS.edited, {});
+        var localKbDeleted = read(LS.deleted, []);
         var localKepuList = read(LS.kepu_custom, []);
+        var localKepuEdited = read(LS.kepu_edited, {});
+        var localKepuDeleted = read(LS.kepu_deleted, []);
         var localDialectList = read(LS.dialect_custom, []);
-        var localCustomCount = localKbList.length + localKepuList.length + localDialectList.length;
+        var localApi = read(LS.api, {});
+        var localWorkflow = read(LS.workflow, {});
+        var localCustomCount = localKbList.length + localKepuList.length + localDialectList.length +
+          Object.keys(localKbEdited).length + localKbDeleted.length +
+          Object.keys(localKepuEdited).length + localKepuDeleted.length +
+          Object.keys(localApi).length + Object.keys(localWorkflow).length;
+
         var localUpdatedAt = Number(localStorage.getItem('nfyj_custom_updated_at')) || 0;
         var cloudUpdatedAt = Number(data.customUpdatedAt) || 0;
 
@@ -619,11 +653,11 @@
             if (mergedKb.length !== localKbList.length) updatedAny = true;
           }
           if (data.kbEdited && typeof data.kbEdited === 'object') {
-            write(LS.edited, mergeEditedObjects(read(LS.edited, {}), data.kbEdited));
+            write(LS.edited, mergeEditedObjects(localKbEdited, data.kbEdited));
             updatedAny = true;
           }
           if (Array.isArray(data.kbDeleted) && data.kbDeleted.length > 0) {
-            write(LS.deleted, mergeIdArrays(read(LS.deleted, []), data.kbDeleted));
+            write(LS.deleted, mergeIdArrays(localKbDeleted, data.kbDeleted));
             updatedAny = true;
           }
 
@@ -634,11 +668,11 @@
             if (mergedKepu.length !== localKepuList.length) updatedAny = true;
           }
           if (data.kepuEdited && typeof data.kepuEdited === 'object') {
-            write(LS.kepu_edited, mergeEditedObjects(read(LS.kepu_edited, {}), data.kepuEdited));
+            write(LS.kepu_edited, mergeEditedObjects(localKepuEdited, data.kepuEdited));
             updatedAny = true;
           }
           if (Array.isArray(data.kepuDeleted) && data.kepuDeleted.length > 0) {
-            write(LS.kepu_deleted, mergeIdArrays(read(LS.kepu_deleted, []), data.kepuDeleted));
+            write(LS.kepu_deleted, mergeIdArrays(localKepuDeleted, data.kepuDeleted));
             updatedAny = true;
           }
 
@@ -651,11 +685,11 @@
 
           // 4. AI 与工作流
           if (data.apiConfig && typeof data.apiConfig === 'object' && Object.keys(data.apiConfig).length > 0) {
-            write(LS.api, Object.assign({}, read(LS.api, {}), data.apiConfig));
+            write(LS.api, Object.assign({}, localApi, data.apiConfig));
             updatedAny = true;
           }
           if (data.workflowConfig && typeof data.workflowConfig === 'object' && Object.keys(data.workflowConfig).length > 0) {
-            write(LS.workflow, Object.assign({}, read(LS.workflow, {}), data.workflowConfig));
+            write(LS.workflow, Object.assign({}, localWorkflow, data.workflowConfig));
             updatedAny = true;
           }
 
@@ -671,7 +705,7 @@
           if (updatedAny) {
             triggerFrontEndRefresh();
           }
-        } else if (localCustomCount > 0 && (!hasCloudCustom || localUpdatedAt > cloudUpdatedAt)) {
+        } else if (localCustomCount > 0 && (!hasCloudCustom || localUpdatedAt >= cloudUpdatedAt)) {
           // 当前终端（例如电脑端）已有自定义内容，但云端尚无或当前终端更新，自动推送到云端持久化共享给所有设备
           syncCustomToCloud();
         }
@@ -1848,7 +1882,8 @@
     syncWithCloud: syncWithCloud,
     syncCustomToCloud: syncCustomToCloud,
     syncTokensToCloud: syncTokensToCloud,
-    syncPasswordToCloud: syncPasswordToCloud
+    syncPasswordToCloud: syncPasswordToCloud,
+    triggerFrontEndRefresh: triggerFrontEndRefresh
   };
 
   // 页面载入时自动解析并应用单二维码凭证同步包，并与云端同步最新令牌与安全状态

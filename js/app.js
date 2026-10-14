@@ -191,5 +191,14 @@
       window.addEventListener('hashchange', window.Router.apply);
       window.Router.apply();
     }
+
+    // 首屏模块就绪后立即执行一次云同步，拉取最新知识库、科普卡片与方言自定义内容并即时渲染
+    if (window.Store && window.Store.syncWithCloud) {
+      window.Store.syncWithCloud(function () {
+        if (window.Store && window.Store.triggerFrontEndRefresh) {
+          window.Store.triggerFrontEndRefresh();
+        }
+      });
+    }
   });
 })();
