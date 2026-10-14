@@ -121,7 +121,45 @@
 
     var lockTimer = null;
 
+    function bindSelfUnlockBtn() {
+      var selfUnlockBtn = document.getElementById('adminSelfUnlockBtn');
+      if (selfUnlockBtn) {
+        selfUnlockBtn.onclick = function (e) {
+          e.preventDefault();
+          var pw = prompt('请输入超级管理员主口令以解除本设备封锁：');
+          if (!pw) return;
+          var res = window.Store.verifyLogin(pw);
+          if (res.ok && res.role === 'super_admin') {
+            clearLoginLockState();
+            if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
+            if (window.Store && window.Store.unlockClient) {
+              var myInfo = window.Store.detectClientInfo();
+              window.Store.unlockClient(myInfo.ip);
+            }
+            checkLockStatus();
+            err.className = 'admin-login-error';
+            err.textContent = '✅ 超级管理员身份验证通过，封锁已即刻解除！';
+            input.value = pw;
+            input.focus();
+          } else {
+            alert('超级管理员密码验证失败，无法解除封锁！');
+          }
+        };
+      }
+    }
+
     function checkLockStatus() {
+      if (window.Store && window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
+        clearLoginLockState();
+        if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
+        input.disabled = false;
+        btn.disabled = false;
+        btn.style.opacity = '';
+        err.className = 'admin-login-error';
+        err.textContent = '✅ 管理员已手动解除对此设备的登录封锁，可直接输入';
+        return false;
+      }
+
       var state = getLoginLockState();
       var now = Date.now();
       if (state.until && now < state.until) {
@@ -130,14 +168,33 @@
         btn.disabled = true;
         btn.style.opacity = '0.5';
         err.className = 'admin-login-error admin-lock-countdown';
-        err.textContent = '⚠️ 输错超限，系统已锁定保护。请等待 ' + remainSec + ' 秒后再试（刷新页面不会重置锁定）';
+        err.innerHTML = '⚠️ 输错超限，系统已锁定保护。请等待 <strong>' + remainSec + '</strong> 秒后再试（刷新页面不会重置锁定）' +
+          '<div style="margin-top:8px;font-size:12px;color:var(--text-muted, #8c8275);">' +
+          '如果是超级管理员误触被锁，可<button type="button" id="adminSelfUnlockBtn" style="background:none;border:none;color:var(--primary, #b83b26);text-decoration:underline;cursor:pointer;font-size:12px;padding:0 4px;">点此验证主密即刻解除</button>' +
+          '</div>';
+        bindSelfUnlockBtn();
         if (!lockTimer) {
           lockTimer = setInterval(function () {
+            if (window.Store && window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
+              clearInterval(lockTimer);
+              lockTimer = null;
+              clearLoginLockState();
+              input.disabled = false;
+              btn.disabled = false;
+              btn.style.opacity = '';
+              err.className = 'admin-login-error';
+              err.textContent = '✅ 管理员已手动解除对此设备的登录封锁，可直接输入';
+              return;
+            }
             var curState = getLoginLockState();
             var curNow = Date.now();
             if (curState.until && curNow < curState.until) {
               var left = Math.ceil((curState.until - curNow) / 1000);
-              err.textContent = '⚠️ 输错超限，系统已锁定保护。请等待 ' + left + ' 秒后再试（刷新页面不会重置锁定）';
+              err.innerHTML = '⚠️ 输错超限，系统已锁定保护。请等待 <strong>' + left + '</strong> 秒后再试（刷新页面不会重置锁定）' +
+                '<div style="margin-top:8px;font-size:12px;color:var(--text-muted, #8c8275);">' +
+                '如果是超级管理员误触被锁，可<button type="button" id="adminSelfUnlockBtn" style="background:none;border:none;color:var(--primary, #b83b26);text-decoration:underline;cursor:pointer;font-size:12px;padding:0 4px;">点此验证主密即刻解除</button>' +
+                '</div>';
+              bindSelfUnlockBtn();
             } else {
               clearInterval(lockTimer);
               lockTimer = null;
@@ -183,6 +240,9 @@
         if (nextCount >= 5) {
           var lockUntil = Date.now() + 60000;
           setLoginLockState(nextCount, lockUntil);
+          if (window.Store && window.Store.reportClientLock) {
+            window.Store.reportClientLock(nextCount, lockUntil);
+          }
           checkLockStatus();
         } else {
           setLoginLockState(nextCount, 0);
@@ -1455,6 +1515,7 @@
   function renderToken(body) {
     var tokens = window.Store.getInviteTokens();
     var auditLogs = window.Store.getAuditLogs();
+    var lockedClients = window.Store.getLockedClients ? window.Store.getLockedClients() : [];
 
     body.innerHTML =
       '<div class="admin-form-box">' +
@@ -1481,7 +1542,41 @@
       '<div class="admin-section-subtitle" style="margin-top:16px">已签发的管理员令牌与监控列表 (' + tokens.length + ')</div>' +
       '<div class="admin-token-list" id="tokenList"></div>' +
       '<div id="inspectContainer" style="display:none"></div>' +
-      '<div class="admin-audit-box">' +
+      '<div class="admin-audit-box" style="margin-top:16px;">' +
+      '  <div class="admin-audit-header">' +
+      '    <div class="admin-audit-title">🛡️ 登录安全防御与客户端锁定监控 (' + lockedClients.length + ')</div>' +
+      '    <div style="display:flex;gap:6px">' +
+      '      <button class="admin-btn-sm" id="refreshLocksBtn">🔄 刷新监控</button>' +
+      '      <button class="admin-btn-sm admin-btn-del" id="unlockAllClientsBtn">🔓 全部一键解除</button>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="admin-hint" style="margin:6px 12px 10px;">当任何设备连续输错密码或令牌达到 5 次，系统将自动封锁其登录以防暴力破解。超级管理员可在此查看客户端 IP、终端类型、尝试次数并随时手动解封。</div>' +
+      '  <div class="admin-token-list" id="lockList" style="padding:0 12px 12px;">' +
+      (lockedClients.length ? lockedClients.map(function (l) {
+        var isLocked = (l.status === 'locked' && (!l.lockedUntil || Date.now() < l.lockedUntil));
+        var leftSec = (l.lockedUntil && Date.now() < l.lockedUntil) ? Math.ceil((l.lockedUntil - Date.now()) / 1000) : 0;
+        var statusBadge = isLocked
+          ? '<span class="admin-token-badge expired">🚨 锁定中（剩 ' + leftSec + ' 秒）</span>'
+          : '<span class="admin-token-badge active">✅ 正常 / 已解除</span>';
+        var actionBtn = isLocked
+          ? '<button class="admin-btn-sm admin-btn-resume" data-unlock-client="' + esc(l.id) + '" data-ip="' + esc(l.ip) + '">🔓 手动解除锁定</button>'
+          : '<span style="font-size:12px;color:var(--text-muted, #8c8275);padding:4px 8px;">已恢复访问</span>';
+
+        return '<div class="admin-token-card ' + (isLocked ? 'expired' : 'active') + '">' +
+          '<div class="admin-token-card-top">' +
+          '  <span class="admin-token-code" style="font-size:13px;font-family:monospace;">🌐 IP: ' + esc(l.ip) + '</span>' +
+          '  ' + statusBadge +
+          '</div>' +
+          '<div class="admin-token-user">💻 终端设备：' + esc(l.device || '未知设备') + ' · 地理网络：' + esc(l.geo || '未知') + '</div>' +
+          '<div class="admin-token-dates">连续输错：<strong>' + (l.attempts || 5) + ' 次</strong> · 拦截时间：' + (l.lockedAt ? new Date(l.lockedAt).toLocaleTimeString() : '刚刚') + '</div>' +
+          '<div class="admin-token-actions" style="margin-top:8px;">' +
+          '  ' + actionBtn +
+          '</div>' +
+          '</div>';
+      }).join('') : '<div class="admin-empty-sm">当前无被封锁的客户端设备，系统运行安全</div>') +
+      '  </div>' +
+      '</div>' +
+      '<div class="admin-audit-box" style="margin-top:16px;">' +
       '  <div class="admin-audit-header">' +
       '    <div class="admin-audit-title">📊 令牌活动与安全审计流水 (' + auditLogs.length + ')</div>' +
       '    <div style="display:flex;gap:4px">' +
@@ -1749,6 +1844,44 @@
       $('#tokName').value = '';
       renderTab();
     });
+
+    body.querySelectorAll('[data-unlock-client]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-unlock-client');
+        var ip = btn.getAttribute('data-ip');
+        if (window.Store && window.Store.unlockClient) {
+          window.Store.unlockClient(id || ip);
+        }
+        alert('已手动解除客户端 [' + ip + '] 的登录封锁，该设备现已可正常登录！');
+        renderTab();
+      });
+    });
+
+    var unlockAllBtn = $('#unlockAllClientsBtn');
+    if (unlockAllBtn) {
+      unlockAllBtn.addEventListener('click', function () {
+        if (confirm('确定一键解除所有客户端的登录封锁？')) {
+          if (window.Store && window.Store.unlockAllClients) {
+            window.Store.unlockAllClients();
+          }
+          alert('已一键解除所有客户端的登录封锁！');
+          renderTab();
+        }
+      });
+    }
+
+    var refreshLocksBtn = $('#refreshLocksBtn');
+    if (refreshLocksBtn) {
+      refreshLocksBtn.addEventListener('click', function () {
+        if (window.Store && window.Store.syncWithCloud) {
+          window.Store.syncWithCloud(function () {
+            renderTab();
+          });
+        } else {
+          renderTab();
+        }
+      });
+    }
   }
 
   /* ==================== 7. 系统与全站资产包备份 ==================== */
@@ -1953,16 +2086,6 @@
   function close() {
     $('#adminMask').hidden = true;
     refreshFrontEnd();
-    var qb = document.getElementById('adminQuickBadge');
-    if (qb) {
-      var s = window.Store && window.Store.getSession ? window.Store.getSession() : null;
-      if (s) {
-        qb.hidden = false;
-        qb.textContent = s.role === 'super_admin' ? '超管工作台' : '管理工作台';
-      } else {
-        qb.hidden = true;
-      }
-    }
   }
 
   function init() {

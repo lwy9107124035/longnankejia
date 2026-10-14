@@ -104,25 +104,6 @@ input { font-family: inherit; }
   flex-shrink: 0;
 }
 
-.admin-quick-badge {
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 600;
-  color: #FEF3C7;
-  background: rgba(180, 105, 43, 0.4);
-  border: 1px solid rgba(252, 211, 77, 0.6);
-  border-radius: 999px;
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-  letter-spacing: 0.3px;
-}
-.admin-quick-badge:hover {
-  background: rgba(180, 105, 43, 0.7);
-  box-shadow: 0 0 8px rgba(252, 211, 77, 0.4);
-}
-.admin-quick-badge[hidden] { display: none; }
-
 .access-btn {
   flex-shrink: 0;
   font-size: 12px;

@@ -839,24 +839,6 @@
       Heritage.init(function (card) {
         DetailModal.open(card);
       });
-
-      var quickBadge = document.getElementById('adminQuickBadge');
-      if (quickBadge) {
-        function updateQuickBadge() {
-          var s = window.Store && window.Store.getSession ? window.Store.getSession() : null;
-          if (s) {
-            quickBadge.hidden = false;
-            quickBadge.textContent = s.role === 'super_admin' ? '超管工作台' : '管理工作台';
-          } else {
-            quickBadge.hidden = true;
-          }
-        }
-        quickBadge.addEventListener('click', function () {
-          if (window.Admin && window.Admin.open) window.Admin.open();
-        });
-        updateQuickBadge();
-        window.addEventListener('storage', updateQuickBadge);
-      }
     },
     Chat: Chat,
     Avatar: Avatar,

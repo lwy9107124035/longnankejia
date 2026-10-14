@@ -51,7 +51,13 @@ const MIME = {
 
 function startServer() {
   const server = http.createServer((req, res) => {
-    const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
+    const pathname = decodeURIComponent(req.url.split('?')[0]);
+    if (pathname === '/api/admin/sync') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, clientIp: '127.0.0.1', clientGeo: '本地开发/测试环境', tokens: [], lockouts: [] }));
+      return;
+    }
+    const rel = pathname.replace(/^\/+/, '') || 'index.html';
     const file = path.join(ROOT, rel);
     // refuse to serve anything outside the project
     if (!file.startsWith(ROOT + path.sep) && file !== path.join(ROOT, 'index.html')) {

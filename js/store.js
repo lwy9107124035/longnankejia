@@ -17,6 +17,7 @@
     edited:         'nfyj_kb_edited',
     api:            'nfyj_api_config',
     pw:             'nfyj_admin_pw',
+    pw_hash:        'nfyj_admin_pw_hash',
     tokens:         'nfyj_admin_tokens',
     kepu_custom:    'nfyj_kepu_custom',
     kepu_deleted:   'nfyj_kepu_deleted',
@@ -26,7 +27,8 @@
     workflow:       'nfyj_workflow_config',
     audit_logs:     'nfyj_audit_logs',
     notifications:  'nfyj_token_notifications',
-    admin_session:  'nfyj_admin_session'
+    admin_session:  'nfyj_admin_session',
+    locked_clients: 'nfyj_locked_clients'
   };
 
   var SS = {
@@ -359,6 +361,225 @@
     }
   }
 
+  /* ---------- 全站跨设备多端云同步与客户端锁定管理 ---------- */
+
+  function detectClientInfo() {
+    var ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+    var platform = '电脑端';
+    if (/iPhone|iPod/i.test(ua)) platform = 'iPhone 手机端';
+    else if (/iPad/i.test(ua)) platform = 'iPad 平板端';
+    else if (/Android/i.test(ua)) platform = 'Android 手机端';
+    else if (/Windows/i.test(ua)) platform = 'Windows 电脑端';
+    else if (/Mac/i.test(ua)) platform = 'Mac 电脑端';
+
+    var browser = '浏览器';
+    if (/MicroMessenger/i.test(ua)) browser = '微信内嵌浏览器';
+    else if (/Chrome/i.test(ua)) browser = 'Chrome';
+    else if (/Safari/i.test(ua)) browser = 'Safari';
+    else if (/Firefox/i.test(ua)) browser = 'Firefox';
+
+    var cachedIp = '';
+    var cachedGeo = '';
+    try {
+      cachedIp = sessionStorage.getItem('nfyj_client_ip') || localStorage.getItem('nfyj_client_ip') || '';
+      cachedGeo = sessionStorage.getItem('nfyj_client_geo') || localStorage.getItem('nfyj_client_geo') || '';
+    } catch (_) {}
+
+    return {
+      ip: cachedIp || '127.0.0.1 (本机/局域网)',
+      geo: cachedGeo || '局域网/当前网络',
+      device: platform + ' · ' + browser,
+      ua: ua
+    };
+  }
+
+  function syncTokensToCloud(tokens) {
+    if (typeof fetch === 'undefined') return;
+    try {
+      fetch('/api/admin/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_tokens', tokens: tokens })
+      }).catch(function () {});
+    } catch (_) {}
+  }
+
+  function syncPasswordToCloud(pwHash) {
+    if (typeof fetch === 'undefined') return;
+    try {
+      fetch('/api/admin/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_password', pwHash: pwHash })
+      }).catch(function () {});
+    } catch (_) {}
+  }
+
+  function syncWithCloud(callback) {
+    if (typeof fetch === 'undefined') {
+      if (typeof callback === 'function') callback(null);
+      return;
+    }
+    fetch('/api/admin/sync')
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (!data || !data.ok) {
+          if (typeof callback === 'function') callback(null);
+          return;
+        }
+        if (data.clientIp) {
+          try {
+            sessionStorage.setItem('nfyj_client_ip', data.clientIp);
+            localStorage.setItem('nfyj_client_ip', data.clientIp);
+            if (data.clientGeo) {
+              sessionStorage.setItem('nfyj_client_geo', data.clientGeo);
+              localStorage.setItem('nfyj_client_geo', data.clientGeo);
+            }
+          } catch (_) {}
+        }
+        if (data.pwHash) {
+          try { localStorage.setItem(LS.pw_hash, data.pwHash); } catch (_) {}
+        }
+        if (data.tokens && Array.isArray(data.tokens) && data.tokens.length > 0) {
+          var localToks = read(LS.tokens, []);
+          var merged = false;
+          data.tokens.forEach(function (dt) {
+            var found = localToks.find(function (lt) { return lt.id === dt.id || lt.token === dt.token; });
+            if (!found) {
+              localToks.unshift(dt);
+              merged = true;
+            }
+          });
+          if (merged) write(LS.tokens, localToks);
+        }
+        if (data.lockouts && Array.isArray(data.lockouts)) {
+          write(LS.locked_clients, data.lockouts);
+          var myIp = data.clientIp;
+          var myLock = data.lockouts.find(function (l) { return l.ip === myIp; });
+          if (myLock && myLock.status === 'unlocked') {
+            try { localStorage.removeItem('nfyj_login_lock_state'); } catch (_) {}
+          }
+        }
+        if (typeof callback === 'function') callback(data);
+      })
+      .catch(function () {
+        if (typeof callback === 'function') callback(null);
+      });
+  }
+
+  function getLockedClients() {
+    return read(LS.locked_clients, []);
+  }
+
+  function reportClientLock(attempts, lockedUntil) {
+    var info = detectClientInfo();
+    var lockItem = {
+      id: 'lock-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      ip: info.ip,
+      geo: info.geo,
+      device: info.device,
+      attempts: attempts || 5,
+      lockedAt: Date.now(),
+      lockedUntil: lockedUntil || (Date.now() + 60000),
+      status: 'locked'
+    };
+
+    var list = read(LS.locked_clients, []);
+    list = [lockItem].concat(list.filter(function (l) { return l.ip !== lockItem.ip; })).slice(0, 50);
+    write(LS.locked_clients, list);
+    addAuditLog('系统防御', '触发锁定', '客户端 [' + lockItem.ip + ' · ' + lockItem.device + '] 连续输错 ' + (attempts || 5) + ' 次，已执行锁定拦截');
+
+    if (typeof fetch !== 'undefined') {
+      fetch('/api/admin/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'report_lock',
+          ip: lockItem.ip,
+          geo: lockItem.geo,
+          device: lockItem.device,
+          attempts: lockItem.attempts,
+          lockedUntil: lockItem.lockedUntil
+        })
+      }).catch(function () {});
+    }
+
+    return lockItem;
+  }
+
+  function unlockClient(lockIdOrIp) {
+    var list = read(LS.locked_clients, []);
+    var target = null;
+    list = list.map(function (l) {
+      if (l.id === lockIdOrIp || l.ip === lockIdOrIp) {
+        l.status = 'unlocked';
+        l.unlockedAt = Date.now();
+        l.unlockedBy = '超级管理员手动解除';
+        target = l;
+      }
+      return l;
+    });
+    write(LS.locked_clients, list);
+
+    try {
+      localStorage.removeItem('nfyj_login_lock_state');
+    } catch (_) {}
+
+    if (target) {
+      addAuditLog('超级管理员', '解除锁定', '超级管理员手动解除了客户端 [' + target.ip + ' · ' + target.device + '] 的登录封锁');
+    }
+
+    if (typeof fetch !== 'undefined') {
+      fetch('/api/admin/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'unlock',
+          id: target ? target.id : lockIdOrIp,
+          ip: target ? target.ip : lockIdOrIp
+        })
+      }).catch(function () {});
+    }
+
+    return true;
+  }
+
+  function unlockAllClients() {
+    var list = read(LS.locked_clients, []);
+    list = list.map(function (l) {
+      l.status = 'unlocked';
+      l.unlockedAt = Date.now();
+      l.unlockedBy = '超级管理员一键全部解除';
+      return l;
+    });
+    write(LS.locked_clients, list);
+
+    try {
+      localStorage.removeItem('nfyj_login_lock_state');
+    } catch (_) {}
+
+    addAuditLog('超级管理员', '全部解锁', '超级管理员执行了一键解除全部客户端登录锁定');
+
+    if (typeof fetch !== 'undefined') {
+      fetch('/api/admin/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unlock_all' })
+      }).catch(function () {});
+    }
+
+    return true;
+  }
+
+  function isClientUnlocked() {
+    var cachedIp = '';
+    try { cachedIp = sessionStorage.getItem('nfyj_client_ip') || localStorage.getItem('nfyj_client_ip') || ''; } catch (_) {}
+    if (!cachedIp) return false;
+    var list = read(LS.locked_clients, []);
+    var myLock = list.find(function (l) { return l.ip === cachedIp; });
+    return !!(myLock && myLock.status === 'unlocked');
+  }
+
   /* ---------- 操作审计日志 ---------- */
 
   function addAuditLog(actor, action, detail) {
@@ -395,7 +616,12 @@
   }
 
   function setAdminPassword(pw) {
-    try { localStorage.setItem(LS.pw, pw); } catch (e) {}
+    try {
+      localStorage.setItem(LS.pw, pw);
+      var hash = computeChecksum(pw);
+      localStorage.setItem(LS.pw_hash, hash);
+      syncPasswordToCloud(hash);
+    } catch (e) {}
   }
 
   function getInviteTokens() {
@@ -465,6 +691,7 @@
     var list = read(LS.tokens, []);
     list.unshift(tokenObj);
     write(LS.tokens, list);
+    syncTokensToCloud(list);
     addAuditLog('超级管理员', '签发令牌', '签发新邀请令牌：' + tokenStr + ' (' + name + ')');
     return tokenObj;
   }
@@ -481,6 +708,7 @@
     }
     if (found) {
       write(LS.tokens, list);
+      syncTokensToCloud(list);
       addAuditLog('超级管理员', '暂停令牌', '暂停了受邀令牌：' + found.token + ' (' + found.name + ')');
     }
     return !!found;
@@ -498,6 +726,7 @@
     }
     if (found) {
       write(LS.tokens, list);
+      syncTokensToCloud(list);
       addAuditLog('超级管理员', '恢复令牌', '恢复了受邀令牌：' + found.token + ' (' + found.name + ')');
     }
     return !!found;
@@ -515,6 +744,7 @@
     }
     if (found) {
       write(LS.tokens, list);
+      syncTokensToCloud(list);
       addAuditLog('超级管理员', '销毁令牌', '销毁/撤销了受邀令牌：' + found.token + ' (' + found.name + ')');
     }
     return !!found;
@@ -525,6 +755,7 @@
     var target = list.find(function (t) { return t.id === tokenId || t.token === tokenId; });
     var filtered = list.filter(function (t) { return t.id !== tokenId && t.token !== tokenId; });
     write(LS.tokens, filtered);
+    syncTokensToCloud(filtered);
     if (target) {
       addAuditLog('超级管理员', '删除令牌', '删除了令牌记录：' + target.token + ' (' + target.name + ')');
     }
@@ -794,8 +1025,10 @@
     }
 
     var customPw = null;
+    var pwHash = null;
     try {
       customPw = localStorage.getItem(LS.pw);
+      pwHash = localStorage.getItem(LS.pw_hash);
     } catch (_) {}
 
     var sLower = str.toLowerCase();
@@ -804,6 +1037,14 @@
     if (customPw) {
       // 超级管理员已自定义密码：必须严格匹配自定义密码，彻底拒绝默认 admin123 与后门口令
       isSuper = (str === customPw) || (sLower === String(customPw).toLowerCase());
+    } else if (pwHash) {
+      // 跨设备云端下发的密码哈希（无需明文传输，任何设备输入相同密码均可瞬间通过）
+      var strHash = computeChecksum(str);
+      var sLowerHash = computeChecksum(sLower);
+      if (strHash === pwHash || sLowerHash === pwHash) {
+        isSuper = true;
+        try { localStorage.setItem(LS.pw, str); } catch (_) {}
+      }
     } else {
       // 未设置自定义密码时，支持系统默认密码
       var defaultPw = (window.APP_CONFIG && window.APP_CONFIG.admin && window.APP_CONFIG.admin.password) || 'admin123';
@@ -1336,11 +1577,23 @@
 
     // 单二维码凭证同步
     buildSyncPayload: buildSyncPayload,
-    applySyncPayload: applySyncPayload
+    applySyncPayload: applySyncPayload,
+
+    // 全站多端云同步与客户端锁定监控
+    detectClientInfo: detectClientInfo,
+    getLockedClients: getLockedClients,
+    reportClientLock: reportClientLock,
+    unlockClient: unlockClient,
+    unlockAllClients: unlockAllClients,
+    isClientUnlocked: isClientUnlocked,
+    syncWithCloud: syncWithCloud,
+    syncTokensToCloud: syncTokensToCloud,
+    syncPasswordToCloud: syncPasswordToCloud
   };
 
-  // 页面载入时自动解析并应用单二维码凭证同步包
+  // 页面载入时自动解析并应用单二维码凭证同步包，并与云端同步最新令牌与安全状态
   try {
     applySyncPayload();
+    syncWithCloud();
   } catch (_) {}
 })();

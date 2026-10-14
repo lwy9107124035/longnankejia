@@ -308,3 +308,56 @@ test('全站单一主二维码体系与自定义密码及令牌跨设备同步',
   assert.equal(authEmpty.ok, false);
 });
 
+test('超级管理员查看客户端锁定状态、手动解除锁定及无hash跨端密码验证', () => {
+  const env = setupEnvironment();
+  const { window } = env;
+
+  // 1. 设置自定义超管密码，自动计算并写入 pw_hash
+  window.Store.setAdminPassword('SuperSecret2026');
+  const storedHash = env.localStorageMap.get('nfyj_admin_pw_hash');
+  assert.ok(storedHash, '设置管理员密码后必须同步生成 pw_hash');
+
+  // 2. 模拟客户端（如手机端）多次输错，上报锁定
+  const lockItem = window.Store.reportClientLock(5, Date.now() + 60000);
+  assert.ok(lockItem && lockItem.ip);
+  assert.equal(lockItem.status, 'locked');
+
+  // 超级管理员后台能查询到该锁定记录
+  const lockedList = window.Store.getLockedClients();
+  assert.ok(lockedList.length >= 1);
+  const found = lockedList.find(l => l.ip === lockItem.ip);
+  assert.ok(found, '超级管理员应能看到被锁定的客户端记录');
+  assert.equal(found.attempts, 5);
+
+  // 3. 超级管理员手动解除锁定
+  const unlocked = window.Store.unlockClient(lockItem.id);
+  assert.equal(unlocked, true);
+
+  const updatedList = window.Store.getLockedClients();
+  const updatedItem = updatedList.find(l => l.id === lockItem.id);
+  assert.equal(updatedItem.status, 'unlocked', '手动解除后状态应为 unlocked');
+
+  // 4. 超级管理员一键全部解除
+  window.Store.reportClientLock(6, Date.now() + 60000);
+  const unlockAllRes = window.Store.unlockAllClients();
+  assert.equal(unlockAllRes, true);
+  const allList = window.Store.getLockedClients();
+  assert.ok(allList.every(l => l.status === 'unlocked'), '全部解除后所有条目应为 unlocked');
+
+  // 5. 跨设备同网址访问（无 URL hash，全新手机设备环境仅拉取到 pw_hash）
+  const phoneDevice = setupEnvironment();
+  phoneDevice.localStorageMap.set('nfyj_admin_pw_hash', storedHash);
+
+  // 手机端本地无自定义明文密码，但直接输入超管密码时通过哈希比对鉴权通过
+  const phoneAuth = phoneDevice.window.Store.verifyLogin('SuperSecret2026');
+  assert.equal(phoneAuth.ok, true, '跨设备直接输入正确密码应通过哈希比对登录');
+  assert.equal(phoneAuth.role, 'super_admin');
+
+  // 手机端输入错误密码或默认 admin123 仍然被拒绝
+  const phoneWrongAuth = phoneDevice.window.Store.verifyLogin('WrongPassword123');
+  assert.equal(phoneWrongAuth.ok, false);
+  const phoneDefaultReject = phoneDevice.window.Store.verifyLogin('admin123');
+  assert.equal(phoneDefaultReject.ok, false);
+});
+
+
