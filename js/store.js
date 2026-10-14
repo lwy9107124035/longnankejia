@@ -365,15 +365,12 @@
 
   function getSyncEndpoint() {
     if (typeof window !== 'undefined' && window.location) {
-      var h = window.location.hostname;
-      if (h === '127.0.0.1' || h === 'localhost') {
-        return '/api/admin/sync';
-      }
-      if (h === 'antigravity.longnankejia-dev.pages.dev') {
-        return '/api/admin/sync';
+      var proto = window.location.protocol;
+      if (proto === 'http:' || proto === 'https:') {
+        return window.location.origin + '/api/admin/sync';
       }
     }
-    return 'https://antigravity.longnankejia-dev.pages.dev/api/admin/sync';
+    return 'https://longnankejia.pages.dev/api/admin/sync';
   }
 
   function getClientId() {
@@ -487,17 +484,24 @@
             return (l.clientId && l.clientId === myCid) || (myIp && l.ip === myIp);
           });
           if (myLock && myLock.status === 'unlocked') {
-            try {
-              localStorage.removeItem('nfyj_login_lock_state');
-              localStorage.setItem('nfyj_client_unlocked', '1');
-            } catch (_) {}
+            var state = read('nfyj_login_lock_state', null);
+            var lockedAt = state ? (Number(state.lockedAt) || 0) : 0;
+            var consumedAt = Number(localStorage.getItem('nfyj_last_consumed_unlock')) || 0;
+            var unlockedAt = Number(myLock.unlockedAt) || 0;
+            if (state && state.until && Date.now() < state.until && unlockedAt >= lockedAt && unlockedAt > consumedAt) {
+              try {
+                localStorage.setItem('nfyj_client_unlocked', '1');
+              } catch (_) {}
+            }
           }
         }
         if (data.allUnlockedAt) {
           var state = read('nfyj_login_lock_state', null);
-          if (state && (state.lockedAt || 0) <= data.allUnlockedAt) {
+          var lockedAt = state ? (Number(state.lockedAt) || 0) : 0;
+          var consumedAt = Number(localStorage.getItem('nfyj_last_consumed_unlock')) || 0;
+          var allUnlockedAt = Number(data.allUnlockedAt) || 0;
+          if (state && state.until && Date.now() < state.until && allUnlockedAt >= lockedAt && allUnlockedAt > consumedAt) {
             try {
-              localStorage.removeItem('nfyj_login_lock_state');
               localStorage.setItem('nfyj_client_unlocked', '1');
             } catch (_) {}
           }
@@ -625,22 +629,60 @@
     return true;
   }
 
+  function consumeClientUnlock() {
+    try {
+      sessionStorage.removeItem('nfyj_client_unlocked');
+      localStorage.removeItem('nfyj_client_unlocked');
+      localStorage.setItem('nfyj_last_consumed_unlock', String(Date.now()));
+      localStorage.removeItem('nfyj_login_lock_state');
+    } catch (_) {}
+  }
+
   function isClientUnlocked() {
+    // 1. 本地是否有未消费的明确解锁标记
+    var hasLocalFlag = false;
+    try {
+      hasLocalFlag = !!sessionStorage.getItem('nfyj_client_unlocked') || !!localStorage.getItem('nfyj_client_unlocked');
+    } catch (_) {}
+    if (hasLocalFlag) return true;
+
+    // 2. 检查锁定状态与云端记录
+    var lockState = null;
+    try {
+      var raw = localStorage.getItem('nfyj_login_lock_state');
+      if (raw) lockState = JSON.parse(raw);
+    } catch (_) {}
+
+    // 如果设备当前未处于锁定状态（例如正常输入中），则不需要触发解除
+    if (!lockState || !lockState.until || Date.now() >= lockState.until) {
+      return false;
+    }
+
+    var lockedAt = Number(lockState.lockedAt) || 0;
+    var consumedAt = 0;
+    try {
+      consumedAt = Number(localStorage.getItem('nfyj_last_consumed_unlock')) || 0;
+    } catch (_) {}
+
     var cid = getClientId();
     var cachedIp = '';
-    try { cachedIp = sessionStorage.getItem('nfyj_client_ip') || localStorage.getItem('nfyj_client_ip') || ''; } catch (_) {}
-    
-    var localUnlocked = false;
     try {
-      localUnlocked = !!sessionStorage.getItem('nfyj_client_unlocked') || !!localStorage.getItem('nfyj_client_unlocked');
+      cachedIp = sessionStorage.getItem('nfyj_client_ip') || localStorage.getItem('nfyj_client_ip') || '';
     } catch (_) {}
-    if (localUnlocked) return true;
 
     var list = read(LS.locked_clients, []);
     var myLock = list.find(function (l) {
       return (l.clientId && l.clientId === cid) || (cachedIp && l.ip === cachedIp);
     });
-    return !!(myLock && myLock.status === 'unlocked');
+
+    if (myLock && myLock.status === 'unlocked') {
+      var unlockedAt = Number(myLock.unlockedAt) || 0;
+      if (unlockedAt >= lockedAt && unlockedAt > consumedAt) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /* ---------- 操作审计日志 ---------- */
@@ -1612,6 +1654,7 @@
     unlockClient: unlockClient,
     unlockAllClients: unlockAllClients,
     isClientUnlocked: isClientUnlocked,
+    consumeClientUnlock: consumeClientUnlock,
     syncWithCloud: syncWithCloud,
     syncTokensToCloud: syncTokensToCloud,
     syncPasswordToCloud: syncPasswordToCloud

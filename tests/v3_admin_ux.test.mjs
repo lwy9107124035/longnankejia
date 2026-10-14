@@ -357,4 +357,79 @@ test('超级管理员查看客户端锁定状态、手动解除锁定及无hash�
   assert.equal(phoneDefaultReject.ok, false);
 });
 
+test('手机端锁定解除后再次输错密码，机会次数正常递减（4->3->2->1->锁定），不会死循环停留在4次', () => {
+  const env = setupEnvironment();
+  const { window, localStorageMap } = env;
+
+  // 1. 模拟手机端连续输错 5 次被锁定
+  const lockTime = Date.now();
+  const lockItem = window.Store.reportClientLock(5, lockTime + 60000);
+  localStorageMap.set('nfyj_login_lock_state', JSON.stringify({
+    count: 5,
+    until: lockTime + 60000,
+    lockedAt: lockTime
+  }));
+
+  // 2. 超级管理员解除该设备
+  window.Store.unlockClient(lockItem.id);
+
+  // 3. 手机端检测到已解除，isClientUnlocked 应为 true
+  assert.equal(window.Store.isClientUnlocked(), true, '管理员解除后应检测到已解锁');
+
+  // 4. 手机端消费解除标记，重置登录状态
+  window.Store.consumeClientUnlock();
+  assert.equal(window.Store.isClientUnlocked(), false, '消费后 isClientUnlocked 应恢复为 false');
+
+  // 5. 再次输入错误口令：第 1 次输错 -> 剩 4 次 (count = 1)
+  let rawState = localStorageMap.get('nfyj_login_lock_state');
+  let currentCount = rawState ? (JSON.parse(rawState).count || 0) : 0;
+  let nextCount = currentCount + 1;
+  assert.equal(nextCount, 1, '第 1 次输错计数应为 1');
+  assert.equal(5 - nextCount, 4, '第 1 次输错应显示还剩 4 次');
+  localStorageMap.set('nfyj_login_lock_state', JSON.stringify({ count: nextCount, until: 0 }));
+
+  // 关键：此时由于处于正常尝试期且未锁定，isClientUnlocked 不能返回 true 导致计数被清零
+  assert.equal(window.Store.isClientUnlocked(), false, '输入过程中不得误触发已解锁而清空计数');
+
+  // 6. 第 2 次输错口令 -> 剩 3 次 (count = 2)
+  rawState = localStorageMap.get('nfyj_login_lock_state');
+  currentCount = rawState ? (JSON.parse(rawState).count || 0) : 0;
+  nextCount = currentCount + 1;
+  assert.equal(nextCount, 2, '第 2 次输错计数应为 2');
+  assert.equal(5 - nextCount, 3, '第 2 次输错应显示还剩 3 次，绝不能停留为 4 次');
+  localStorageMap.set('nfyj_login_lock_state', JSON.stringify({ count: nextCount, until: 0 }));
+
+  // 7. 第 3 次输错口令 -> 剩 2 次 (count = 3)
+  rawState = localStorageMap.get('nfyj_login_lock_state');
+  currentCount = rawState ? (JSON.parse(rawState).count || 0) : 0;
+  nextCount = currentCount + 1;
+  assert.equal(nextCount, 3, '第 3 次输错计数应为 3');
+  assert.equal(5 - nextCount, 2, '第 3 次输错应显示还剩 2 次');
+  localStorageMap.set('nfyj_login_lock_state', JSON.stringify({ count: nextCount, until: 0 }));
+
+  // 8. 第 4 次输错口令 -> 剩 1 次 (count = 4)
+  rawState = localStorageMap.get('nfyj_login_lock_state');
+  currentCount = rawState ? (JSON.parse(rawState).count || 0) : 0;
+  nextCount = currentCount + 1;
+  assert.equal(nextCount, 4, '第 4 次输错计数应为 4');
+  assert.equal(5 - nextCount, 1, '第 4 次输错应显示还剩 1 次');
+  localStorageMap.set('nfyj_login_lock_state', JSON.stringify({ count: nextCount, until: 0 }));
+
+  // 9. 第 5 次输错口令 -> 达到 5 次，再次触发锁定！
+  currentCount = nextCount;
+  nextCount = currentCount + 1;
+  assert.equal(nextCount, 5, '第 5 次输错计数应为 5');
+  const newLockUntil = Date.now() + 60000;
+  const newLockItem = window.Store.reportClientLock(nextCount, newLockUntil);
+  localStorageMap.set('nfyj_login_lock_state', JSON.stringify({
+    count: nextCount,
+    until: newLockUntil,
+    lockedAt: Date.now()
+  }));
+
+  // 此时处于新一轮锁定中，旧的 unlockClient 绝不能误解封新的锁定
+  assert.equal(newLockItem.status, 'locked', '新一轮锁定状态必须为 locked');
+  assert.equal(window.Store.isClientUnlocked(), false, '旧的解封凭据绝不能穿透解封新锁');
+});
+
 

@@ -14,17 +14,29 @@ let inMemoryState = {
   allUnlockedAt: 0
 };
 
+async function fetchWithTimeout(url, options, timeoutMs = 2000) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function loadPersistedState() {
   try {
-    const res = await fetch(REDIS_URL, {
+    const res = await fetchWithTimeout(REDIS_URL, {
       method: 'POST',
       headers: {
         Authorization: 'Bearer ' + REDIS_TOKEN,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(['GET', REDIS_KEY])
-    });
-    if (!res.ok) return inMemoryState;
+    }, 2000);
+    if (!res || !res.ok) return inMemoryState;
     const data = await res.json();
     if (data && data.result && typeof data.result === 'string') {
       const parsed = JSON.parse(data.result);
@@ -42,14 +54,14 @@ async function loadPersistedState() {
 async function savePersistedState() {
   try {
     const payload = JSON.stringify(inMemoryState);
-    await fetch(REDIS_URL, {
+    await fetchWithTimeout(REDIS_URL, {
       method: 'POST',
       headers: {
         Authorization: 'Bearer ' + REDIS_TOKEN,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(['SET', REDIS_KEY, payload])
-    });
+    }, 2000);
   } catch (_) {}
 }
 
@@ -133,15 +145,18 @@ export async function onRequestPost({ request }) {
   }
 
   if (action === 'report_lock') {
+    const realIp = (clientIp && clientIp !== '127.0.0.1') ? clientIp : (body.ip || clientIp || '127.0.0.1');
+    const realGeo = (clientGeo && clientGeo !== '局域网/本机') ? clientGeo : (body.geo || clientGeo || '局域网/当前网络');
+    const now = Date.now();
     const lockItem = {
-      id: body.id || ('lock-' + Date.now() + '-' + Math.floor(Math.random() * 1000)),
+      id: body.id || ('lock-' + now + '-' + Math.floor(Math.random() * 1000)),
       clientId: body.clientId || '',
-      ip: body.ip || clientIp,
-      geo: body.geo || clientGeo,
+      ip: realIp,
+      geo: realGeo,
       device: body.device || '移动端/未知终端',
       attempts: body.attempts || 5,
-      lockedAt: Date.now(),
-      lockedUntil: body.lockedUntil || (Date.now() + 60000),
+      lockedAt: now,
+      lockedUntil: body.lockedUntil || (now + 60000),
       status: 'locked'
     };
     inMemoryState.lockouts = [
@@ -160,9 +175,10 @@ export async function onRequestPost({ request }) {
     const targetId = body.id;
     const targetIp = body.ip;
     const targetCid = body.clientId;
+    const now = Date.now();
     inMemoryState.lockouts = inMemoryState.lockouts.map(l => {
       if ((targetId && l.id === targetId) || (targetIp && l.ip === targetIp) || (targetCid && l.clientId === targetCid)) {
-        return { ...l, status: 'unlocked', unlockedAt: Date.now(), unlockedBy: '超级管理员手动解除' };
+        return { ...l, status: 'unlocked', unlockedAt: now, unlockedBy: '超级管理员手动解除' };
       }
       return l;
     });
@@ -171,11 +187,12 @@ export async function onRequestPost({ request }) {
   }
 
   if (action === 'unlock_all') {
-    inMemoryState.allUnlockedAt = Date.now();
+    const now = Date.now();
+    inMemoryState.allUnlockedAt = now;
     inMemoryState.lockouts = inMemoryState.lockouts.map(l => ({
       ...l,
       status: 'unlocked',
-      unlockedAt: Date.now(),
+      unlockedAt: now,
       unlockedBy: '超级管理员一键解除全部'
     }));
     await savePersistedState();

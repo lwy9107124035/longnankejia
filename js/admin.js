@@ -53,12 +53,12 @@
     }
   }
 
-  function setLoginLockState(count, until) {
+  function setLoginLockState(count, until, lockedAt) {
     try {
       localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify({
         count: count,
         until: until,
-        lockedAt: Date.now()
+        lockedAt: lockedAt || (until ? Date.now() : 0)
       }));
     } catch (_) {}
   }
@@ -66,6 +66,9 @@
   function clearLoginLockState() {
     try {
       localStorage.removeItem(LOCK_STORAGE_KEY);
+      if (window.Store && window.Store.consumeClientUnlock) {
+        window.Store.consumeClientUnlock();
+      }
     } catch (_) {}
   }
 
@@ -128,20 +131,22 @@
     var lastCloudSync = 0;
 
     function checkLockStatus() {
-      if (window.Store && window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
-        clearLoginLockState();
-        if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
-        input.disabled = false;
-        btn.disabled = false;
-        btn.style.opacity = '';
-        err.className = 'admin-login-error';
-        err.textContent = '✅ 管理员已手动解除锁定，请重新输入口令';
-        return false;
-      }
-
       var state = getLoginLockState();
       var now = Date.now();
-      if (state.until && now < state.until) {
+      var isLocked = !!(state.until && now < state.until);
+
+      if (isLocked) {
+        if (window.Store && window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
+          clearLoginLockState();
+          if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
+          input.disabled = false;
+          btn.disabled = false;
+          btn.style.opacity = '';
+          err.className = 'admin-login-error';
+          err.textContent = '✅ 管理员已手动解除锁定，请重新输入口令';
+          return false;
+        }
+
         var remainSec = Math.ceil((state.until - now) / 1000);
         input.disabled = true;
         btn.disabled = true;
@@ -200,7 +205,6 @@
         input.disabled = false;
         btn.disabled = false;
         btn.style.opacity = '';
-        err.className = 'admin-login-error';
         return false;
       }
     }
@@ -223,10 +227,10 @@
         showMain();
       } else {
         var state = getLoginLockState();
-        var nextCount = state.count + 1;
+        var nextCount = (Number(state.count) || 0) + 1;
         if (nextCount >= 5) {
           var lockUntil = Date.now() + 60000;
-          setLoginLockState(nextCount, lockUntil);
+          setLoginLockState(nextCount, lockUntil, Date.now());
           if (window.Store && window.Store.reportClientLock) {
             window.Store.reportClientLock(nextCount, lockUntil);
           }
@@ -1824,7 +1828,7 @@
         if (window.Store && window.Store.unlockClient) {
           window.Store.unlockClient(cid || id || ip);
         }
-        alert('已手动解除客户端 [' + ip + '] 的登录封锁，该设备现已可正常登录！');
+        showAdminToast('已手动解除客户端 [' + ip + '] 的登录封锁！');
         renderTab();
       });
     });
@@ -1836,7 +1840,7 @@
           if (window.Store && window.Store.unlockAllClients) {
             window.Store.unlockAllClients();
           }
-          alert('已一键解除所有客户端的登录封锁！');
+          showAdminToast('已一键解除所有客户端的登录封锁！');
           renderTab();
         }
       });
@@ -1848,14 +1852,18 @@
         refreshLocksBtn.disabled = true;
         refreshLocksBtn.textContent = '⏳ 正在刷新...';
         if (window.Store && window.Store.syncWithCloud) {
-          window.Store.syncWithCloud(function () {
+          window.Store.syncWithCloud(function (data) {
             refreshLocksBtn.disabled = false;
             refreshLocksBtn.textContent = '🔄 刷新监控';
+            var list = (data && data.lockouts) || (window.Store.getLockedClients ? window.Store.getLockedClients() : []);
+            var lockedCount = list.filter(function (l) { return l.status === 'locked' && (!l.lockedUntil || Date.now() < l.lockedUntil); }).length;
+            showAdminToast('已同步最新监控：共 ' + list.length + ' 台设备记录（' + lockedCount + ' 台锁定中）');
             renderTab();
           });
         } else {
           refreshLocksBtn.disabled = false;
           refreshLocksBtn.textContent = '🔄 刷新监控';
+          showAdminToast('已刷新本地防御监控记录');
           renderTab();
         }
       });
