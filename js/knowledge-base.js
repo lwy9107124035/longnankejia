@@ -511,6 +511,24 @@ window.KNOWLEDGE_BASE = [
     title: '客家地名农耕印记与节气谚语',
     keywords: ['栗园围地名', '禾坪', '清明前好莳田', '客家农耕谚语'],
     answer: '龙南“栗园围”得名见证早期以粟（小米）为主食的种植历史，“禾坪”则是水稻脱粒晾晒的重要场地；农耕节气谚语“清明前，好莳田；清明后，好种豆”，清晰提示水稻插秧与杂粮播种的最佳时序，凝聚客家先民应时耕作的生存智慧。'
+  },
+  {
+    id: 'longnan-wenbao-count',
+    title: '龙南文保单位与文保点数量',
+    topics: ['文保单位', '围屋文保', '龙南文保'],
+    aliases: ['文保点', '文保单位', '文物保护单位', '有多少文保点', '文保数量', '龙南文保点有多少个'],
+    keywords: [
+      '文保点', '文保单位', '文物保护单位', '有多少个文保点', '有多少处文保', '文保数量', '龙南文保点',
+      '文保点多少个', '文保点数量', '文保有多少', '围屋文保点', '全市文保', '重点文保'
+    ],
+    answer:
+      '龙南市全域现存客家围屋 360 余座。据文物主管部门公布的名录，龙南列入各级文物保护单位与保护点的历史建筑及文化遗存共有 60 余处。\n' +
+      '其中，关西新围、燕翼围、乌石围、太平桥等列为全国重点文物保护单位；栗园围、渔仔潭围、玉石仙岩等列为省级与市县级文保单位。龙南市已为全市 60 处重点客家围屋文保单位和保护点统一办理文物安全与保护保险。\n' +
+      '数字助手的家乡语音地图精选收录了《文化典藏》中记录有详实文献考证、口述讲解与原声录音的代表性文保名胜及全域 9 镇 5 乡。',
+    sources: [
+      { title: '《龙南市各级文物保护单位名录》' },
+      { title: '《世界客家非物质文化遗产馆文化典藏》' }
+    ]
   }
 ];
 
@@ -566,7 +584,7 @@ window.KEYWORD_SYNONYMS = {
     '龙南竹编':{ids:['zhubian','v2-zhubian','bamboo-material','bamboo-tools','bamboo-process','bamboo-inheritance'],aliases:['竹编','杨村竹编','客家竹编','竹艺','篾匠','竹篾编织','徐昌添','度篾齿']},
     '南通蓝印花布':{ids:['v2-nantong-blue-print'],aliases:['南通蓝印花布','南通蓝染','蓝印花布','刻花版','防染浆']},
     '白族扎染':{ids:['v2-dali-bai-tie-dye'],aliases:['白族扎染','大理扎染','周城扎染','大理白族扎染']},
-    '客家围屋':{ids:['weiwu','jiangyi-weiwu-overview','jiangyi-weiwu-defense','jiangyi-weiwu-windows','jiangyi-weiwu-red','dc-wushiwei','dc-huxingwei'],aliases:['围屋','关西新围','燕翼围','客家围屋','世界围屋之都']},
+    '客家围屋':{ids:['weiwu','longnan-wenbao-count','jiangyi-weiwu-overview','jiangyi-weiwu-defense','jiangyi-weiwu-windows','jiangyi-weiwu-red','dc-wushiwei','dc-huxingwei'],aliases:['围屋','关西新围','燕翼围','客家围屋','世界围屋之都']},
     '客家传统纹样':{ids:sections.filter(function(row){return /^pattern-/.test(row[0]);}).map(function(row){return row[0];}).concat(['pattern-overview']),aliases:['传统纹样','客家纹样','门榜','微型族谱','狮象雕塑']},
     '客家寿诞':{ids:['dc-shoudan'],aliases:['客家寿诞','寿诞','大生日','做寿','祝寿','可提前不得推后','人生礼俗']},
     '龙南大漆':{ids:['dc-daqi'],aliases:['龙南大漆','大漆','大漆技艺','天然漆','生漆']},

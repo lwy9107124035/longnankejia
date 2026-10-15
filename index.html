@@ -40,7 +40,7 @@
         </div>
         <div class="hero-text">
           <div class="hero-name">我是阿蓝 <span class="hero-name-en">A-Lan</span></div>
-          <p class="hero-desc">我是龙南客家非遗数字讲解员。蓝染、竹编、织带、围屋，想问什么都行。</p>
+          <p class="hero-desc">我是龙南客家非遗数字讲解员。欢迎了解蓝染、竹编、织带、围屋等馆藏非遗技艺。</p>
         </div>
       </section>
 
@@ -68,6 +68,14 @@
 
       <!-- ======== 问答面板 ======== -->
       <div class="tab-panel active" id="panelChat">
+        <div class="chat-search-bar" id="chatSearchWrap">
+          <div class="chat-search-input-box">
+            <span class="chat-search-icon">🔍</span>
+            <input type="search" id="chatSearchInput" class="chat-search-input" placeholder="检索馆藏知识库条目与展品（如：蓝染、围屋、织带）" autocomplete="off">
+            <button type="button" id="chatSearchClear" class="chat-search-clear" hidden title="清空检索">×</button>
+          </div>
+          <div class="chat-search-results" id="chatSearchResults" hidden></div>
+        </div>
         <div class="quick-questions" id="quickQuestions">
           <button class="chip" data-q="什么是客家蓝染？" type="button">蓝染</button>
           <button class="chip" data-q="竹编有什么工艺特色？" type="button">竹编</button>
@@ -327,6 +335,7 @@
       <button class="modal-close" id="detailClose" type="button" aria-label="关闭">×</button>
       <div class="detail-icon" id="detailIcon"></div>
       <div class="modal-title" id="detailTitle"></div>
+      <div class="detail-media" id="detailMedia" hidden></div>
       <div class="detail-body" id="detailBody"></div>
       <button class="ask-more-btn" id="askMoreBtn" type="button">问问阿蓝更多相关问题</button>
     </div>

@@ -231,12 +231,6 @@
           window.Store.saveSession(authResult);
         }
         showMain();
-        if (window.Store && window.Store.syncWithCloud) {
-          window.Store.syncWithCloud(function () {
-            refreshFrontEnd();
-            renderTab();
-          });
-        }
       } else {
         var state = getLoginLockState();
         var nextCount = (Number(state.count) || 0) + 1;
@@ -257,25 +251,20 @@
       }
     }
 
-    var isLoggingIn = false;
-    function safeLogin(e) {
+    btn.addEventListener('click', function (e) {
       if (e) {
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
       }
-      if (isLoggingIn) return;
-      isLoggingIn = true;
-      try {
+      doLogin();
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        if (e.preventDefault) e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
         doLogin();
-      } finally {
-        setTimeout(function () { isLoggingIn = false; }, 0);
       }
-    }
-
-    btn.addEventListener('click', safeLogin);
-    if (form) {
-      form.addEventListener('submit', safeLogin);
-    }
+    });
     $('#adminCancelBtn').addEventListener('click', close);
     setTimeout(function () { input.focus(); }, 100);
   }
@@ -393,7 +382,12 @@
     if (window.Store && window.Store.syncWithCloud) {
       window.Store.syncWithCloud(function () {
         refreshFrontEnd();
-        renderTab();
+        var formKb = $('#kbForm');
+        var formKp = $('#kepuForm');
+        var isEditing = (formKb && formKb.style.display !== 'none') || (formKp && formKp.style.display !== 'none') || editingId !== null || editingKepuId !== null;
+        if (!isEditing) {
+          renderTab();
+        }
       });
     }
   }
@@ -917,15 +911,28 @@
         ? '<span class="admin-badge admin-badge-custom">自定义</span>' + (c.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(c.creatorName) + '</span>' : '')
         : '<span class="admin-badge admin-badge-default">内置</span>';
 
+      var mediaBadges = '';
+      if (c.imageUrl || c.image) mediaBadges += '<span style="font-size:10px;margin-left:4px;padding:1px 5px;background:#E8F0FE;color:#1A73E8;border-radius:3px">🖼️ 配图</span>';
+      if (c.videoUrl || c.video) mediaBadges += '<span style="font-size:10px;margin-left:4px;padding:1px 5px;background:#FEF3E8;color:#E37400;border-radius:3px">🎬 视频</span>';
+
+      var previewMediaHtml = '';
+      if (c.imageUrl || c.image) {
+        previewMediaHtml += '<img src="' + esc(c.imageUrl || c.image) + '" style="max-height:110px;border-radius:4px;display:block;margin-bottom:6px;border:1px solid rgba(0,0,0,0.1)" alt="预览配图" onerror="this.style.display=\'none\'">';
+      }
+      if (c.videoUrl || c.video) {
+        previewMediaHtml += '<div style="font-size:11px;color:var(--primary);margin-bottom:6px">🎬 视频：' + esc(c.videoUrl || c.video) + '</div>';
+      }
+
       return '<div class="admin-kepu-card" style="border-left: 4px solid ' + (c.accent || '#2F5D50') + '">' +
         '<div class="admin-kepu-head">' +
         '  <span class="admin-kepu-icon">' + (c.icon || '🏮') + '</span>' +
-        '  <span class="admin-kepu-name">' + esc(c.name) + '</span>' + badge +
+        '  <span class="admin-kepu-name">' + esc(c.name) + '</span>' + badge + mediaBadges +
         '</div>' +
         '<div class="admin-kepu-tag">' + esc(c.tag || '') + '</div>' +
         '<div class="admin-kb-fulltext" id="preview-box-' + esc(c.id) + '">' +
         '  <div style="font-weight:600;margin-bottom:4px;color:' + (c.accent || '#2F5D50') + '">【前台游客呈现预览】</div>' +
         '  <div style="background:' + (c.bg || '#E4EFEA') + ';padding:8px;border-radius:4px;color:var(--ink)">' +
+        previewMediaHtml +
         '    <div style="font-size:12px;margin-bottom:4px">' + (c.detail || '暂无详细介绍') + '</div>' +
         '    <div style="font-size:10px;color:var(--muted)">💬 点击卡片提问阿蓝：「' + esc(c.ask || ('介绍一下' + c.name)) + '」</div>' +
         '  </div>' +
@@ -968,7 +975,9 @@
             accent: card.accent,
             bg: card.bg,
             detail: card.detail,
-            ask: card.ask
+            ask: card.ask,
+            imageUrl: card.imageUrl || card.image || '',
+            videoUrl: card.videoUrl || card.video || ''
           });
         }
       });
@@ -1025,6 +1034,16 @@
       '      <input type="color" id="kpBg" class="admin-input" value="' + (card && card.bg ? card.bg : '#E4EFEA') + '" style="height:38px;padding:2px">' +
       '    </div>' +
       '  </div>' +
+      '  <div class="admin-form-row">' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">配图路径或图片链接 (可选)</label>' +
+      '      <input type="text" id="kpImage" class="admin-input" value="' + esc(card ? (card.imageUrl || card.image || '') : '') + '" placeholder="例如：assets/model-references/landye-237.jpg 或 https://...">' +
+      '    </div>' +
+      '    <div style="flex:1">' +
+      '      <label class="admin-label">讲解视频链接或本地MP4路径 (可选)</label>' +
+      '      <input type="text" id="kpVideo" class="admin-input" value="' + esc(card ? (card.videoUrl || card.video || '') : '') + '" placeholder="例如：月光光童谣.mp4 或 https://...">' +
+      '    </div>' +
+      '  </div>' +
       '  <label class="admin-label">科普详情正文 (支持HTML段落)</label>' +
       '  <textarea id="kpDetail" class="admin-textarea" rows="5" placeholder="<p>科普介绍段落…</p>">' + esc(card ? card.detail : '') + '</textarea>' +
       '  <label class="admin-label">点击向阿蓝提问的默认问题</label>' +
@@ -1041,11 +1060,13 @@
       var tag = $('#kpTag').value.trim() || '客家非遗';
       var accent = $('#kpAccent').value;
       var bg = $('#kpBg').value;
+      var imageUrl = $('#kpImage').value.trim();
+      var videoUrl = $('#kpVideo').value.trim();
       var detail = $('#kpDetail').value.trim();
       var ask = $('#kpAsk').value.trim() || ('介绍一下' + name);
       if (!name) { alert('卡片名称不能为空'); return; }
 
-      var data = { name: name, icon: icon, tag: tag, accent: accent, bg: bg, detail: detail, ask: ask };
+      var data = { name: name, icon: icon, tag: tag, accent: accent, bg: bg, detail: detail, ask: ask, imageUrl: imageUrl, videoUrl: videoUrl };
       if (editingKepuId) {
         window.Store.updateHeritageCard(editingKepuId, data);
       } else {

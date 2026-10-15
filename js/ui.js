@@ -5,6 +5,12 @@
   'use strict';
 
 
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
   /* ================================================================
      聊天 UI
      ================================================================ */
@@ -14,7 +20,7 @@
       '<div class="chat-empty">' +
       '  <div class="chat-empty-icon">💬</div>' +
       '  <div class="chat-empty-title">问问阿蓝吧</div>' +
-      '  <div class="chat-empty-hint">蓝染、竹编、织带、围屋，随便问<br>阿蓝知道多少就说多少</div>' +
+      '  <div class="chat-empty-hint">聚焦蓝染、竹编、织带、围屋等馆藏非遗技艺<br>阿蓝如实解答</div>' +
       '</div>';
 
     var botAvatarImg = '<img class="msg-avatar-img" src="assets/avatar/alan-face.png" alt="阿蓝">';
@@ -240,6 +246,7 @@
         tag: '草木染 · 蓝草制靛',
         accent: '#2F5D50',
         bg: '#E4EFEA',
+        image: 'assets/model-references/landye-237.jpg',
         detail:
           '<p>赣南客家蓝染以蓝草制取靛蓝。补充材料记载，李洁春采用“三浸三晒三发酵”制作靛泥，并以蜡染模板等方式呈现纹样。</p>' +
           '<p>他与织带传承人黄竹英合作，将蓝染与织带结合，制作“靛蓝织带”。蓝染样布的留白、晕染和折痕，可在 3D 展品与实物照片中对照查看。</p>' +
@@ -253,6 +260,7 @@
         tag: '就地取材 · 三年生毛竹',
         accent: '#6B8F4E',
         bg: '#EDF3E6',
+        image: 'assets/model-references/boji-242.jpg',
         detail:
           '<p>赣南竹编历史悠久，多取三年生毛竹，经刮青、剖篾、编织、打磨等工序，化竹为器。</p>' +
           '<p>成品既有竹篮、竹筛、竹席等生活器具，也有工艺精巧的摆件，纹样多取吉祥寓意。</p>' +
@@ -266,6 +274,8 @@
         tag: '女红技艺 · 挑线穿梭',
         accent: '#C45C26',
         bg: '#FBEDE4',
+        image: 'assets/model-references/zhidai-251.jpg',
+        videoUrl: 'https://6525763.hlcode.pro/?id=Na61T3r',
         detail:
           '<p>客家冬头帕织带的制作分为架线、编织和下架。将多色丝线固定在绠瓠子上，留出穗线，用带尺挑线、穿梭，把纹样逐行织入窄带。</p>' +
           '<p>万字纹、竹节、蝴蝶、梅花和吉祥文字是客家织带最常见的纹样。织带与冬头帕、传统婚俗紧密相连，寄托着家族血脉绵延和生活顺遂平安的美好祈愿。</p>' +
@@ -279,6 +289,8 @@
         tag: '世界围屋之都 · 龙南',
         accent: '#8B6B4A',
         bg: '#F3EDE4',
+        image: 'assets/pdf-imgs/page-15.jpg',
+        videoUrl: 'https://6525763.hlcode.pro/?id=Na61TDG',
         detail:
           '<p>龙南素有「世界围屋之都」美誉，现存客家围屋 376 座，是赣南客家文化的核心承载地。</p>' +
           '<p>围屋是客家先民聚族而居、御外自保的城堡式建筑，代表有关西新围、燕翼围等，中轴对称、方正厚重，融合中原营造技艺与客家智慧。</p>' +
@@ -292,6 +304,8 @@
         tag: '表演艺术 · 采茶戏 莲花调 落地花鼓 木偶戏',
         accent: '#9B3D5B',
         bg: '#FBEFF2',
+        image: 'assets/pdf-imgs/page-19.jpg',
+        videoUrl: 'https://6525763.hlcode.pro/?id=Na61TyV',
         detail:
           '<p>采茶戏流行于江西、湖北、湖南、安徽、福建、广东、广西等省区，因地区不同而各冠地名，如粤北采茶戏、阳新采茶戏、黄梅采茶戏；其中以江西最为普遍、剧种最多。</p>' +
           '<p>莲花调流传于龙南东坑、里仁、龙南镇、汶龙、杨村一带，上世纪之初由粤之和平、连平及赣之全南三县传入。唱词以四句七言为主，音乐自由、即兴而歌，以竹板击节。</p>' +
@@ -305,6 +319,8 @@
         tag: '味觉龙南 · 酿豆腐 黄元米果 四星望月 擂茶',
         accent: '#B4692B',
         bg: '#FBF1E6',
+        image: 'assets/pdf-imgs/page-32.jpg',
+        videoUrl: 'https://6525763.hlcode.pro/?id=Na61bcE',
         detail:
           '<p>酿豆腐是客家菜里最常见的一道：豆腐挖坑填肉馅，煎而炖之，外皮焦黄、内里雪嫩。客家人南迁后以豆腐代替面皮，所以叫它「无麦之饺」。</p>' +
           '<p>龙南人过年少不了黄元米果：取高山大禾米，以黄元柴草木灰滤碱水浸泡，反复上甑蒸熟，再入石臼人力捶打至软糯筋道。老话讲「过年吃米果，来年日子节节高」。</p>' +
@@ -318,6 +334,8 @@
         tag: '民俗活动 · 迎龙灯 烧瓦塔 走古事 九狮拜象',
         accent: '#C0392B',
         bg: '#FCEDEA',
+        image: 'assets/pdf-imgs/page-48.jpg',
+        videoUrl: 'https://6525763.hlcode.pro/?id=Na61Tyz',
         detail:
           '<p>迎龙灯是赣南客家逢年过节举办的传统民俗，已列入江西省省级非遗。龙灯以竹篾扎制骨架，糊纸或布，绘花鸟瑞兽等吉祥纹样并缀各式花灯。</p>' +
           '<p>龙南中秋流传老话「中秋烧瓦塔，岁岁家发达」：就地取砖瓦垒成空心高塔，暮色后引火内燃，再撒食盐谷壳助燃，火势越旺寓意日子越红火。</p>' +
@@ -331,6 +349,8 @@
         tag: '生命礼俗 · 寿诞 子孙袋 花帽 冬头帕',
         accent: '#7A4E9B',
         bg: '#F4EEF9',
+        image: 'assets/model-references/zisundai-199.jpg',
+        videoUrl: 'https://6525763.hlcode.pro/?id=Na61TL1',
         detail:
           '<p>客家寿诞承载敬老尊贤的文化精神。寿诞一般在 60 岁以上举行，称「大生日」，可提前不得推后，96 岁便可做百岁寿；一碗龙须面、一挂千子炮，尽显尊老敬贤的古朴民风。龙南妈祖信俗中，祝寿也是主要形式：每年农历三月二十三，香首们齐聚一堂给妈祖「过生日」。</p>' +
           '<p>子孙袋用红布缝成掌心大小，内装花生、红枣、莲子、桂圆取「早生贵子」谐音，再添几粒稻谷寓意五谷丰登。旧时女子出嫁，母亲在临行前亲手系在女儿腰间。</p>' +
@@ -344,6 +364,8 @@
         tag: '语言活化石 · 宁龙片 · 16 段原声讲解',
         accent: '#2E6B6B',
         bg: '#E9F3F2',
+        image: 'assets/pdf-imgs/page-09.jpg',
+        videoUrl: '月光光童谣.mp4',
         detail:
           '<p>龙南话属客家语宁龙片，保留了不少中古汉语的特点，被称作研究汉语演变的「活化石」。典藏里每件展品旁都印有一个二维码，扫开就是展品所在地口音的现场讲解视频，条目里还配了国际音标注音。</p>' +
           '<p>这 16 段原声在「方言」视图里直接列着，点开就能观看。「典藏」的检索输入关键词可以定位到讲到它的展品：搜「豆腐」会列出酿豆腐、黄姜豆腐，命中的句子同时标出来。</p>',
@@ -356,6 +378,8 @@
         tag: '民俗体育 · 世界最小龙舟赛场 · 传承五百余年',
         accent: '#1F6F8B',
         bg: '#E8F2F6',
+        image: 'assets/pdf-imgs/page-60.jpg',
+        videoUrl: 'https://6525763.hlcode.pro/?id=Na61TCV',
         detail:
           '<p>别处赛龙舟在江河，龙南的赛场在杨村镇一方仅十五亩的池塘，有「世界最小龙舟赛场」之称。</p>' +
           '<p>此项习俗始于明弘治年间，源自杨村人赖思章的一段传奇：许愿木料速售，归必雕龙神金身、年年划船，后果验其言，遂率族人开挖池塘定为赛场，至今传承五百余年。</p>' +
@@ -370,6 +394,7 @@
         tag: '传统技艺 · 漆树天然漆 · 逾千年',
         accent: '#6B4226',
         bg: '#F4EDE7',
+        image: 'assets/pdf-imgs/page-46.jpg',
         detail:
           '<p>大漆又称天然漆，是漆树分泌的树脂，防腐、耐酸碱。《庄子·人世间》载「漆可用，故割之」，足见其用之久远。</p>' +
           '<p>龙南大漆技艺相传南宋时期随中原移民南迁传入，至今已逾千年，代代口手相传。每上一道漆，都要晾干后以砂纸打磨，反复十数次，前后历时六至二十四个月才得一件。成品光泽温润，耐热防潮。</p>' +
@@ -383,6 +408,7 @@
         tag: '客家纽带 · 始于 1971 · 龙南世客围',
         accent: '#3B6B3A',
         bg: '#EDF4EC',
+        image: 'assets/pdf-imgs/page-63.jpg',
         detail:
           '<p>世界客属恳亲大会的起源可追溯至 1971 年 9 月 28 日：当时香港崇正总会为庆祝成立五十周年暨「崇正大厦」落成，邀请世界各地 47 个客属社团的 250 多位乡亲代表齐聚香港。与会代表决议将其定为「世界客属第一届恳亲大会」，并决定以后每一至两年轮流在世界各地有关城市举办一届。</p>' +
           '<p>20 世纪基本每两年一届，进入 21 世纪改为每年一届，已在亚、美、非三大洲 11 个国家和地区成功举办多届，被称作客家人的「奥运会」。它也从最初的恳亲联谊，发展成融经济合作、文化交流与学术研讨于一体的综合性平台。</p>' +
@@ -787,7 +813,7 @@
      非遗详情弹层
      ================================================================ */
   var DetailModal = (function () {
-    var modal, titleEl, bodyEl, iconEl, askBtn;
+    var modal, titleEl, bodyEl, iconEl, askBtn, mediaEl;
     var currentAsk = '';
 
     function init() {
@@ -796,6 +822,7 @@
       bodyEl = document.getElementById('detailBody');
       iconEl = document.getElementById('detailIcon');
       askBtn = document.getElementById('askMoreBtn');
+      mediaEl = document.getElementById('detailMedia');
 
       document.getElementById('detailClose').addEventListener('click', close);
       modal.addEventListener('click', function (e) {
@@ -811,8 +838,44 @@
       });
     }
 
+    function renderMedia(card) {
+      if (!mediaEl) return;
+      var img = card.imageUrl || card.image || '';
+      var vid = card.videoUrl || card.video || '';
+      if (!img && !vid) {
+        mediaEl.innerHTML = '';
+        mediaEl.hidden = true;
+        return;
+      }
+      var html = '';
+      if (img) {
+        html += '<img class="detail-media-img" src="' + esc(img) + '" alt="' + esc(card.name) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+      }
+      if (vid) {
+        if (/\.(mp4|webm|ogg)($|\?)/i.test(vid)) {
+          html += '<video class="detail-media-video" controls playsinline preload="metadata" src="' + esc(vid) + '"></video>';
+        } else {
+          html += '<div class="detail-media-btn-wrap"><button class="dc-video-play-btn" id="detailPlayVidBtn" type="button">▶ 播放视频讲解</button></div>';
+        }
+      }
+      mediaEl.innerHTML = html;
+      mediaEl.hidden = false;
+
+      var pBtn = document.getElementById('detailPlayVidBtn');
+      if (pBtn && vid) {
+        pBtn.addEventListener('click', function () {
+          if (window.Diancang && window.Diancang.playVideo) {
+            window.Diancang.playVideo({ name: card.name, videoUrl: vid });
+          } else {
+            window.open(vid, '_blank', 'noopener');
+          }
+        });
+      }
+    }
+
     function open(card) {
       titleEl.textContent = card.name;
+      renderMedia(card);
       bodyEl.innerHTML = card.detail;
       iconEl.textContent = card.icon;
       iconEl.style.background = card.bg;
@@ -822,9 +885,218 @@
 
     function close() {
       modal.hidden = true;
+      if (mediaEl) {
+        var v = mediaEl.querySelector('video');
+        if (v) { try { v.pause(); } catch (_) {} }
+        mediaEl.innerHTML = '';
+        mediaEl.hidden = true;
+      }
     }
 
-    return { init: init, open: open };
+    return { init: init, open: open, close: close };
+  })();
+
+  /* ================================================================
+     问答即时检索组件
+     ================================================================ */
+  var ChatSearch = (function () {
+    var wrapEl, inputEl, clearBtn, resultsEl;
+
+    function highlight(text, q) {
+      var s = String(text || '');
+      if (!q) return esc(s);
+      var idx = s.toLowerCase().indexOf(q.toLowerCase());
+      if (idx === -1) return esc(s.slice(0, 75)) + (s.length > 75 ? '…' : '');
+      var start = Math.max(0, idx - 18);
+      var end = Math.min(s.length, idx + q.length + 35);
+      var prefix = start > 0 ? '…' : '';
+      var suffix = end < s.length ? '…' : '';
+      var snippet = s.slice(start, end);
+      var relIdx = snippet.toLowerCase().indexOf(q.toLowerCase());
+      return prefix + esc(snippet.slice(0, relIdx)) + '<mark>' + esc(snippet.substr(relIdx, q.length)) + '</mark>' + esc(snippet.slice(relIdx + q.length)) + suffix;
+    }
+
+    function search(query) {
+      var q = String(query || '').trim();
+      if (!q) return [];
+      var qLower = q.toLowerCase();
+      var hits = [];
+
+      // 1. 知识库条目
+      var kbEntries = (window.Store && window.Store.getEntries) ? window.Store.getEntries() : (window.KNOWLEDGE_BASE || []);
+      kbEntries.forEach(function (e) {
+        var t = (e.title || '').toLowerCase();
+        var a = (e.answer || '').toLowerCase();
+        var kw = Array.isArray(e.keywords) ? e.keywords.join(' ').toLowerCase() : '';
+        var score = 0;
+        if (t === qLower) score += 100;
+        else if (t.indexOf(qLower) !== -1) score += 60;
+        else if (kw.indexOf(qLower) !== -1) score += 40;
+        else if (a.indexOf(qLower) !== -1) score += 20;
+        if (score > 0) {
+          hits.push({
+            type: 'kb',
+            badge: '知识库',
+            title: e.title,
+            snippet: highlight(e.answer, q),
+            askText: e.title,
+            score: score
+          });
+        }
+      });
+
+      // 2. 非遗科普卡片
+      var cards = Heritage.list();
+      cards.forEach(function (c) {
+        var n = (c.name || '').toLowerCase();
+        var tag = (c.tag || '').toLowerCase();
+        var d = (c.detail || '').replace(/<[^>]+>/g, '').toLowerCase();
+        var score = 0;
+        if (n === qLower) score += 95;
+        else if (n.indexOf(qLower) !== -1) score += 55;
+        else if (tag.indexOf(qLower) !== -1) score += 35;
+        else if (d.indexOf(qLower) !== -1) score += 18;
+        if (score > 0) {
+          hits.push({
+            type: 'card',
+            badge: '科普卡片',
+            title: c.name,
+            snippet: highlight(c.detail.replace(/<[^>]+>/g, ''), q),
+            card: c,
+            askText: c.ask || ('介绍一下' + c.name),
+            score: score
+          });
+        }
+      });
+
+      // 3. 文化典藏展品
+      if (window.Diancang && window.Diancang.search) {
+        var dcHits = window.Diancang.search(q);
+        dcHits.slice(0, 6).forEach(function (h) {
+          hits.push({
+            type: 'dc',
+            badge: '文化典藏',
+            title: h.item.name,
+            snippet: h.sentence ? highlight(h.sentence, q) : highlight(h.item.desc, q),
+            item: h.item,
+            askText: h.item.name + '是什么？',
+            score: (h.score || 30) - 5
+          });
+        });
+      }
+
+      hits.sort(function (a, b) { return b.score - a.score; });
+      return hits.slice(0, 8);
+    }
+
+    function renderResults(hits, q) {
+      if (!hits.length) {
+        resultsEl.innerHTML = '<div class="chat-search-empty">未找到与「' + esc(q) + '」相关的馆藏条目，可直接提问阿蓝</div>';
+        resultsEl.hidden = false;
+        return;
+      }
+      resultsEl.innerHTML = hits.map(function (h, i) {
+        return '<div class="chat-search-item" data-idx="' + i + '">' +
+          '<div class="chat-search-item-header">' +
+          '  <span class="chat-search-item-title">' + esc(h.title) + '</span>' +
+          '  <span class="chat-search-item-badge">' + esc(h.badge) + '</span>' +
+          '</div>' +
+          '<div class="chat-search-item-snippet">' + h.snippet + '</div>' +
+          '<div class="chat-search-item-actions">' +
+          '  <button type="button" class="chat-search-ask-btn" data-ask="' + esc(h.askText) + '">💬 问阿蓝</button>' +
+          '</div>' +
+          '</div>';
+      }).join('');
+      resultsEl.hidden = false;
+
+      resultsEl.querySelectorAll('.chat-search-ask-btn').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var qText = btn.getAttribute('data-ask');
+          hide();
+          inputEl.value = '';
+          clearBtn.hidden = true;
+          if (window.App && window.App.ask) {
+            window.App.ask(qText);
+          }
+        });
+      });
+
+      resultsEl.querySelectorAll('.chat-search-item').forEach(function (itemEl) {
+        itemEl.addEventListener('click', function () {
+          var idx = parseInt(itemEl.getAttribute('data-idx'), 10);
+          var h = hits[idx];
+          if (!h) return;
+          hide();
+          if (h.type === 'card' && h.card) {
+            DetailModal.open(h.card);
+          } else if (h.type === 'dc' && h.item && window.Diancang) {
+            if (window.App && window.App.switchPanel) window.App.switchPanel('panelDiancang');
+            if (window.Diancang.searchFrom) {
+              var qInput = document.getElementById('dcQuery');
+              if (qInput) qInput.value = h.item.name;
+              window.Diancang.searchFrom();
+            }
+          } else {
+            if (window.App && window.App.ask) {
+              window.App.ask(h.askText);
+            }
+          }
+        });
+      });
+    }
+
+    function hide() {
+      if (resultsEl) resultsEl.hidden = true;
+    }
+
+    function init() {
+      wrapEl = document.getElementById('chatSearchWrap');
+      inputEl = document.getElementById('chatSearchInput');
+      clearBtn = document.getElementById('chatSearchClear');
+      resultsEl = document.getElementById('chatSearchResults');
+      if (!inputEl || !resultsEl) return;
+
+      inputEl.addEventListener('input', function () {
+        var q = inputEl.value.trim();
+        clearBtn.hidden = !q;
+        if (!q) {
+          hide();
+          return;
+        }
+        var hits = search(q);
+        renderResults(hits, q);
+      });
+
+      inputEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          hide();
+        } else if (e.key === 'Enter') {
+          var q = inputEl.value.trim();
+          if (q) {
+            hide();
+            if (window.App && window.App.ask) {
+              window.App.ask(q);
+            }
+          }
+        }
+      });
+
+      clearBtn.addEventListener('click', function () {
+        inputEl.value = '';
+        clearBtn.hidden = true;
+        hide();
+        inputEl.focus();
+      });
+
+      document.addEventListener('click', function (e) {
+        if (wrapEl && !wrapEl.contains(e.target)) {
+          hide();
+        }
+      });
+    }
+
+    return { init: init, hide: hide };
   })();
 
   /* ---------- 导出 ---------- */
@@ -832,6 +1104,7 @@
   window.UI = {
     init: function () {
       Chat.init();
+      ChatSearch.init();
       Avatar.init();
       Voice.init();
       AccessPanel.init();
@@ -841,6 +1114,7 @@
       });
     },
     Chat: Chat,
+    ChatSearch: ChatSearch,
     Avatar: Avatar,
     Voice: Voice,
     Heritage: Heritage,
