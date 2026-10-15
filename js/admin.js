@@ -1004,10 +1004,81 @@
     });
   }
 
+  function compressAndReadImage(file, callback, onError) {
+    if (!file || !file.type || file.type.indexOf('image/') !== 0) {
+      if (typeof onError === 'function') onError('请选择有效的图片文件（JPG、PNG、WebP 等）');
+      return;
+    }
+    var reader = new FileReader();
+    reader.onerror = function () {
+      if (typeof onError === 'function') onError('读取本地图片失败，请重试');
+    };
+    reader.onload = function (e) {
+      var rawDataUrl = e.target.result;
+      var img = new Image();
+      img.onerror = function () {
+        if (typeof onError === 'function') onError('图片解码失败，请确认文件完整有效');
+      };
+      img.onload = function () {
+        try {
+          var maxDim = 1200;
+          var w = img.width;
+          var h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          var canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          var ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+
+          var quality = 0.82;
+          var compressed = canvas.toDataURL('image/jpeg', quality);
+
+          if (compressed.length > 250000) {
+            compressed = canvas.toDataURL('image/jpeg', 0.68);
+          }
+
+          var sizeKb = Math.round(compressed.length * 0.75 / 1024);
+          var origKb = Math.round(file.size / 1024);
+          callback({
+            dataUrl: compressed,
+            fileName: file.name,
+            origSizeKb: origKb,
+            sizeKb: sizeKb
+          });
+        } catch (_) {
+          callback({
+            dataUrl: rawDataUrl,
+            fileName: file.name,
+            origSizeKb: Math.round(file.size / 1024),
+            sizeKb: Math.round(rawDataUrl.length * 0.75 / 1024)
+          });
+        }
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  }
+
   function showKepuForm(card) {
-    var form = $('#kepuForm');
+    var form = $('#kpForm');
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    var initialImg = card ? (card.imageUrl || card.image || '') : '';
+    var initialVid = card ? (card.videoUrl || card.video || '') : '';
 
     form.innerHTML =
       '<div class="admin-form-box">' +
@@ -1034,17 +1105,36 @@
       '      <input type="color" id="kpBg" class="admin-input" value="' + (card && card.bg ? card.bg : '#E4EFEA') + '" style="height:38px;padding:2px">' +
       '    </div>' +
       '  </div>' +
-      '  <div class="admin-form-row">' +
-      '    <div style="flex:1">' +
-      '      <label class="admin-label">配图路径或图片链接 (可选)</label>' +
-      '      <input type="text" id="kpImage" class="admin-input" value="' + esc(card ? (card.imageUrl || card.image || '') : '') + '" placeholder="例如：assets/model-references/landye-237.jpg 或 https://...">' +
+      '  <label class="admin-label">卡片配图 (可直接选择本地图片/拍照上传，或输入链接)</label>' +
+      '  <div class="admin-upload-zone" id="kpUploadZone">' +
+      '    <input type="file" id="kpImageFile" accept="image/*" style="display:none">' +
+      '    <div class="admin-upload-preview-wrap" id="kpPreviewWrap" style="' + (initialImg ? 'display:flex' : 'display:none') + '">' +
+      '      <img id="kpImgThumb" class="admin-upload-thumb" src="' + esc(initialImg) + '" alt="配图预览" onerror="this.style.display=\'none\'">' +
+      '      <div class="admin-upload-info">' +
+      '        <div id="kpImgInfoText" class="admin-upload-name">' + esc(initialImg ? (initialImg.indexOf('data:') === 0 ? '已嵌入本地优化图片' : initialImg) : '已选图片') + '</div>' +
+      '        <div class="admin-upload-btns">' +
+      '          <button type="button" class="admin-btn-sm" id="kpRechooseBtn">📷 更换图片</button>' +
+      '          <button type="button" class="admin-btn-sm admin-btn-del" id="kpRemoveImgBtn">🗑️ 移除</button>' +
+      '        </div>' +
+      '      </div>' +
       '    </div>' +
-      '    <div style="flex:1">' +
-      '      <label class="admin-label">讲解视频链接或本地MP4路径 (可选)</label>' +
-      '      <input type="text" id="kpVideo" class="admin-input" value="' + esc(card ? (card.videoUrl || card.video || '') : '') + '" placeholder="例如：月光光童谣.mp4 或 https://...">' +
+      '    <div id="kpUploadPrompt" class="admin-upload-prompt" style="' + (initialImg ? 'display:none' : 'display:block') + '">' +
+      '      <button type="button" class="admin-btn admin-btn-primary" id="kpChooseBtn" style="padding:7px 16px;font-size:12px">' +
+      '        📷 点击选择本地图片 / 拍照上传' +
+      '      </button>' +
+      '      <div class="admin-upload-hint">支持手机拍照/相册或电脑本地图片（支持拖拽或粘贴，自动智能压缩保真并秒级多端同步）</div>' +
+      '    </div>' +
+      '    <div class="admin-manual-toggle">' +
+      '      <a href="javascript:void(0)" id="kpToggleManual" class="admin-manual-link">🔗 手动输入图片链接或本地相对路径</a>' +
+      '      <div id="kpManualWrap" style="display:none;margin-top:6px">' +
+      '        <input type="text" id="kpImage" class="admin-input" value="' + esc(initialImg) + '" placeholder="例如：assets/model-references/landye-237.jpg 或 https://...">' +
+      '      </div>' +
       '    </div>' +
       '  </div>' +
-      '  <label class="admin-label">科普详情正文 (支持HTML段落)</label>' +
+      '  <label class="admin-label">讲解视频链接或本地MP4路径 (可选)</label>' +
+      '  <input type="text" id="kpVideo" class="admin-input" value="' + esc(initialVid) + '" placeholder="例如：月光光童谣.mp4 或 https://...">' +
+      '  <div class="admin-hint">支持本地视频文件名（如：月光光童谣.mp4）或在线视频讲解播放链接</div>' +
+      '  <label class="admin-label" style="margin-top:8px">科普详情正文 (支持HTML段落)</label>' +
       '  <textarea id="kpDetail" class="admin-textarea" rows="5" placeholder="<p>科普介绍段落…</p>">' + esc(card ? card.detail : '') + '</textarea>' +
       '  <label class="admin-label">点击向阿蓝提问的默认问题</label>' +
       '  <input type="text" id="kpAsk" class="admin-input" value="' + esc(card ? card.ask : '') + '" placeholder="例如：龙南大漆有什么特色？">' +
@@ -1053,6 +1143,82 @@
       '    <button class="admin-btn" id="kpCancelBtn">取 消</button>' +
       '  </div>' +
       '</div>';
+
+    var fileInput = $('#kpImageFile');
+    var imageInput = $('#kpImage');
+    var previewWrap = $('#kpPreviewWrap');
+    var promptBox = $('#kpUploadPrompt');
+    var imgThumb = $('#kpImgThumb');
+    var infoText = $('#kpImgInfoText');
+    var zone = $('#kpUploadZone');
+
+    function applyImageData(dataUrl, label) {
+      imageInput.value = dataUrl;
+      imgThumb.src = dataUrl;
+      imgThumb.style.display = 'block';
+      infoText.textContent = label || '已选图片';
+      previewWrap.style.display = 'flex';
+      promptBox.style.display = 'none';
+    }
+
+    function handleFile(file) {
+      if (!file) return;
+      compressAndReadImage(file, function (res) {
+        applyImageData(res.dataUrl, res.fileName + ' (' + res.sizeKb + ' KB)');
+        toast('✅ 图片已读取并优化 (' + res.sizeKb + ' KB)，保存后即可跨端同步');
+      }, function (err) {
+        alert(err);
+      });
+    }
+
+    $('#kpChooseBtn').addEventListener('click', function () { fileInput.click(); });
+    $('#kpRechooseBtn').addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files && fileInput.files[0]) {
+        handleFile(fileInput.files[0]);
+      }
+    });
+
+    $('#kpRemoveImgBtn').addEventListener('click', function () {
+      imageInput.value = '';
+      fileInput.value = '';
+      imgThumb.src = '';
+      previewWrap.style.display = 'none';
+      promptBox.style.display = 'block';
+    });
+
+    $('#kpToggleManual').addEventListener('click', function () {
+      var wrap = $('#kpManualWrap');
+      wrap.style.display = (wrap.style.display === 'none') ? 'block' : 'none';
+    });
+
+    imageInput.addEventListener('input', function () {
+      var val = imageInput.value.trim();
+      if (val) {
+        applyImageData(val, val);
+      } else {
+        previewWrap.style.display = 'none';
+        promptBox.style.display = 'block';
+      }
+    });
+
+    if (zone) {
+      zone.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        zone.classList.add('dragover');
+      });
+      zone.addEventListener('dragleave', function (e) {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+      });
+      zone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+    }
 
     $('#kpSaveBtn').addEventListener('click', function () {
       var name = $('#kpName').value.trim();

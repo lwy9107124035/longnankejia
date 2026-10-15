@@ -1408,8 +1408,78 @@ input { font-family: inherit; }
   background: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B;
   padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
   text-align: center; margin: 8px 0;
+/* ---------- Admin Image Upload Component ---------- */
+.admin-upload-zone {
+  border: 1.5px dashed rgba(47,93,80,0.3);
+  background: var(--paper);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+  transition: all 0.2s;
 }
-
+.admin-upload-zone.dragover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.admin-upload-prompt {
+  text-align: center;
+  padding: 8px 4px;
+}
+.admin-upload-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.admin-upload-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+.admin-upload-thumb {
+  width: 80px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: #fff;
+  flex-shrink: 0;
+}
+.admin-upload-info {
+  flex: 1;
+  min-width: 0;
+}
+.admin-upload-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 6px;
+}
+.admin-upload-btns {
+  display: flex;
+  gap: 6px;
+}
+.admin-manual-toggle {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(47,93,80,0.15);
+  font-size: 11px;
+}
+.admin-manual-link {
+  color: var(--primary-deep);
+  text-decoration: none;
+  font-weight: 500;
+  display: inline-block;
+  cursor: pointer;
+}
+.admin-manual-link:hover {
+  text-decoration: underline;
+}
 
 /* ---------- Desktop ---------- */
 @media (min-width: 600px) {
