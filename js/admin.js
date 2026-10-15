@@ -911,6 +911,16 @@
         ? '<span class="admin-badge admin-badge-custom">自定义</span>' + (c.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(c.creatorName) + '</span>' : '')
         : '<span class="admin-badge admin-badge-default">内置</span>';
 
+      var catMap = {
+        craft: '🧶 传统技艺',
+        arch: '🏯 建筑聚落',
+        folk: '🏮 民俗曲艺',
+        food: '🍲 客家美食'
+      };
+      var catBadge = c.category && catMap[c.category]
+        ? '<span style="font-size:10px;margin-left:4px;padding:1px 5px;background:#F0F4F8;color:#4A5568;border-radius:3px">' + catMap[c.category] + '</span>'
+        : '';
+
       var mediaBadges = '';
       if (c.imageUrl || c.image) mediaBadges += '<span style="font-size:10px;margin-left:4px;padding:1px 5px;background:#E8F0FE;color:#1A73E8;border-radius:3px">🖼️ 配图</span>';
       if (c.videoUrl || c.video) mediaBadges += '<span style="font-size:10px;margin-left:4px;padding:1px 5px;background:#FEF3E8;color:#E37400;border-radius:3px">🎬 视频</span>';
@@ -926,7 +936,7 @@
       return '<div class="admin-kepu-card" style="border-left: 4px solid ' + (c.accent || '#2F5D50') + '">' +
         '<div class="admin-kepu-head">' +
         '  <span class="admin-kepu-icon">' + (c.icon || '🏮') + '</span>' +
-        '  <span class="admin-kepu-name">' + esc(c.name) + '</span>' + badge + mediaBadges +
+        '  <span class="admin-kepu-name">' + esc(c.name) + '</span>' + badge + catBadge + mediaBadges +
         '</div>' +
         '<div class="admin-kepu-tag">' + esc(c.tag || '') + '</div>' +
         '<div class="admin-kb-fulltext" id="preview-box-' + esc(c.id) + '">' +
@@ -970,6 +980,7 @@
           editingKepuId = null;
           showKepuForm({
             name: card.name + ' (复制模板)',
+            category: card.category || 'craft',
             icon: card.icon,
             tag: card.tag,
             accent: card.accent,
@@ -1079,6 +1090,7 @@
 
     var initialImg = card ? (card.imageUrl || card.image || '') : '';
     var initialVid = card ? (card.videoUrl || card.video || '') : '';
+    var initialCat = (card && card.category) ? card.category : 'craft';
 
     form.innerHTML =
       '<div class="admin-form-box">' +
@@ -1088,7 +1100,16 @@
       '      <label class="admin-label">卡片名称 *</label>' +
       '      <input type="text" id="kpName" class="admin-input" value="' + esc(card ? card.name : '') + '" placeholder="例如：龙南大漆">' +
       '    </div>' +
-      '    <div style="width:100px">' +
+      '    <div style="width:130px">' +
+      '      <label class="admin-label">所属板块 *</label>' +
+      '      <select id="kpCategory" class="admin-select" style="height:38px;padding:4px 8px">' +
+      '        <option value="craft"' + (initialCat === 'craft' ? ' selected' : '') + '>🧶 传统技艺</option>' +
+      '        <option value="arch"' + (initialCat === 'arch' ? ' selected' : '') + '>🏯 建筑聚落</option>' +
+      '        <option value="folk"' + (initialCat === 'folk' ? ' selected' : '') + '>🏮 民俗曲艺</option>' +
+      '        <option value="food"' + (initialCat === 'food' ? ' selected' : '') + '>🍲 客家美食</option>' +
+      '      </select>' +
+      '    </div>' +
+      '    <div style="width:80px">' +
       '      <label class="admin-label">图标Emoji</label>' +
       '      <input type="text" id="kpIcon" class="admin-input" value="' + esc(card ? card.icon : '🏮') + '" placeholder="🏺">' +
       '    </div>' +
@@ -1222,6 +1243,7 @@
 
     $('#kpSaveBtn').addEventListener('click', function () {
       var name = $('#kpName').value.trim();
+      var category = $('#kpCategory') ? $('#kpCategory').value : 'craft';
       var icon = $('#kpIcon').value.trim() || '🏮';
       var tag = $('#kpTag').value.trim() || '客家非遗';
       var accent = $('#kpAccent').value;
@@ -1232,7 +1254,7 @@
       var ask = $('#kpAsk').value.trim() || ('介绍一下' + name);
       if (!name) { alert('卡片名称不能为空'); return; }
 
-      var data = { name: name, icon: icon, tag: tag, accent: accent, bg: bg, detail: detail, ask: ask, imageUrl: imageUrl, videoUrl: videoUrl };
+      var data = { name: name, category: category, icon: icon, tag: tag, accent: accent, bg: bg, detail: detail, ask: ask, imageUrl: imageUrl, videoUrl: videoUrl };
       if (editingKepuId) {
         window.Store.updateHeritageCard(editingKepuId, data);
       } else {
