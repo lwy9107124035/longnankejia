@@ -1084,7 +1084,8 @@
   }
 
   function showKepuForm(card) {
-    var form = $('#kpForm');
+    var form = $('#kepuForm') || $('#kpForm');
+    if (!form) return;
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 

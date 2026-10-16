@@ -1230,8 +1230,25 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   check('测试条目能被问答引擎命中', await page.evaluate(
     `window.Store.getEntries().some(e => e.title === '自动化测试条目')`));
 
+  // 验证科普管理面板：点击「新增科普卡片」正常唤起表单并保存
+  await page.evaluate(`document.getElementById('adminEntry').click()`);
+  await until(page, `!document.getElementById('adminMask').hidden`);
+  await page.evaluate(`document.querySelector('.admin-tab[data-tab="kepu"]').click()`);
+  check('切换至科普管理面板', await until(page, `!!document.getElementById('kepuAddBtn')`));
+  const kepuBefore = await page.evaluate(`window.Store.getHeritageCards().length`);
+  await page.evaluate(`document.getElementById('kepuAddBtn').click()`);
+  check('点击新增科普卡片唤起表单', await until(page, `document.getElementById('kepuForm').style.display !== 'none' && !!document.getElementById('kpName')`));
+  await page.evaluate(`(() => {
+    const set = (id, v) => { const e = document.getElementById(id); if (e) { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); } };
+    set('kpName', '测试客家竹艺'); set('kpTag', '传统技艺 · 测试');
+    set('kpDetail', '这是自动化测试新增的科普介绍。');
+  })()`);
+  await page.evaluate(`document.getElementById('kpSaveBtn').click()`);
+  check('新增科普卡片写入持久化', await until(page, `window.Store.getHeritageCards().length === ${kepuBefore + 1}`));
+  await page.evaluate(`document.getElementById('adminMask').click()`);
+
   console.log('\n9. 布局');
-  await page.evaluate(`localStorage.removeItem('nfyj_kb_custom')`);
+  await page.evaluate(`localStorage.removeItem('nfyj_kb_custom'); localStorage.removeItem('nfyj_kepu_custom');`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });
   await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`);
   const fits = await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth + 1`);
