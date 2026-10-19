@@ -512,7 +512,7 @@ test('电脑端新增自定义内容（知识库、科普、方言），手机�
   assert.equal(phoneTracks[0].name, '关西新围客家童谣原声');
 });
 
-test('手机端输入法兼容、孤儿哈希自动清除与一键重置自愈', async () => {
+test('移动端扫固定二维码访问：输入法字符兼容、孤儿哈希自动清除与出厂默认密码秒过', async () => {
   const env = setupEnvironment();
   const { window, localStorageMap } = env;
 
