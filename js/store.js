@@ -173,6 +173,27 @@
     return c1 + c2 + c3;
   }
 
+  /* ---------- 跨平台多端字符规范化清洗（过滤全角、零宽、移动端智能破折号、引号与首尾杂质） ---------- */
+  function normalizeAuthInput(raw) {
+    if (!raw && raw !== 0) return '';
+    var s = String(raw);
+    s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
+    var half = '';
+    for (var i = 0; i < s.length; i++) {
+      var code = s.charCodeAt(i);
+      if (code === 0x3000) {
+        half += ' ';
+      } else if (code >= 0xFF01 && code <= 0xFF5E) {
+        half += String.fromCharCode(code - 0xFEE0);
+      } else {
+        half += s.charAt(i);
+      }
+    }
+    half = half.replace(/[\u2010-\u2015\u2212\uFF0D]/g, '-');
+    half = half.trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
+    return half;
+  }
+
   function generateCompactShortToken() {
     var chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
     var prefix = '';
@@ -185,7 +206,7 @@
 
   function isCompactShortToken(tokenStr) {
     if (!tokenStr || typeof tokenStr !== 'string') return false;
-    var raw = tokenStr.trim().toUpperCase().replace(/[\s_\-]+/g, '');
+    var raw = normalizeAuthInput(tokenStr).toUpperCase().replace(/[\s_\-]+/g, '');
     if (raw.indexOf('NFYJINV') === 0) raw = raw.slice(7);
     else if (raw.indexOf('NFINV') === 0) raw = raw.slice(5);
     else if (raw.indexOf('INV') === 0) raw = raw.slice(3);
@@ -200,7 +221,7 @@
 
   function parseSignedToken(tokenStr) {
     if (!tokenStr || typeof tokenStr !== 'string') return { ok: false };
-    var raw = tokenStr.trim();
+    var raw = normalizeAuthInput(tokenStr);
     if (raw.indexOf('NFYJ-INV-') !== 0) return { ok: false };
     var body = raw.slice(9);
     var parts = body.split('.');
@@ -575,6 +596,13 @@
         }
         if (data.pwHash) {
           try { localStorage.setItem(LS.pw_hash, data.pwHash); } catch (_) {}
+        } else if (data.hasOwnProperty('pwHash') && data.pwHash === null) {
+          try {
+            var localCustom = localStorage.getItem(LS.pw);
+            if (!localCustom) {
+              localStorage.removeItem(LS.pw_hash);
+            }
+          } catch (_) {}
         }
         if (data.tokens && Array.isArray(data.tokens) && data.tokens.length > 0) {
           var cleanTokens = data.tokens.filter(function (t) {
@@ -894,6 +922,20 @@
       localStorage.setItem(LS.pw_hash, hash);
       syncPasswordToCloud(hash);
     } catch (e) {}
+  }
+
+  function resetAdminAuth() {
+    try {
+      localStorage.removeItem(LS.pw);
+      localStorage.removeItem(LS.pw_hash);
+      localStorage.removeItem('nfyj_login_lock_state');
+      localStorage.removeItem('nfyj_client_unlocked');
+      sessionStorage.removeItem('nfyj_client_unlocked');
+      localStorage.removeItem('nfyj_last_consumed_unlock');
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   function getInviteTokens() {
@@ -1294,7 +1336,7 @@
   }
 
   function verifyLogin(inputStr) {
-    var str = String(inputStr || '').trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
+    var str = normalizeAuthInput(inputStr);
     if (!str) {
       return { ok: false, error: '请输入密码或邀请令牌' };
     }
@@ -1307,6 +1349,8 @@
     } catch (_) {}
 
     var sLower = str.toLowerCase();
+    var defaultPw = (window.APP_CONFIG && window.APP_CONFIG.admin && window.APP_CONFIG.admin.password) || 'admin123';
+    var isDefaultMatch = (str === defaultPw) || (sLower === String(defaultPw).toLowerCase());
     var isSuper = false;
 
     if (customPw) {
@@ -1322,8 +1366,7 @@
       }
     } else {
       // 未设置自定义密码时，支持系统默认密码
-      var defaultPw = (window.APP_CONFIG && window.APP_CONFIG.admin && window.APP_CONFIG.admin.password) || 'admin123';
-      isSuper = (str === defaultPw) || (sLower === String(defaultPw).toLowerCase());
+      isSuper = isDefaultMatch;
     }
 
     if (isSuper) {
@@ -1347,9 +1390,11 @@
 
     for (var i = 0; i < tokens.length; i++) {
       var item = tokens[i];
-      var itemTokClean = String(item.token || '').toUpperCase().replace(/[\s_\-]+/g, '');
+      var itemTokNorm = normalizeAuthInput(item.token || '');
+      var itemTokClean = itemTokNorm.toUpperCase().replace(/[\s_\-]+/g, '');
 
       var matchToken = (item.token === str) ||
+                       (itemTokNorm === str) ||
                        (item.token && item.token.toLowerCase() === sLower) ||
                        (itemTokClean && cleanStr && itemTokClean === cleanStr);
 
@@ -1773,6 +1818,8 @@
   /* ---------- 导出接口 ---------- */
   window.Store = {
     // 权限与邀请令牌
+    normalizeAuthInput: normalizeAuthInput,
+    resetAdminAuth: resetAdminAuth,
     getAdminPassword: getAdminPassword,
     setAdminPassword: setAdminPassword,
     getInviteTokens: getInviteTokens,

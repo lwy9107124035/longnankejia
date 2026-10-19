@@ -512,4 +512,53 @@ test('电脑端新增自定义内容（知识库、科普、方言），手机�
   assert.equal(phoneTracks[0].name, '关西新围客家童谣原声');
 });
 
+test('手机端输入法兼容、孤儿哈希自动清除与一键重置自愈', async () => {
+  const env = setupEnvironment();
+  const { window, localStorageMap } = env;
+
+  // 1. 移动端全角字符转半角：输入全角 ａｄｍｉｎ１２３ 必须成功鉴权通过
+  const fullWidthAuth = window.Store.verifyLogin('ａｄｍｉｎ１２３');
+  assert.equal(fullWidthAuth.ok, true, '全角字母与数字输入必须自动规范化并通过');
+  assert.equal(fullWidthAuth.role, 'super_admin');
+
+  // 2. 移动端带零宽字符与首尾全角空格：\u200Badmin123\u3000
+  const zeroWidthAuth = window.Store.verifyLogin('\u200Badmin123\u3000');
+  assert.equal(zeroWidthAuth.ok, true, '带有零宽字符或全角空格的输入必须正常通过');
+
+  // 3. 邀请令牌中包含 iOS 智能标点转换的连接号（– 或 —）
+  const tokenObj = window.Store.generateInviteToken('移动端测试员', 7);
+  const iosTokenStr = tokenObj.token.replace(/-/g, '–'); // 模拟 iOS 自动转换为 en-dash
+  const tokenAuth = window.Store.verifyLogin(iosTokenStr);
+  assert.equal(tokenAuth.ok, true, 'iOS 智能标点破折号必须自动识别并验证通过');
+
+  // 4. 模拟手机端此前存在失效的孤儿 pw_hash 与输错锁定状态
+  localStorageMap.set('nfyj_admin_pw_hash', 'h_invalid_orphan_hash_999');
+  localStorageMap.set('nfyj_login_lock_state', JSON.stringify({ count: 5, until: Date.now() + 60000 }));
+
+  // 执行一键重置自愈
+  const resetSuccess = window.Store.resetAdminAuth();
+  assert.equal(resetSuccess, true);
+  assert.equal(localStorageMap.get('nfyj_admin_pw_hash'), undefined);
+  assert.equal(localStorageMap.get('nfyj_login_lock_state'), undefined);
+
+  // 重置后使用默认密码登录直接成功
+  const postResetAuth = window.Store.verifyLogin('admin123');
+  assert.equal(postResetAuth.ok, true);
+  assert.equal(postResetAuth.role, 'super_admin');
+
+  // 5. 模拟手机端云端同步时，若云端返回 pwHash: null 且本地无明文自定义密码，自动清除本地孤儿哈希
+  localStorageMap.set('nfyj_admin_pw_hash', 'h_old_cached_hash_123');
+  env.sandbox.fetch = async () => ({
+    ok: true,
+    json: async () => ({ ok: true, pwHash: null, tokens: [], lockouts: [], customUpdatedAt: 0 })
+  });
+  await new Promise(resolve => {
+    window.Store.syncWithCloud(resolve);
+  });
+  assert.equal(localStorageMap.get('nfyj_admin_pw_hash'), undefined, '云端为 null 时本地孤儿哈希必须被清除');
+  const normalLogin = window.Store.verifyLogin('admin123');
+  assert.equal(normalLogin.ok, true, '清除孤儿哈希后输入默认密码必须秒过');
+});
+
+
 

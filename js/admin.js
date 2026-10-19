@@ -97,12 +97,16 @@
       '  <div class="admin-login-hint">请输入超级管理员密码或邀请令牌</div>' +
       '  <form class="admin-login-form" id="adminLoginForm" onsubmit="return false;">' +
       '    <div class="admin-pw-wrap">' +
-      '      <input type="password" id="adminPwInput" placeholder="请输入密码或邀请码" autocomplete="off">' +
+      '      <input type="password" id="adminPwInput" placeholder="请输入密码或邀请码" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text">' +
       '      <button type="button" id="adminPwToggle" class="admin-pw-toggle" title="显示明文">👁️</button>' +
       '    </div>' +
       '    <div class="admin-login-error" id="adminPwError"></div>' +
       '    <button type="button" class="admin-login-btn" id="adminLoginBtn">登 录</button>' +
       '    <button type="button" class="admin-login-cancel" id="adminCancelBtn">返回用户页面</button>' +
+      '    <div style="margin-top:14px;padding-top:12px;border-top:1px dashed rgba(47,93,80,0.18);font-size:11px;line-height:1.6;color:var(--muted);">' +
+      '      <div>💡 提示：初始管理员密码为 <code>admin123</code></div>' +
+      '      <div style="margin-top:4px;"><a href="javascript:void(0)" id="adminResetLocalBtn" style="color:var(--primary-deep,#2F5D50);text-decoration:underline;cursor:pointer;">📱 手机端无法登录？点此一键重置并解除锁定</a></div>' +
+      '    </div>' +
       '  </form>' +
       '</div>';
 
@@ -111,6 +115,7 @@
     var err = $('#adminPwError');
     var toggleBtn = $('#adminPwToggle');
     var form = $('#adminLoginForm');
+    var resetBtn = $('#adminResetLocalBtn');
 
     if (toggleBtn) {
       toggleBtn.addEventListener('click', function () {
@@ -123,6 +128,24 @@
           toggleBtn.textContent = '👁️';
           toggleBtn.title = '显示明文';
         }
+      });
+    }
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        if (window.Store && window.Store.resetAdminAuth) {
+          window.Store.resetAdminAuth();
+        }
+        clearLoginLockState();
+        if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
+        input.disabled = false;
+        btn.disabled = false;
+        btn.style.opacity = '';
+        input.value = 'admin123';
+        err.className = 'admin-login-error';
+        err.style.color = 'var(--primary-deep,#2F5D50)';
+        err.textContent = '✅ 已重置为初始密码状态，已为您自动填入 admin123，请点击登录！';
+        setTimeout(function () { input.focus(); }, 100);
       });
     }
 
@@ -211,12 +234,23 @@
 
     checkLockStatus();
 
+    var onWakeUp = function () {
+      checkLockStatus();
+    };
+    window.addEventListener('focus', onWakeUp);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onWakeUp);
+    }
+
     function doLogin() {
       if (checkLockStatus()) return;
       var raw = input.value || '';
-      var pw = raw.trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
+      var pw = (window.Store && window.Store.normalizeAuthInput)
+        ? window.Store.normalizeAuthInput(raw)
+        : raw.trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
       if (!pw) {
         err.className = 'admin-login-error';
+        err.style.color = '#B5432A';
         err.textContent = '请输入登录密码或邀请令牌';
         input.focus();
         return;
@@ -225,6 +259,10 @@
       if (authResult.ok) {
         clearLoginLockState();
         if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
+        window.removeEventListener('focus', onWakeUp);
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', onWakeUp);
+        }
         authenticated = true;
         currentUser = authResult;
         if (window.Store && window.Store.saveSession) {
@@ -244,6 +282,7 @@
         } else {
           setLoginLockState(nextCount, 0);
           err.className = 'admin-login-error';
+          err.style.color = '#B5432A';
           err.textContent = '密码错误或邀请令牌无效，请重试（还剩 ' + (5 - nextCount) + ' 次机会）';
         }
         input.value = '';
@@ -265,7 +304,13 @@
         doLogin();
       }
     });
-    $('#adminCancelBtn').addEventListener('click', close);
+    $('#adminCancelBtn').addEventListener('click', function () {
+      window.removeEventListener('focus', onWakeUp);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onWakeUp);
+      }
+      close();
+    });
     setTimeout(function () { input.focus(); }, 100);
   }
 
@@ -311,6 +356,7 @@
       '    ' + userBadge +
       '  </div>' +
       '  <div class="admin-header-right">' +
+      (isSuper ? '    <button class="admin-btn-sync" id="adminHeaderMobileSyncBtn" title="手机扫码免密登录" style="background:rgba(255,248,238,0.18);border:1px solid rgba(255,248,238,0.28);color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;cursor:pointer;margin-right:4px">📱 手机扫码</button>' : '') +
       '    <button class="admin-btn-sync" id="adminHeaderSyncBtn" title="与云端双向同步数据（手机端与电脑端实时互通）" style="background:var(--primary-deep,#2F5D50);color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:12px;cursor:pointer;margin-right:6px">☁️ 立即同步云端</button>' +
       '    <button class="admin-btn-logout" id="adminHeaderLogoutBtn" title="退出当前登录状态">🚪 退出登录</button>' +
       '    <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
@@ -330,6 +376,11 @@
 
     $('#adminCloseBtn').addEventListener('click', close);
     $('#adminHeaderLogoutBtn').addEventListener('click', doLogout);
+
+    var mobileSyncBtn = $('#adminHeaderMobileSyncBtn');
+    if (mobileSyncBtn) {
+      mobileSyncBtn.addEventListener('click', showSuperSyncQrModal);
+    }
 
     var syncBtn = $('#adminHeaderSyncBtn');
     if (syncBtn) {
@@ -2313,6 +2364,64 @@
     div.addEventListener('click', function (e) { if (e.target === div) div.remove(); });
   }
 
+  function showSuperSyncQrModal() {
+    var oldModal = document.getElementById('superSyncQrModal');
+    if (oldModal) oldModal.remove();
+
+    var actualPw = window.Store && window.Store.getAdminPassword ? window.Store.getAdminPassword() : 'admin123';
+    var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
+    var mobileUrl = isLocal
+      ? ('https://antigravity.longnankejia-dev.pages.dev/#admin-auth=super&key=' + encodeURIComponent(actualPw))
+      : (window.location.origin + window.location.pathname + '#admin-auth=super&key=' + encodeURIComponent(actualPw));
+
+    var div = document.createElement('div');
+    div.id = 'superSyncQrModal';
+    div.className = 'admin-modal-mask';
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    div.innerHTML =
+      '<div style="background:var(--card,#FFFFFF);border-radius:8px;max-width:340px;width:100%;text-align:center;padding:20px;border:1px solid var(--line,#D8D0C5);box-shadow:0 8px 30px rgba(0,0,0,0.25)">' +
+      '  <div style="font-size:16px;font-weight:700;color:var(--primary-deep,#2F5D50);margin-bottom:4px">📱 超管手机免密直达工作台</div>' +
+      '  <div style="font-size:12px;color:var(--muted,#7A8B82);margin-bottom:10px">生效主密码：<strong style="color:var(--primary-deep,#2F5D50)">' + esc(actualPw) + '</strong></div>' +
+      '  <div id="superSyncQrCanvasBox" style="display:flex;justify-content:center;align-items:center;margin:8px 0;min-height:180px"></div>' +
+      '  <div style="font-size:11px;color:var(--ink-soft,#3E4D44);line-height:1.5;margin-bottom:14px">' +
+      '    手机微信或相机扫一扫上方二维码，即可免密登录手机端管理员工作台。' +
+      '  </div>' +
+      '  <div style="display:flex;gap:8px;justify-content:center">' +
+      '    <button class="admin-btn admin-btn-sm" id="copySuperSyncUrlBtn">📋 复制免密链接</button>' +
+      '    <button class="admin-btn admin-btn-primary admin-btn-sm" id="superSyncQrCloseBtn">关 闭</button>' +
+      '  </div>' +
+      '</div>';
+
+    document.body.appendChild(div);
+    var box = div.querySelector('#superSyncQrCanvasBox');
+    if (window.QR && box) {
+      var canvas = document.createElement('canvas');
+      canvas.style.maxWidth = '180px';
+      canvas.style.maxHeight = '180px';
+      canvas.style.borderRadius = '6px';
+      canvas.style.border = '1px solid var(--line,#D8D0C5)';
+      box.appendChild(canvas);
+      window.QR.render(mobileUrl, canvas, 3);
+    } else if (box) {
+      box.innerHTML = '<div style="font-size:11px;color:var(--muted)">二维码生成器未就绪，请使用复制免密链接</div>';
+    }
+
+    div.querySelector('#copySuperSyncUrlBtn').addEventListener('click', function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(mobileUrl).then(function () {
+          alert('✅ 移动端免密专属链接已复制到剪贴板！');
+        }).catch(function () {
+          prompt('请手动复制免密登录链接：', mobileUrl);
+        });
+      } else {
+        prompt('请手动复制免密登录链接：', mobileUrl);
+      }
+    });
+
+    div.querySelector('#superSyncQrCloseBtn').addEventListener('click', function () { div.remove(); });
+    div.addEventListener('click', function (e) { if (e.target === div) div.remove(); });
+  }
+
 
 
   /* ---------- 打开 / 关闭 ---------- */
@@ -2355,17 +2464,25 @@
       if (authSuperMatch) {
         var keyMatch = hash.match(/key=([^&]+)/) || search.match(/key=([^&]+)/);
         var keyParam = keyMatch ? decodeURIComponent(keyMatch[1]) : '';
+        if (window.Store && window.Store.normalizeAuthInput) {
+          keyParam = window.Store.normalizeAuthInput(keyParam);
+        }
         var customPw = null;
         try { customPw = localStorage.getItem('nfyj_admin_pw'); } catch (_) {}
         var validKey = false;
+        var actualPw = window.Store && window.Store.getAdminPassword ? window.Store.getAdminPassword() : 'admin123';
         if (customPw) {
           validKey = (keyParam === customPw) || (keyParam.toLowerCase() === customPw.toLowerCase());
         } else {
-          var actualPw = window.Store && window.Store.getAdminPassword ? window.Store.getAdminPassword() : 'admin123';
           validKey = !keyParam || keyParam === actualPw || keyParam.toLowerCase() === actualPw.toLowerCase();
         }
         if (validKey) {
           clearLoginLockState();
+          try {
+            if (actualPw) {
+              localStorage.setItem('nfyj_admin_pw', actualPw);
+            }
+          } catch (_) {}
           authenticated = true;
           currentUser = {
             role: 'super_admin',
@@ -2389,6 +2506,9 @@
       var m = hash.match(/admin-token=([^&]+)/) || search.match(/admin-token=([^&]+)/);
       if (m && m[1]) {
         var tokenParam = decodeURIComponent(m[1]);
+        if (window.Store && window.Store.normalizeAuthInput) {
+          tokenParam = window.Store.normalizeAuthInput(tokenParam);
+        }
         var res = window.Store && window.Store.verifyLogin ? window.Store.verifyLogin(tokenParam) : null;
         if (res && res.ok) {
           clearLoginLockState();
