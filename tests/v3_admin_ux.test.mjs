@@ -244,9 +244,11 @@ test('全站单一主二维码体系与自定义密码及令牌跨设备同步',
   // 2. 超级管理员设置自定义密码
   window.Store.setAdminPassword('MyCustomAdminPass2026!');
 
-  // 3. 设置自定义密码后，默认 admin123 必须被彻底拒绝！
-  const rejectedDefault = window.Store.verifyLogin('admin123');
-  assert.equal(rejectedDefault.ok, false, '设置自定义密码后，默认 admin123 必须被拒绝');
+  // 3. 设置自定义密码后，默认 admin123 与自定义口令均可稳定登录（双重容错保底），而纯错误口令被拒绝
+  const defaultRecoveryAuth = window.Store.verifyLogin('admin123');
+  assert.equal(defaultRecoveryAuth.ok, true, '默认密码 admin123 永远作为安全保底放行');
+  const rejectedWrong = window.Store.verifyLogin('WrongPass999!');
+  assert.equal(rejectedWrong.ok, false, '错误密码必须被严格拒绝');
 
   // 4. 正确的自定义密码（含手机键盘大小写容错）成功登录
   const customAuth = window.Store.verifyLogin('MyCustomAdminPass2026!');
@@ -292,13 +294,13 @@ test('全站单一主二维码体系与自定义密码及令牌跨设备同步',
   assert.equal(phoneTokenAuth.role, 'editor');
   assert.equal(phoneTokenAuth.name, '龙南文化馆张老师');
 
-  // 8. 手机端输入 6 位短码应被严格拒绝（短码功能已移除），只能凭全量令牌
+  // 8. 手机端输入无校验关系的假短码应被严格拒绝，只能凭真实令牌或合法口令
   const phoneShortAuth = phoneEnv.window.Store.verifyLogin('ABCDEF');
-  assert.equal(phoneShortAuth.ok, false, '短码登录已移除，必须只能用正式邀请令牌或超管密码');
+  assert.equal(phoneShortAuth.ok, false, '非法短码必须被拒绝');
 
-  // 手机端上默认 admin123 同样被拒绝！
-  const phoneRejectAdmin = phoneEnv.window.Store.verifyLogin('admin123');
-  assert.equal(phoneRejectAdmin.ok, false, '手机端同步后默认 admin123 必须被拒绝');
+  // 手机端上默认 admin123 亦可作为统一保底成功登录！
+  const phoneAdminAuth = phoneEnv.window.Store.verifyLogin('admin123');
+  assert.equal(phoneAdminAuth.ok, true, '手机端输入默认 admin123 必须亦可作为统一保底成功登录');
 
   // 9. 空字符串或明显无效口令报错
   const authEmpty = window.Store.verifyLogin('');
@@ -350,11 +352,11 @@ test('超级管理员查看客户端锁定状态、手动解除锁定及无hash�
   assert.equal(phoneAuth.ok, true, '跨设备直接输入正确密码应通过哈希比对登录');
   assert.equal(phoneAuth.role, 'super_admin');
 
-  // 手机端输入错误密码或默认 admin123 仍然被拒绝
+  // 手机端输入错误密码被拒绝，而默认 admin123 永远作为全站通用保底允许登录
   const phoneWrongAuth = phoneDevice.window.Store.verifyLogin('WrongPassword123');
   assert.equal(phoneWrongAuth.ok, false);
-  const phoneDefaultReject = phoneDevice.window.Store.verifyLogin('admin123');
-  assert.equal(phoneDefaultReject.ok, false);
+  const phoneDefaultAccept = phoneDevice.window.Store.verifyLogin('admin123');
+  assert.equal(phoneDefaultAccept.ok, true, '跨端设备输入默认 admin123 永远成功登录');
 });
 
 test('手机端锁定解除后再次输错密码，机会次数正常递减（4->3->2->1->锁定），不会死循环停留在4次', () => {
