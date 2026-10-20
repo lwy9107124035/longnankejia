@@ -33,6 +33,8 @@ CI 根据 `CODEX_ADMIN_D1_ID` 生成 `ADMIN_DB` 绑定，复用已初始化的�
 
 上述数据库只供 codex 预览使用，不迁移或修改 main 的正式站数据。部署结果记录在 `docs/codex-admin-checkpoint.md`。
 
+本轮已部署成功：[Cloudflare 工作流](https://github.com/lwy9107124035/longnankejia/actions/runs/39368977261)。线上已核实初始密码登录和两端会话互不影响，main 保持原样；等待用户实际验收后再更新 main。
+
 ## 二维码入口要对应版本
 
 展板永久二维码仍指向 `https://longnankejia.pages.dev/`（main）。只修改或部署 codex，不会更新展板入口。验收本次修改应使用 codex 预览网址，或在该预览页打开“扫码访问”生成对应二维码。若要让原展板入口也生效，需要另行把验收后的改动合并部署到 main。
