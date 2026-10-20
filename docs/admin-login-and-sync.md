@@ -35,9 +35,11 @@ CI 根据 `CODEX_ADMIN_D1_ID` 生成 `ADMIN_DB` 绑定，复用已初始化的�
 
 本轮已部署成功：[Cloudflare 工作流](https://github.com/lwy9107124035/longnankejia/actions/runs/39368977261)。线上已核实初始密码登录和两端会话互不影响，main 保持原样；等待用户实际验收后再更新 main。
 
+2026-10-20 后续：用户已确认验收通过并授权发布 main。正式站使用独立数据库 `longnankejia-admin-main`，通过 `MAIN_ADMIN_D1_ID` 绑定，原样迁移已验收版本的密码派生值、邀请和管理配置。main 发布时保留 Cloudflare 现有 API 密钥，不上传初始化管理员密码或重设数据库密码。main 与 codex 的后续编辑分别保存在各自数据库中。
+
 ## 二维码入口要对应版本
 
-展板永久二维码仍指向 `https://longnankejia.pages.dev/`（main）。只修改或部署 codex，不会更新展板入口。验收本次修改应使用 codex 预览网址，或在该预览页打开“扫码访问”生成对应二维码。若要让原展板入口也生效，需要另行把验收后的改动合并部署到 main。
+展板永久二维码指向 `https://longnankejia.pages.dev/`（main），无需重新制作。codex 修改先在预览网址验收，用户确认后发布到 main；正式部署完成后，原网址和原展板二维码即可访问更新版本。
 
 普通 `python -m http.server` 仅提供静态页面，不运行管理接口。管理员测试使用下述带真实 SQL 的本地测试服务；不能把静态预览下的接口错误当成密码错误。
 

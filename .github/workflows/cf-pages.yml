@@ -26,22 +26,25 @@ jobs:
           node-version: '24'
 
       - name: Verify administrator API and multi-device synchronization
-        if: github.ref_name == 'codex'
-        run: node --test tests/admin-sync.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs
+        if: github.ref_name == 'codex' || github.ref_name == 'main'
+        run: node --test tests/admin-deployment.test.mjs tests/admin-sync.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs
 
-      - name: Prepare persistent administrator storage for codex
-        if: github.ref_name == 'codex'
+      - name: Bind persistent administrator storage
+        if: github.ref_name == 'codex' || github.ref_name == 'main'
         env:
           BRANCH: ${{ github.ref_name }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
           CODEX_ADMIN_D1_ID: ${{ vars.CODEX_ADMIN_D1_ID }}
+          MAIN_ADMIN_D1_ID: ${{ vars.MAIN_ADMIN_D1_ID }}
         run: |
           set -euo pipefail
           set +x
           node scripts/prepare_admin_d1.mjs
-          printf '%s' "$ADMIN_BOOTSTRAP_PASSWORD" | npx --yes wrangler@4.137.0 pages secret put ADMIN_BOOTSTRAP_PASSWORD --project-name=longnankejia-dev --env=preview
+          if [ "$BRANCH" = codex ]; then
+            printf '%s' "$ADMIN_BOOTSTRAP_PASSWORD" | npx --yes wrangler@4.137.0 pages secret put ADMIN_BOOTSTRAP_PASSWORD --project-name=longnankejia-dev --env=preview
+          fi
 
       # 原豆包分支 dev 改名后，把 longnankejia-dev 项目的生产指针一并切到 doubao，
       # 确保稳定根地址仍对应豆包分支；只提交 production_branch 这一项。
@@ -106,14 +109,18 @@ jobs:
               exit 1
               ;;
           esac
-          if [ -z "$CF_KEY" ]; then
+          if [ "$BRANCH" != main ] && [ -z "$CF_KEY" ]; then
             echo "GitHub Actions secret SILICONFLOW_API_KEY 未配置" >&2
             exit 1
           fi
 
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "environment=$CF_ENV" >> "$GITHUB_OUTPUT"
-          printf '%s' "$CF_KEY" | npx --yes wrangler@4.137.0 pages secret put SILICONFLOW_API_KEY --project-name="$PROJECT" --env="$CF_ENV"
+          if [ "$BRANCH" = main ]; then
+            echo "保留正式站现有服务端密钥，不覆盖或重设。"
+          else
+            printf '%s' "$CF_KEY" | npx --yes wrangler@4.137.0 pages secret put SILICONFLOW_API_KEY --project-name="$PROJECT" --env="$CF_ENV"
+          fi
           unset CF_KEY
 
           rm -rf _site && mkdir -p _site/assets
