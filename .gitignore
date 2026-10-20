@@ -38,4 +38,5 @@ __pycache__/
 .wrangler/
 # CI 生成的部署绑定配置、以及仅供本地的密码配置。
 wrangler.admin.json
+wrangler.jsonc
 .dev.vars*

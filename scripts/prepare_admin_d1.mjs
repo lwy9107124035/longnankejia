@@ -31,7 +31,7 @@ if (configuredId) {
   const result = await api(root + '/' + database.uuid + '/query', { sql: fs.readFileSync(new URL('../migrations/admin/0001_admin.sql', import.meta.url), 'utf8') });
   if (!result.every(r => r.success)) throw new Error('Admin schema migration failed.');
 }
-fs.writeFileSync('wrangler.admin.json', JSON.stringify({
+fs.writeFileSync('wrangler.jsonc', JSON.stringify({
   name: 'longnankejia-dev', pages_build_output_dir: '_site', compatibility_date: '2026-10-20',
   d1_databases: [{ binding: 'ADMIN_DB', database_name: name, database_id: database.uuid }]
 }, null, 2));
