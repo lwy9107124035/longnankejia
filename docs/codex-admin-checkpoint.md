@@ -59,4 +59,9 @@
 - 迁移证据：`.cache/main-admin-migration-verification.json`；敏感状态快照仅存忽略目录 `.cache/admin-state-main-release.sql`，不提交或发布。
 - 生产绑定必须指定已经迁移的数据库 ID，缺失时拒绝创建空库；已绑定的生产库不再要求初始化密码，避免部署重置现有密码。
 - 新增部署配置测试 4 项均通过，覆盖 main/codex 分库、无初始化密码绑定、生产库缺失拒绝、无效分支/ID 拒绝。原有接口与前端 29 项仍通过，静态检查通过。
-- 尚待本轮 main 提交、自动部署及正式网址在线验收；codex 远程分支不改动。
+- 正式发布提交 `8ca9e0c` 已推送 main；[CI 39370633004](https://github.com/lwy9107124035/longnankejia/actions/runs/39370633004) 成功，33 项测试全部通过，日志确认 main 保留原服务端密钥。
+- 正式部署地址 `https://2bcb3b69.longnankejia.pages.dev/`，固定入口 `https://longnankejia.pages.dev/` 已更新。
+- 正式入口在线验收通过：原密码可建立两端独立超级管理员会话，退出其中一端不影响另一端；公开接口不泄露凭据、页面 no-cache。测试会话已清理，共享内容未修改。
+- 正式 AI 代理真实调用返回 HTTP 200 且有回复；发布后 secret 列表仍只有原有加密 `SILICONFLOW_API_KEY`，没有写入或重设初始化密码。
+- 原二维码保持 main 固定网址，因此直接访问更新后的正式站。codex 远程分支保持 a559d95，不受本次正式数据库迁移和发布影响。
+- 本地生成的生产绑定配置已清理；正式迁移的核验文件和临时 SQL 留在忽略目录，未发布。

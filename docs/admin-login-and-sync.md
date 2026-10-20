@@ -37,6 +37,8 @@ CI 根据 `CODEX_ADMIN_D1_ID` 生成 `ADMIN_DB` 绑定，复用已初始化的�
 
 2026-10-20 后续：用户已确认验收通过并授权发布 main。正式站使用独立数据库 `longnankejia-admin-main`，通过 `MAIN_ADMIN_D1_ID` 绑定，原样迁移已验收版本的密码派生值、邀请和管理配置。main 发布时保留 Cloudflare 现有 API 密钥，不上传初始化管理员密码或重设数据库密码。main 与 codex 的后续编辑分别保存在各自数据库中。
 
+正式站已完成发布：[正式部署工作流](https://github.com/lwy9107124035/longnankejia/actions/runs/39370633004)。原密码登录、两端独立会话和实际 AI 请求均通过线上检查，原网址与展板二维码可继续使用。
+
 ## 二维码入口要对应版本
 
 展板永久二维码指向 `https://longnankejia.pages.dev/`（main），无需重新制作。codex 修改先在预览网址验收，用户确认后发布到 main；正式部署完成后，原网址和原展板二维码即可访问更新版本。
