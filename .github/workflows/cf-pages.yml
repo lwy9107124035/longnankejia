@@ -21,6 +21,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verify administrator API and multi-device synchronization
+        if: github.ref_name == 'codex'
+        run: node --test tests/admin-sync.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs
+
+      - name: Prepare persistent administrator storage for codex
+        if: github.ref_name == 'codex'
+        env:
+          BRANCH: ${{ github.ref_name }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
+          CODEX_ADMIN_D1_ID: ${{ vars.CODEX_ADMIN_D1_ID }}
+        run: |
+          set -euo pipefail
+          set +x
+          node scripts/prepare_admin_d1.mjs
+          printf '%s' "$ADMIN_BOOTSTRAP_PASSWORD" | npx --yes wrangler@4.137.0 pages secret put ADMIN_BOOTSTRAP_PASSWORD --project-name=longnankejia-dev --env=preview
+
       # 原豆包分支 dev 改名后，把 longnankejia-dev 项目的生产指针一并切到 doubao，
       # 确保稳定根地址仍对应豆包分支；只提交 production_branch 这一项。
       - name: Set Doubao as the preview project's production branch
@@ -95,15 +117,24 @@ jobs:
           unset CF_KEY
 
           rm -rf _site && mkdir -p _site/assets
-          cp index.html _site/
+          cp index.html _headers _site/
           cp -r css js _site/
           cp -r assets/avatar assets/pdf-imgs assets/textures assets/model-references assets/model-textures assets/audio _site/assets/
           printf 'window.APP_SECRETS={apiKey:""};' > _site/js/secrets.js
           echo "上线 $(du -sh _site | cut -f1)，$(find _site -type f | wc -l) 个文件；浏览器密钥为空，API 由 Pages Functions 代理。"
 
       - name: 部署
+        if: github.ref_name != 'codex'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy _site --project-name=${{ steps.prep.outputs.project }} --branch=${{ github.ref_name }} --commit-dirty=true
+
+      - name: Deploy codex with persistent administrator binding
+        if: github.ref_name == 'codex'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy _site --config=wrangler.admin.json --project-name=longnankejia-dev --branch=codex --commit-dirty=true

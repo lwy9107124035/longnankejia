@@ -5,7 +5,7 @@
  * 2. 科普卡片覆盖 (nfyj_kepu_custom / deleted / edited)
  * 3. 方言语音覆盖 (nfyj_dialect_custom / deleted)
  * 4. AI 模型与工作流配置 (nfyj_api_config / nfyj_workflow_config)
- * 5. 权限体系：超级管理员主口令 + 专属邀请令牌 (nfyj_admin_tokens)
+ * 5. 服务端管理员鉴权与独立标签页会话，邀请记录仅在当前页面缓存
  * 6. 全站数智资产包一键打包导出与恢复
  */
 (function () {
@@ -16,8 +16,6 @@
     deleted:        'nfyj_kb_deleted',
     edited:         'nfyj_kb_edited',
     api:            'nfyj_api_config',
-    pw:             'nfyj_admin_pw',
-    pw_hash:        'nfyj_admin_pw_hash',
     tokens:         'nfyj_admin_tokens',
     kepu_custom:    'nfyj_kepu_custom',
     kepu_deleted:   'nfyj_kepu_deleted',
@@ -27,7 +25,6 @@
     workflow:       'nfyj_workflow_config',
     audit_logs:     'nfyj_audit_logs',
     notifications:  'nfyj_token_notifications',
-    admin_session:  'nfyj_admin_session',
     locked_clients: 'nfyj_locked_clients'
   };
 
@@ -35,372 +32,55 @@
     admin_session:  'nfyj_tab_admin_session'
   };
 
+  var memoryValues = {};
   function read(key, fallback) {
+    if (key === LS.tokens || key === LS.locked_clients) return memoryValues[key] || fallback;
     try {
       var raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : fallback;
-    } catch (e) { return fallback; }
+    } catch (e) { return Object.prototype.hasOwnProperty.call(memoryValues, key) ? memoryValues[key] : fallback; }
   }
 
   function write(key, val) {
+    memoryValues[key] = val;
+    if (key === LS.tokens || key === LS.locked_clients) return;
     try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
   }
 
-  function getSessionStore() {
-    try {
-      if (typeof sessionStorage !== 'undefined' && sessionStorage) return sessionStorage;
-    } catch (_) {}
-    try {
-      if (typeof localStorage !== 'undefined' && localStorage) return localStorage;
-    } catch (_) {}
-    return null;
+  function remove(key) {
+    delete memoryValues[key];
+    try { localStorage.removeItem(key); } catch (_) {}
   }
 
+  var memorySession = null;
   function readSession(fallback) {
     try {
-      var store = getSessionStore();
-      if (!store) return fallback;
-      var raw = store.getItem(SS.admin_session);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch (_) { return fallback; }
+      var raw = sessionStorage.getItem(SS.admin_session);
+      return raw ? JSON.parse(raw) : (memorySession || fallback);
+    } catch (_) { return memorySession || fallback; }
   }
-
-  function writeSession(val) {
-    try {
-      var store = getSessionStore();
-      if (store) store.setItem(SS.admin_session, JSON.stringify(val));
-    } catch (_) {}
+  function writeSession(value) {
+    memorySession = value;
+    try { sessionStorage.setItem(SS.admin_session, JSON.stringify(value)); } catch (_) {}
   }
-
   function removeSession() {
-    try {
-      var store = getSessionStore();
-      if (store) store.removeItem(SS.admin_session);
-    } catch (_) {}
+    memorySession = null;
+    try { sessionStorage.removeItem(SS.admin_session); } catch (_) {}
   }
 
-  /* ---------- 跨设备自校验令牌签名算法 ---------- */
-  var B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-
-  function base64UrlEncode(str) {
-    var bytes = [];
-    for (var i = 0; i < str.length; i++) {
-      var c = str.charCodeAt(i);
-      if (c < 128) {
-        bytes.push(c);
-      } else if (c < 2048) {
-        bytes.push((c >> 6) | 192);
-        bytes.push((c & 63) | 128);
-      } else {
-        bytes.push((c >> 12) | 224);
-        bytes.push(((c >> 6) & 63) | 128);
-        bytes.push((c & 63) | 128);
-      }
-    }
-    var res = '', j = 0;
-    while (j < bytes.length) {
-      var b1 = bytes[j++];
-      var b2 = j < bytes.length ? bytes[j++] : null;
-      var b3 = j < bytes.length ? bytes[j++] : null;
-      res += B64_CHARS.charAt(b1 >> 2);
-      res += B64_CHARS.charAt(((b1 & 3) << 4) | (b2 !== null ? (b2 >> 4) : 0));
-      if (b2 !== null) res += B64_CHARS.charAt(((b2 & 15) << 2) | (b3 !== null ? (b3 >> 6) : 0));
-      if (b3 !== null) res += B64_CHARS.charAt(b3 & 63);
-    }
-    return res;
-  }
-
-  function base64UrlDecode(str) {
-    var bytes = [], val = 0, bits = 0;
-    for (var i = 0; i < str.length; i++) {
-      var idx = B64_CHARS.indexOf(str.charAt(i));
-      if (idx === -1) continue;
-      val = (val << 6) | idx;
-      bits += 6;
-      if (bits >= 8) {
-        bits -= 8;
-        bytes.push((val >> bits) & 255);
-      }
-    }
-    var res = '', k = 0;
-    while (k < bytes.length) {
-      var b1 = bytes[k++];
-      if (b1 < 128) {
-        res += String.fromCharCode(b1);
-      } else if (b1 > 191 && b1 < 224) {
-        res += String.fromCharCode(((b1 & 31) << 6) | (bytes[k++] & 63));
-      } else {
-        res += String.fromCharCode(((b1 & 15) << 12) | ((bytes[k++] & 63) << 6) | (bytes[k++] & 63));
-      }
-    }
-    return res;
-  }
-
-  function computeChecksum(s) {
-    var h = 0x811c9dc5;
-    for (var i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = (h * 0x01000193) >>> 0;
-    }
-    return h.toString(36);
-  }
-
-  function generateSignedTokenStr(name, days, id) {
-    var now = Date.now();
-    var exp = days > 0 ? (now + days * 86400000) : 0;
-    var obj = { id: id, n: name, exp: exp, iat: now };
-    try {
-      var jsonStr = JSON.stringify(obj);
-      var b64 = base64UrlEncode(jsonStr);
-      var sig = computeChecksum(b64);
-      return 'NFYJ-INV-' + b64 + '.' + sig;
-    } catch (_) {
-      return '';
-    }
-  }
-
-  function computeShortChecksum(prefix) {
-    var s = String(prefix).toUpperCase() + '_NFYJ_SALT_2026';
-    var h = 0x811c9dc5;
-    for (var i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = (h * 0x01000193) >>> 0;
-    }
-    var chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-    var c1 = chars.charAt((h & 0x1f));
-    var c2 = chars.charAt(((h >>> 5) & 0x1f));
-    var c3 = chars.charAt(((h >>> 10) & 0x1f));
-    return c1 + c2 + c3;
-  }
-
-  /* ---------- 跨平台多端字符规范化清洗（过滤全角、零宽、移动端智能破折号、引号与首尾杂质） ---------- */
   function normalizeAuthInput(raw) {
-    if (!raw && raw !== 0) return '';
-    var s = String(raw);
-    s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
-    var half = '';
-    for (var i = 0; i < s.length; i++) {
-      var code = s.charCodeAt(i);
-      if (code === 0x3000) {
-        half += ' ';
-      } else if (code >= 0xFF01 && code <= 0xFF5E) {
-        half += String.fromCharCode(code - 0xFEE0);
-      } else {
-        half += s.charAt(i);
-      }
-    }
-    half = half.replace(/[\u2010-\u2015\u2212\uFF0D]/g, '-');
-    half = half.trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
-    return half;
+    return String(raw || '').replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/[\uFF01-\uFF5E]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/\u3000/g, ' ').trim();
   }
-
-  function generateCompactShortToken() {
-    var chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-    var prefix = '';
-    for (var i = 0; i < 3; i++) {
-      prefix += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    var cs = computeShortChecksum(prefix);
-    return 'NFYJ-INV-' + prefix + cs;
-  }
-
-  function isCompactShortToken(tokenStr) {
-    if (!tokenStr || typeof tokenStr !== 'string') return false;
-    var raw = normalizeAuthInput(tokenStr).toUpperCase().replace(/[\s_\-]+/g, '');
-    if (raw.indexOf('NFYJINV') === 0) raw = raw.slice(7);
-    else if (raw.indexOf('NFINV') === 0) raw = raw.slice(5);
-    else if (raw.indexOf('INV') === 0) raw = raw.slice(3);
-    else if (raw.indexOf('NF') === 0 && raw.length === 8) raw = raw.slice(2);
-    if (raw.length === 6) {
-      var prefix = raw.slice(0, 3);
-      var cs = raw.slice(3);
-      if (computeShortChecksum(prefix) === cs) return true;
-    }
-    return false;
-  }
-
-  function parseSignedToken(tokenStr) {
-    if (!tokenStr || typeof tokenStr !== 'string') return { ok: false };
-    var raw = normalizeAuthInput(tokenStr);
-    if (raw.indexOf('NFYJ-INV-') !== 0) return { ok: false };
-    var body = raw.slice(9);
-    var parts = body.split('.');
-    if (parts.length !== 2) return { ok: false };
-    var b64 = parts[0];
-    var sig = parts[1];
-    if (computeChecksum(b64) !== sig) return { ok: false };
-
-    try {
-      var jsonStr = base64UrlDecode(b64);
-      var obj = JSON.parse(jsonStr);
-      if (!obj || !obj.n) return { ok: false };
-      var now = Date.now();
-      if (obj.exp && obj.exp > 0 && now > obj.exp) {
-        return { ok: false, error: '此邀请令牌已过期，请联系超级管理员重新签发' };
-      }
-      return {
-        ok: true,
-        item: {
-          id: obj.id || ('tok-' + (obj.iat || now)),
-          token: raw,
-          name: obj.n,
-          role: 'editor',
-          createdAt: obj.iat || now,
-          expiresAt: obj.exp || 0,
-          revoked: false,
-          paused: false,
-          loginCount: 0,
-          lastActiveAt: 0,
-          lastClient: ''
-        }
-      };
-    } catch (_) {
-      return { ok: false };
-    }
-  }
-
-  /* ---------- 单二维码跨设备凭证无缝同步 ---------- */
-
-  function buildSyncPayload() {
-    var customPw = null;
-    try { customPw = localStorage.getItem(LS.pw); } catch (_) {}
-    var tokens = read(LS.tokens, []);
-    var activeTokens = tokens.filter(function (t) { return !t.revoked; });
-
-    if (!customPw && activeTokens.length === 0) {
-      return '';
-    }
-
-    var payload = {};
-    if (customPw) {
-      payload.p = customPw;
-    }
-    if (activeTokens.length > 0) {
-      payload.t = activeTokens.map(function (t) {
-        return {
-          i: t.id,
-          k: t.token,
-          n: t.name || '受邀管理员',
-          e: t.expiresAt || 0,
-          p: t.paused ? 1 : 0
-        };
-      });
-    }
-
-    try {
-      var jsonStr = JSON.stringify(payload);
-      var b64 = base64UrlEncode(jsonStr);
-      var sig = computeChecksum(b64);
-      return 'sync=' + b64 + '.' + sig;
-    } catch (_) {
-      return '';
-    }
-  }
-
-  function applySyncPayload(hashOrStr) {
-    try {
-      var h = '';
-      if (typeof hashOrStr === 'string' && hashOrStr) {
-        h = hashOrStr;
-      } else if (typeof window !== 'undefined' && window.location && window.location.hash) {
-        h = window.location.hash;
-      }
-      if (!h) return false;
-
-      var match = h.match(/sync=([A-Za-z0-9_\-]+)\.([a-z0-9]+)/);
-      if (!match) return false;
-
-      var b64 = match[1];
-      var sig = match[2];
-      if (computeChecksum(b64) !== sig) return false;
-
-      var jsonStr = base64UrlDecode(b64);
-      var payload = JSON.parse(jsonStr);
-      if (!payload || typeof payload !== 'object') return false;
-
-      var updated = false;
-      if (payload.p && typeof payload.p === 'string') {
-        localStorage.setItem(LS.pw, payload.p);
-        updated = true;
-      }
-
-      if (payload.t && Array.isArray(payload.t)) {
-        var existing = read(LS.tokens, []).filter(function (t) {
-          return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
-        });
-        var now = Date.now();
-        payload.t.forEach(function (t) {
-          if (!t.k) return;
-          var found = existing.find(function (e) { return e.id === t.i || e.token === t.k; });
-          if (!found) {
-            existing.unshift({
-              id: t.i || ('tok-' + now),
-              token: t.k,
-              name: t.n || '受邀管理员',
-              role: 'editor',
-              createdAt: now,
-              expiresAt: t.e || 0,
-              revoked: false,
-              paused: !!t.p,
-              loginCount: 0,
-              lastActiveAt: 0,
-              lastClient: '移动端扫码同步'
-            });
-            updated = true;
-          } else {
-            found.paused = !!t.p;
-            if (t.e) found.expiresAt = t.e;
-            if (t.n) found.name = t.n;
-            updated = true;
-          }
-        });
-        if (updated) {
-          write(LS.tokens, existing);
-        }
-      }
-
-      // 无论是否更新，扫码进来的设备均清除输错锁定限制，避免用户扫码后依然被封锁无法输入
-      try {
-        localStorage.removeItem('nfyj_login_lock_state');
-      } catch (_) {}
-
-      // 清理 URL hash 保持地址栏清爽
-      if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-        try {
-          var cleanHash = (window.location.hash || '').replace(/[?&]?sync=[A-Za-z0-9_\-]+\.[a-z0-9]+/g, '');
-          if (cleanHash === '#' || cleanHash === '') {
-            window.history.replaceState(null, '', window.location.pathname + window.location.search);
-          } else {
-            window.history.replaceState(null, '', window.location.pathname + window.location.search + cleanHash);
-          }
-        } catch (_) {}
-      }
-
-      return updated;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /* ---------- 全站跨设备多端云同步与客户端锁定管理 ---------- */
-
   function getSyncEndpoint() {
-    if (typeof window !== 'undefined' && window.location) {
-      var h = window.location.hostname || '';
-      var port = window.location.port || '';
-      // 自动化测试环境（run_site_tests 专用端口 8931）优先走测试服务内置 mock
-      if (port === '8931') {
-        return window.location.origin + '/api/admin/sync';
-      }
-      if (h && (h.indexOf('pages.dev') !== -1 || h === 'localhost' || h === '127.0.0.1')) {
-        return window.location.origin + '/api/admin/sync';
-      }
-    }
-    return 'https://longnankejia.pages.dev/api/admin/sync';
+    var location = window.location || {};
+    if (location.hostname === 'lwy9107124035.github.io') return 'https://longnankejia.pages.dev/api/admin/sync';
+    return '/api/admin/sync';
   }
 
   function getClientId() {
-    var cid = '';
+    var cid = read('nfyj_memory_client_id', '');
     try {
       cid = localStorage.getItem('nfyj_client_id');
       if (!cid) {
@@ -408,7 +88,8 @@
         localStorage.setItem('nfyj_client_id', cid);
       }
     } catch (_) {
-      cid = 'cid-temp-' + Date.now();
+      if (!cid) cid = 'cid-temp-' + Date.now();
+      memoryValues.nfyj_memory_client_id = cid;
     }
     return cid;
   }
@@ -444,438 +125,142 @@
     };
   }
 
-  function syncTokensToCloud(tokens) {
-    if (typeof fetch === 'undefined') return;
-    try {
-      fetch(getSyncEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update_tokens', tokens: tokens })
-      }).catch(function () {});
-    } catch (_) {}
-  }
-
-  function syncPasswordToCloud(pwHash) {
-    if (typeof fetch === 'undefined') return;
-    try {
-      fetch(getSyncEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update_password', pwHash: pwHash })
-      }).catch(function () {});
-    } catch (_) {}
-  }
-
-  function mergeItemLists(localList, cloudList) {
-    var map = {};
-    (localList || []).forEach(function (item) {
-      if (item && item.id) map[item.id] = item;
+  var CONTENT_KEYS = {
+    kbCustom: LS.custom, kbEdited: LS.edited, kbDeleted: LS.deleted,
+    kepuCustom: LS.kepu_custom, kepuEdited: LS.kepu_edited, kepuDeleted: LS.kepu_deleted,
+    dialectCustom: LS.dialect_custom, dialectDeleted: LS.dialect_deleted,
+    apiConfig: LS.api, workflowConfig: LS.workflow, auditLogs: LS.audit_logs
+  };
+  var OBJECT_KEYS = ['kbEdited', 'kepuEdited', 'apiConfig', 'workflowConfig'];
+  var cloudRevision = read('nfyj_cloud_revision', null);
+  var pending = read('nfyj_cloud_pending', false);
+  var generation = 0;
+  var uploadPromise = null;
+  var pullPromise = null;
+  var syncStatus = { status: 'idle', message: '等待连接云端' };
+  // Keep pre-upgrade local edits until an authenticated upload or an explicit discard.
+  if (cloudRevision === null) {
+    pending = Object.keys(CONTENT_KEYS).some(function (key) {
+      if (key === 'auditLogs') return false;
+      return Object.keys(read(CONTENT_KEYS[key], {})).length > 0;
     });
-    (cloudList || []).forEach(function (item) {
-      if (!item || !item.id) return;
-      if (!map[item.id]) {
-        map[item.id] = item;
-      } else {
-        var localTime = map[item.id].updatedAt || map[item.id].createdAt || 0;
-        var cloudTime = item.updatedAt || item.createdAt || 0;
-        if (cloudTime >= localTime) {
-          map[item.id] = Object.assign({}, map[item.id], item);
-        }
-      }
-    });
-    var result = [];
-    for (var id in map) {
-      if (Object.prototype.hasOwnProperty.call(map, id)) {
-        result.push(map[id]);
-      }
+    if (pending) { cloudRevision = 0; write('nfyj_cloud_pending', true); }
+  }
+  function setSyncStatus(status, message) {
+    syncStatus = { status: status, message: message };
+    if (window.dispatchEvent && typeof CustomEvent !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('admin-sync-status', { detail: syncStatus }));
     }
+  }
+  async function cloudRequest(body) {
+    if (typeof fetch === 'undefined') throw new Error('当前环境不能连接管理服务器');
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 12000);
+    var session = getSession();
+    var headers = {};
+    if (session) headers.Authorization = 'Bearer ' + session.bearer;
+    if (body) headers['Content-Type'] = 'application/json';
+    try {
+      var response = await fetch(getSyncEndpoint(), {
+        method: body ? 'POST' : 'GET', headers: headers, cache: 'no-store', signal: controller.signal,
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (!(response.headers.get('Content-Type') || '').includes('application/json')) {
+        throw Object.assign(new Error('此网址的管理接口尚未部署，请联系网站维护人员。'), { code: 'ENDPOINT_UNAVAILABLE' });
+      }
+      var data = await response.json();
+      if (!response.ok || !data.ok) {
+        if (data.code === 'SESSION_EXPIRED') clearSession();
+        throw Object.assign(new Error(data.error || '管理服务器请求失败'), data, { status: response.status });
+      }
+      return data;
+    } catch (error) {
+      if (error.code) throw error;
+      throw Object.assign(new Error('暂时连不上管理服务器，请检查网络后重试。本机编辑已保留。'), { code: 'NETWORK_ERROR' });
+    } finally { clearTimeout(timer); }
+  }
+  function bundle() {
+    var data = {};
+    Object.keys(CONTENT_KEYS).forEach(function (key) {
+      data[key] = read(CONTENT_KEYS[key], OBJECT_KEYS.indexOf(key) >= 0 ? {} : []);
+    });
+    return data;
+  }
+  function triggerFrontEndRefresh() {
+    var h = window.Heritage || (window.UI && window.UI.Heritage);
+    if (h && h.render) h.render();
+    if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
+    if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+  }
+  function applyCloud(data) {
+    Object.keys(CONTENT_KEYS).forEach(function (key) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) write(CONTENT_KEYS[key], data[key]);
+    });
+    cloudRevision = data.revision;
+    write('nfyj_cloud_revision', cloudRevision);
+    triggerFrontEndRefresh();
+  }
+  async function uploadPending() {
+    if (!pending) return true;
+    if (!getSession()) { setSyncStatus('pending', '本机有未同步编辑，登录后可上传云端'); return false; }
+    if (syncStatus.status === 'conflict') return false;
+    if (uploadPromise) return uploadPromise;
+    uploadPromise = (async function () {
+      try {
+        while (pending) {
+          var sentGeneration = generation;
+          var data = await cloudRequest(Object.assign({ action: 'update_custom_bundle', revision: cloudRevision === null ? 0 : cloudRevision }, bundle()));
+          cloudRevision = data.revision;
+          write('nfyj_cloud_revision', cloudRevision);
+          if (sentGeneration === generation) { pending = false; write('nfyj_cloud_pending', false); }
+        }
+        setSyncStatus('saved', '已保存到云端，其他设备可同步查看');
+        return true;
+      } catch (error) {
+        setSyncStatus(error.code === 'SYNC_CONFLICT' ? 'conflict' : 'error', error.message);
+        return false;
+      } finally { uploadPromise = null; }
+    })();
+    return uploadPromise;
+  }
+  function syncCustomToCloud(callback) {
+    pending = true;
+    generation++;
+    write('nfyj_cloud_pending', true);
+    if (syncStatus.status !== 'conflict') setSyncStatus('pending', '已保存到本机，正在同步云端…');
+    var result = uploadPending();
+    if (typeof callback === 'function') result.then(callback);
     return result;
   }
-
-  function mergeIdArrays(localArr, cloudArr) {
-    var set = {};
-    (localArr || []).forEach(function (id) { if (id) set[id] = true; });
-    (cloudArr || []).forEach(function (id) { if (id) set[id] = true; });
-    return Object.keys(set);
-  }
-
-  function mergeEditedObjects(localObj, cloudObj) {
-    return Object.assign({}, localObj || {}, cloudObj || {});
-  }
-
-  function mergeAuditLogs(localLogs, cloudLogs) {
-    var map = {};
-    (localLogs || []).forEach(function (l) { if (l && l.id) map[l.id] = l; });
-    (cloudLogs || []).forEach(function (l) { if (l && l.id) map[l.id] = l; });
-    var result = [];
-    for (var id in map) {
-      if (Object.prototype.hasOwnProperty.call(map, id)) {
-        result.push(map[id]);
-      }
-    }
-    result.sort(function (a, b) { return (b.time || 0) - (a.time || 0); });
-    return result.slice(0, 200);
-  }
-
-  function triggerFrontEndRefresh() {
-    try {
-      var h = window.Heritage || (window.UI && window.UI.Heritage);
-      if (h && h.render) h.render();
-      if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
-      if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
-    } catch (_) {}
-  }
-
-  function syncCustomToCloud(callback) {
-    if (typeof fetch === 'undefined') {
-      if (typeof callback === 'function') callback(false);
-      return;
-    }
-    var now = Date.now();
-    var payload = {
-      action: 'update_custom_bundle',
-      kbCustom: read(LS.custom, []),
-      kbEdited: read(LS.edited, {}),
-      kbDeleted: read(LS.deleted, []),
-      kepuCustom: read(LS.kepu_custom, []),
-      kepuEdited: read(LS.kepu_edited, {}),
-      kepuDeleted: read(LS.kepu_deleted, []),
-      dialectCustom: read(LS.dialect_custom, []),
-      apiConfig: getApiOverrides(),
-      workflowConfig: getWorkflowConfig(),
-      auditLogs: read(LS.audit_logs, []),
-      customUpdatedAt: now
-    };
-    try {
-      localStorage.setItem('nfyj_custom_updated_at', String(now));
-      fetch(getSyncEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(function (res) {
-        var ok = !!(res && res.ok);
-        if (typeof callback === 'function') callback(ok);
-      }).catch(function () {
-        if (typeof callback === 'function') callback(false);
-      });
-    } catch (_) {
-      if (typeof callback === 'function') callback(false);
-    }
-  }
-
   function syncWithCloud(callback) {
-    if (typeof fetch === 'undefined') {
-      if (typeof callback === 'function') callback(null);
-      return;
-    }
-    var endpoint = getSyncEndpoint();
-    var myCid = getClientId();
-
-    fetch(endpoint)
-      .then(function (res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
-      })
-      .then(function (data) {
-        if (!data || !data.ok) {
-          if (typeof callback === 'function') callback(null);
-          return;
-        }
-        if (data.clientIp) {
-          try {
-            sessionStorage.setItem('nfyj_client_ip', data.clientIp);
-            localStorage.setItem('nfyj_client_ip', data.clientIp);
-            if (data.clientGeo) {
-              sessionStorage.setItem('nfyj_client_geo', data.clientGeo);
-              localStorage.setItem('nfyj_client_geo', data.clientGeo);
-            }
-          } catch (_) {}
-        }
-        if (data.pwHash) {
-          try { localStorage.setItem(LS.pw_hash, data.pwHash); } catch (_) {}
-        } else if (data.hasOwnProperty('pwHash') && data.pwHash === null) {
-          try {
-            var localCustom = localStorage.getItem(LS.pw);
-            if (!localCustom) {
-              localStorage.removeItem(LS.pw_hash);
-            }
-          } catch (_) {}
-        }
-        if (data.tokens && Array.isArray(data.tokens) && data.tokens.length > 0) {
-          var cleanTokens = data.tokens.filter(function (t) {
-            return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
-          });
-          write(LS.tokens, cleanTokens);
-        }
-        if (data.lockouts && Array.isArray(data.lockouts)) {
-          write(LS.locked_clients, data.lockouts);
-          var myIp = data.clientIp;
-          var myLock = data.lockouts.find(function (l) {
-            return (l.clientId && l.clientId === myCid) || (myIp && l.ip === myIp);
-          });
-          if (myLock && myLock.status === 'unlocked') {
-            var state = read('nfyj_login_lock_state', null);
-            var lockedAt = state ? (Number(state.lockedAt) || 0) : 0;
-            var consumedAt = Number(localStorage.getItem('nfyj_last_consumed_unlock')) || 0;
-            var unlockedAt = Number(myLock.unlockedAt) || 0;
-            if (state && state.until && Date.now() < state.until && unlockedAt >= lockedAt && unlockedAt > consumedAt) {
-              try {
-                localStorage.setItem('nfyj_client_unlocked', '1');
-              } catch (_) {}
-            }
-          }
-        }
-        if (data.allUnlockedAt) {
-          var state = read('nfyj_login_lock_state', null);
-          var lockedAt = state ? (Number(state.lockedAt) || 0) : 0;
-          var consumedAt = Number(localStorage.getItem('nfyj_last_consumed_unlock')) || 0;
-          var allUnlockedAt = Number(data.allUnlockedAt) || 0;
-          if (state && state.until && Date.now() < state.until && allUnlockedAt >= lockedAt && allUnlockedAt > consumedAt) {
-            try {
-              localStorage.setItem('nfyj_client_unlocked', '1');
-            } catch (_) {}
-          }
-        }
-
-        // 跨设备全站自定义内容双向同步与智能合并（知识库、科普卡片、方言语音、AI配置、审计日志）
-        var hasCloudCustom = !!(
-          (data.kbCustom && data.kbCustom.length > 0) ||
-          (data.kbEdited && Object.keys(data.kbEdited).length > 0) ||
-          (data.kbDeleted && data.kbDeleted.length > 0) ||
-          (data.kepuCustom && data.kepuCustom.length > 0) ||
-          (data.kepuEdited && Object.keys(data.kepuEdited).length > 0) ||
-          (data.kepuDeleted && data.kepuDeleted.length > 0) ||
-          (data.dialectCustom && data.dialectCustom.length > 0) ||
-          (data.apiConfig && Object.keys(data.apiConfig).length > 0) ||
-          (data.workflowConfig && Object.keys(data.workflowConfig).length > 0) ||
-          (data.customUpdatedAt && data.customUpdatedAt > 0)
-        );
-
-        var localKbList = read(LS.custom, []);
-        var localKbEdited = read(LS.edited, {});
-        var localKbDeleted = read(LS.deleted, []);
-        var localKepuList = read(LS.kepu_custom, []);
-        var localKepuEdited = read(LS.kepu_edited, {});
-        var localKepuDeleted = read(LS.kepu_deleted, []);
-        var localDialectList = read(LS.dialect_custom, []);
-        var localApi = read(LS.api, {});
-        var localWorkflow = read(LS.workflow, {});
-        var localCustomCount = localKbList.length + localKepuList.length + localDialectList.length +
-          Object.keys(localKbEdited).length + localKbDeleted.length +
-          Object.keys(localKepuEdited).length + localKepuDeleted.length +
-          Object.keys(localApi).length + Object.keys(localWorkflow).length;
-
-        var localUpdatedAt = Number(localStorage.getItem('nfyj_custom_updated_at')) || 0;
-        var cloudUpdatedAt = Number(data.customUpdatedAt) || 0;
-
-        if (cloudUpdatedAt > localUpdatedAt || (localCustomCount === 0 && hasCloudCustom)) {
-          // 云端版本比本地新（或本地为空）：全量以云端最新状态为准（彻底支持跨端删除、增添与编辑，不残留已删除条目）
-          write(LS.custom, Array.isArray(data.kbCustom) ? data.kbCustom : []);
-          write(LS.edited, (data.kbEdited && typeof data.kbEdited === 'object') ? data.kbEdited : {});
-          write(LS.deleted, Array.isArray(data.kbDeleted) ? data.kbDeleted : []);
-          write(LS.kepu_custom, Array.isArray(data.kepuCustom) ? data.kepuCustom : []);
-          write(LS.kepu_edited, (data.kepuEdited && typeof data.kepuEdited === 'object') ? data.kepuEdited : {});
-          write(LS.kepu_deleted, Array.isArray(data.kepuDeleted) ? data.kepuDeleted : []);
-          write(LS.dialect_custom, Array.isArray(data.dialectCustom) ? data.dialectCustom : []);
-
-          if (data.apiConfig && typeof data.apiConfig === 'object') {
-            write(LS.api, Object.assign({}, read(LS.api, {}), data.apiConfig));
-          }
-          if (data.workflowConfig && typeof data.workflowConfig === 'object') {
-            write(LS.workflow, Object.assign({}, read(LS.workflow, {}), data.workflowConfig));
-          }
-          if (Array.isArray(data.auditLogs)) {
-            write(LS.audit_logs, data.auditLogs);
-          }
-
-          localStorage.setItem('nfyj_custom_updated_at', String(cloudUpdatedAt));
-          triggerFrontEndRefresh();
-          if (window.Admin && window.Admin.refreshCurrentView) {
-            window.Admin.refreshCurrentView();
-          }
-        } else if (localUpdatedAt > cloudUpdatedAt || (localCustomCount > 0 && !hasCloudCustom)) {
-          // 本地版本比云端新（或者本地已有内容而云端为空）：自动上报推送到云端持久化共享给所有设备
-          syncCustomToCloud();
-        }
-
-        if (typeof callback === 'function') callback(data);
-      })
-      .catch(function () {
-        if (typeof callback === 'function') callback(null);
-      });
+    if (!pullPromise) pullPromise = (async function () {
+      try {
+        if (pending && !(await uploadPending())) return null;
+        var data = await cloudRequest();
+        if (Array.isArray(data.tokens)) write(LS.tokens, data.tokens);
+        if (Array.isArray(data.lockouts)) write(LS.locked_clients, data.lockouts);
+        if (!pending && cloudRevision !== data.revision) applyCloud(data);
+        setSyncStatus('saved', '已与云端同步');
+        return data;
+      } catch (error) {
+        setSyncStatus('error', error.message);
+        return null;
+      } finally { pullPromise = null; }
+    })();
+    if (typeof callback === 'function') pullPromise.then(callback);
+    return pullPromise;
   }
-
-  function getLockedClients() {
-    return read(LS.locked_clients, []);
+  async function reloadCloudContent() {
+    var data = await cloudRequest();
+    pending = false;
+    write('nfyj_cloud_pending', false);
+    applyCloud(data);
+    setSyncStatus('saved', '已重新加载云端内容');
+    return data;
   }
-
-  function reportClientLock(attempts, lockedUntil) {
-    var info = detectClientInfo();
-    var lockItem = {
-      id: 'lock-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-      clientId: info.clientId,
-      ip: info.ip,
-      geo: info.geo,
-      device: info.device,
-      attempts: attempts || 5,
-      lockedAt: Date.now(),
-      lockedUntil: lockedUntil || (Date.now() + 60000),
-      status: 'locked'
-    };
-
-    try {
-      localStorage.removeItem('nfyj_client_unlocked');
-    } catch (_) {}
-
-    var list = read(LS.locked_clients, []);
-    list = [lockItem].concat(list.filter(function (l) {
-      return l.clientId !== lockItem.clientId && l.ip !== lockItem.ip;
-    })).slice(0, 50);
-    write(LS.locked_clients, list);
-    addAuditLog('系统防御', '触发锁定', '客户端 [' + lockItem.ip + ' · ' + lockItem.device + '] 连续输错 ' + (attempts || 5) + ' 次，已执行锁定拦截');
-
-    if (typeof fetch !== 'undefined') {
-      fetch(getSyncEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'report_lock',
-          id: lockItem.id,
-          clientId: lockItem.clientId,
-          ip: lockItem.ip,
-          geo: lockItem.geo,
-          device: lockItem.device,
-          attempts: lockItem.attempts,
-          lockedUntil: lockItem.lockedUntil
-        })
-      }).catch(function () {});
-    }
-
-    return lockItem;
-  }
-
-  function unlockClient(lockIdOrIpOrCid) {
-    var list = read(LS.locked_clients, []);
-    var target = null;
-    list = list.map(function (l) {
-      if (l.id === lockIdOrIpOrCid || l.ip === lockIdOrIpOrCid || l.clientId === lockIdOrIpOrCid) {
-        l.status = 'unlocked';
-        l.unlockedAt = Date.now();
-        l.unlockedBy = '超级管理员手动解除';
-        target = l;
-      }
-      return l;
-    });
-    write(LS.locked_clients, list);
-
-    try {
-      localStorage.removeItem('nfyj_login_lock_state');
-      localStorage.setItem('nfyj_client_unlocked', '1');
-    } catch (_) {}
-
-    if (target) {
-      addAuditLog('超级管理员', '解除锁定', '超级管理员手动解除了客户端 [' + target.ip + ' · ' + target.device + '] 的登录封锁');
-    }
-
-    if (typeof fetch !== 'undefined') {
-      fetch(getSyncEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'unlock',
-          id: target ? target.id : lockIdOrIpOrCid,
-          ip: target ? target.ip : lockIdOrIpOrCid,
-          clientId: target ? target.clientId : ''
-        })
-      }).catch(function () {});
-    }
-
-    return true;
-  }
-
-  function unlockAllClients() {
-    var list = read(LS.locked_clients, []);
-    list = list.map(function (l) {
-      l.status = 'unlocked';
-      l.unlockedAt = Date.now();
-      l.unlockedBy = '超级管理员一键全部解除';
-      return l;
-    });
-    write(LS.locked_clients, list);
-
-    try {
-      localStorage.removeItem('nfyj_login_lock_state');
-      localStorage.setItem('nfyj_client_unlocked', '1');
-    } catch (_) {}
-
-    addAuditLog('超级管理员', '全部解锁', '超级管理员执行了一键解除全部客户端登录锁定');
-
-    if (typeof fetch !== 'undefined') {
-      fetch(getSyncEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'unlock_all' })
-      }).catch(function () {});
-    }
-
-    return true;
-  }
-
-  function consumeClientUnlock() {
-    try {
-      sessionStorage.removeItem('nfyj_client_unlocked');
-      localStorage.removeItem('nfyj_client_unlocked');
-      localStorage.setItem('nfyj_last_consumed_unlock', String(Date.now()));
-      localStorage.removeItem('nfyj_login_lock_state');
-    } catch (_) {}
-  }
-
-  function isClientUnlocked() {
-    // 1. 本地是否有未消费的明确解锁标记
-    var hasLocalFlag = false;
-    try {
-      hasLocalFlag = !!sessionStorage.getItem('nfyj_client_unlocked') || !!localStorage.getItem('nfyj_client_unlocked');
-    } catch (_) {}
-    if (hasLocalFlag) return true;
-
-    // 2. 检查锁定状态与云端记录
-    var lockState = null;
-    try {
-      var raw = localStorage.getItem('nfyj_login_lock_state');
-      if (raw) lockState = JSON.parse(raw);
-    } catch (_) {}
-
-    // 如果设备当前未处于锁定状态（例如正常输入中），则不需要触发解除
-    if (!lockState || !lockState.until || Date.now() >= lockState.until) {
-      return false;
-    }
-
-    var lockedAt = Number(lockState.lockedAt) || 0;
-    var consumedAt = 0;
-    try {
-      consumedAt = Number(localStorage.getItem('nfyj_last_consumed_unlock')) || 0;
-    } catch (_) {}
-
-    var cid = getClientId();
-    var cachedIp = '';
-    try {
-      cachedIp = sessionStorage.getItem('nfyj_client_ip') || localStorage.getItem('nfyj_client_ip') || '';
-    } catch (_) {}
-
-    var list = read(LS.locked_clients, []);
-    var myLock = list.find(function (l) {
-      return (l.clientId && l.clientId === cid) || (cachedIp && l.ip === cachedIp);
-    });
-
-    if (myLock && myLock.status === 'unlocked') {
-      var unlockedAt = Number(myLock.unlockedAt) || 0;
-      if (unlockedAt >= lockedAt && unlockedAt > consumedAt) {
-        return true;
-      }
-    }
-
-    return false;
-  }
+  function getLockedClients() { return read(LS.locked_clients, []); }
+  async function unlockClient(id) { await cloudRequest({ action: 'unlock', id: id }); return syncWithCloud(); }
+  async function unlockAllClients() { await cloudRequest({ action: 'unlock_all' }); return syncWithCloud(); }
 
   /* ---------- 操作审计日志 ---------- */
 
@@ -901,38 +286,13 @@
 
   function clearAuditLogs() {
     write(LS.audit_logs, []);
+    syncCustomToCloud();
   }
 
   /* ---------- 权限与邀请令牌体系 ---------- */
 
-  function getAdminPassword() {
-    var override = null;
-    try { override = localStorage.getItem(LS.pw); } catch (e) {}
-    if (override) return override;
-    return (window.APP_CONFIG && window.APP_CONFIG.admin && window.APP_CONFIG.admin.password) || 'admin123';
-  }
-
-  function setAdminPassword(pw) {
-    try {
-      localStorage.setItem(LS.pw, pw);
-      var hash = computeChecksum(pw);
-      localStorage.setItem(LS.pw_hash, hash);
-      syncPasswordToCloud(hash);
-    } catch (e) {}
-  }
-
-  function resetAdminAuth() {
-    try {
-      localStorage.removeItem(LS.pw);
-      localStorage.removeItem(LS.pw_hash);
-      localStorage.removeItem('nfyj_login_lock_state');
-      localStorage.removeItem('nfyj_client_unlocked');
-      sessionStorage.removeItem('nfyj_client_unlocked');
-      localStorage.removeItem('nfyj_last_consumed_unlock');
-      return true;
-    } catch (_) {
-      return false;
-    }
+  async function setAdminPassword(password) {
+    return cloudRequest({ action: 'update_password', password: normalizeAuthInput(password) });
   }
 
   function getInviteTokens() {
@@ -978,101 +338,20 @@
     });
   }
 
-  function generateInviteToken(name, expireDays) {
-    name = String(name || '受邀管理员').trim();
-    var days = Number(expireDays) || 30;
-    var now = Date.now();
-    var id = 'tok-' + now + '-' + Math.floor(Math.random() * 1000);
-    var tokenStr = generateSignedTokenStr(name, days, id);
-
-    var tokenObj = {
-      id: id,
-      token: tokenStr,
-      name: name,
-      role: 'editor',
-      createdAt: now,
-      expiresAt: days > 0 ? (now + days * 86400000) : 0,
-      revoked: false,
-      paused: false,
-      loginCount: 0,
-      lastActiveAt: 0,
-      lastClient: ''
-    };
-    var list = read(LS.tokens, []).filter(function (t) {
-      return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
-    });
-    list.unshift(tokenObj);
-    write(LS.tokens, list);
-    syncTokensToCloud(list);
-    addAuditLog('超级管理员', '签发令牌', '签发新邀请令牌：' + tokenStr + ' (' + name + ')');
-    return tokenObj;
+  async function generateInviteToken(name, days) {
+    var data = await cloudRequest({ action: 'create_token', name: name, days: days });
+    write(LS.tokens, data.tokens);
+    return data.token;
   }
-
-  function pauseInviteToken(tokenId) {
-    var list = read(LS.tokens, []);
-    var found = null;
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === tokenId || list[i].token === tokenId) {
-        list[i].paused = true;
-        found = list[i];
-        break;
-      }
-    }
-    if (found) {
-      write(LS.tokens, list);
-      syncTokensToCloud(list);
-      addAuditLog('超级管理员', '暂停令牌', '暂停了受邀令牌：' + found.token + ' (' + found.name + ')');
-    }
-    return !!found;
+  async function changeInviteToken(id, operation) {
+    var data = await cloudRequest({ action: 'change_token', id: id, operation: operation });
+    write(LS.tokens, data.tokens);
+    return true;
   }
-
-  function resumeInviteToken(tokenId) {
-    var list = read(LS.tokens, []);
-    var found = null;
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === tokenId || list[i].token === tokenId) {
-        list[i].paused = false;
-        found = list[i];
-        break;
-      }
-    }
-    if (found) {
-      write(LS.tokens, list);
-      syncTokensToCloud(list);
-      addAuditLog('超级管理员', '恢复令牌', '恢复了受邀令牌：' + found.token + ' (' + found.name + ')');
-    }
-    return !!found;
-  }
-
-  function revokeInviteToken(tokenId) {
-    var list = read(LS.tokens, []);
-    var found = null;
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === tokenId || list[i].token === tokenId) {
-        list[i].revoked = true;
-        found = list[i];
-        break;
-      }
-    }
-    if (found) {
-      write(LS.tokens, list);
-      syncTokensToCloud(list);
-      addAuditLog('超级管理员', '销毁令牌', '销毁/撤销了受邀令牌：' + found.token + ' (' + found.name + ')');
-    }
-    return !!found;
-  }
-
-  function deleteInviteToken(tokenId) {
-    var list = read(LS.tokens, []);
-    var target = list.find(function (t) { return t.id === tokenId || t.token === tokenId; });
-    var filtered = list.filter(function (t) { return t.id !== tokenId && t.token !== tokenId; });
-    write(LS.tokens, filtered);
-    syncTokensToCloud(filtered);
-    if (target) {
-      addAuditLog('超级管理员', '删除令牌', '删除了令牌记录：' + target.token + ' (' + target.name + ')');
-    }
-    return filtered.length < list.length;
-  }
+  function pauseInviteToken(id) { return changeInviteToken(id, 'pause'); }
+  function resumeInviteToken(id) { return changeInviteToken(id, 'resume'); }
+  function revokeInviteToken(id) { return changeInviteToken(id, 'revoke'); }
+  function deleteInviteToken(id) { return changeInviteToken(id, 'delete'); }
 
   function rollbackTokenChanges(tokenIdOrStr) {
     var tokens = read(LS.tokens, []);
@@ -1332,205 +611,30 @@
     }
   }
 
-  function verifyLogin(inputStr) {
-    var str = normalizeAuthInput(inputStr);
-    if (!str) {
-      return { ok: false, error: '请输入密码或邀请令牌' };
-    }
-
-    var customPw = null;
-    var pwHash = null;
+  async function verifyLogin(input) {
     try {
-      customPw = localStorage.getItem(LS.pw);
-      pwHash = localStorage.getItem(LS.pw_hash);
-    } catch (_) {}
-
-    var sLower = str.toLowerCase();
-    var defaultPw = (window.APP_CONFIG && window.APP_CONFIG.admin && window.APP_CONFIG.admin.password) || 'admin123';
-    var isDefaultMatch = (str === defaultPw) || (sLower === String(defaultPw).toLowerCase()) || (sLower === 'admin');
-    var isSuper = false;
-
-    // 1. 默认主口令 admin123 永远优先直接放行（保障任何设备扫单一固定二维码均可稳定登录）
-    if (isDefaultMatch) {
-      isSuper = true;
-      try {
-        if (!customPw) {
-          localStorage.removeItem(LS.pw_hash);
-        }
-      } catch (_) {}
-    } else if (customPw && ((str === customPw) || (sLower === String(customPw).toLowerCase()))) {
-      // 2. 超级管理员自定义密码
-      isSuper = true;
-    } else if (pwHash) {
-      // 3. 跨设备云端下发的密码哈希
-      var strHash = computeChecksum(str);
-      var sLowerHash = computeChecksum(sLower);
-      if (strHash === pwHash || sLowerHash === pwHash) {
-        isSuper = true;
-        try { localStorage.setItem(LS.pw, str); } catch (_) {}
-      }
+      var info = detectClientInfo();
+      return await cloudRequest({ action: 'login', credential: normalizeAuthInput(input), clientId: info.clientId, device: info.device });
+    } catch (error) {
+      return { ok: false, error: error.message, code: error.code, lockedUntil: error.lockedUntil };
     }
-
-    if (isSuper) {
-      addAuditLog('超级管理员', '主密登录', '超级管理员成功登录工作台');
-      return {
-        ok: true,
-        role: 'super_admin',
-        title: '超级管理员',
-        name: '超级管理员'
-      };
-    }
-
-    // 严禁硬编码后门通用密码（彻底杜绝 guest123 等），普通管理员只能凭有效邀请令牌/短码鉴权
-
-    // 2. 匹配本地已知邀请令牌
-    var tokens = read(LS.tokens, []).filter(function (t) {
-      return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
-    });
-    var now = Date.now();
-    var cleanStr = str.toUpperCase().replace(/[\s_\-]+/g, '');
-
-    for (var i = 0; i < tokens.length; i++) {
-      var item = tokens[i];
-      var itemTokNorm = normalizeAuthInput(item.token || '');
-      var itemTokClean = itemTokNorm.toUpperCase().replace(/[\s_\-]+/g, '');
-
-      var matchToken = (item.token === str) ||
-                       (itemTokNorm === str) ||
-                       (item.token && item.token.toLowerCase() === sLower) ||
-                       (itemTokClean && cleanStr && itemTokClean === cleanStr);
-
-      if (matchToken) {
-        if (item.revoked) {
-          return { ok: false, error: '此邀请令牌已被销毁或撤销，请联系超级管理员' };
-        }
-        if (item.paused) {
-          return { ok: false, error: '此邀请令牌已被超级管理员临时暂停使用' };
-        }
-        if (item.expiresAt && item.expiresAt > 0 && now > item.expiresAt) {
-          return { ok: false, error: '此邀请令牌已过期，请联系超级管理员重新签发' };
-        }
-        item.loginCount = (item.loginCount || 0) + 1;
-        item.lastActiveAt = now;
-        item.lastClient = (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/其它';
-        write(LS.tokens, tokens);
-        addAuditLog(item.name + ' (' + item.token + ')', '令牌登录', '受邀管理员登录工作台');
-
-        return {
-          ok: true,
-          role: 'editor',
-          title: '受邀管理员 · ' + item.name,
-          name: item.name,
-          tokenId: item.id,
-          token: item.token
-        };
-      }
-    }
-
-    // 3. 跨设备自校验签名令牌 (手机端扫码或外地新设备直接激活)
-    var parsed = parseSignedToken(str);
-    if (parsed.ok && parsed.item) {
-      var newItem = parsed.item;
-      newItem.loginCount = 1;
-      newItem.lastActiveAt = now;
-      newItem.lastClient = (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端/手机扫码';
-      tokens.unshift(newItem);
-      write(LS.tokens, tokens);
-      addAuditLog(newItem.name + ' (' + newItem.token + ')', '自校验令牌激活', '跨设备受邀管理员激活并登录工作台');
-
-      return {
-        ok: true,
-        role: 'editor',
-        title: '受邀管理员 · ' + newItem.name,
-        name: newItem.name,
-        tokenId: newItem.id,
-        token: newItem.token
-      };
-    } else if (parsed.error) {
-      return { ok: false, error: parsed.error };
-    }
-
-    // 4. 短邀请码自校验 (例如 NFYJ-INV-ABC123 或 6位有效短码)
-    if (isCompactShortToken(str)) {
-      var normToken = normalizeAuthInput(str).toUpperCase();
-      var shortItem = {
-        id: 'tok-short-' + now,
-        token: normToken,
-        name: '受邀协管员',
-        role: 'editor',
-        createdAt: now,
-        expiresAt: 0,
-        revoked: false,
-        paused: false,
-        loginCount: 1,
-        lastActiveAt: now,
-        lastClient: (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.indexOf('Windows') !== -1) ? 'Windows 电脑端' : '移动端'
-      };
-      tokens.unshift(shortItem);
-      write(LS.tokens, tokens);
-      addAuditLog('受邀协管员 (' + normToken + ')', '短码邀请登录', '受邀协管员通过短邀请码激活并登录工作台');
-      return {
-        ok: true,
-        role: 'editor',
-        title: '受邀管理员 · 协管员',
-        name: '协管员',
-        tokenId: shortItem.id,
-        token: shortItem.token
-      };
-    }
-
-    return { ok: false, error: '密码错误或邀请令牌无效' };
   }
-
-  /* ---------- 管理员独立标签页会话管理 (SessionStorage 窗口隔离) ---------- */
-  function saveSession(sessionData) {
-    if (!sessionData) return;
-    writeSession({
-      role: sessionData.role || 'editor',
-      name: sessionData.name || '管理员',
-      title: sessionData.title || '',
-      tokenId: sessionData.tokenId || '',
-      token: sessionData.token || '',
-      loginAt: Date.now()
-    });
+  function saveSession(data) {
+    if (data && data.bearer && data.expiresAt) writeSession(data);
   }
-
   function getSession() {
-    var s = readSession(null);
-    if (!s || !s.role) return null;
-    if (s.role === 'super_admin') return s;
-    if (s.role === 'editor') {
-      var tokens = read(LS.tokens, []);
-      var found = tokens.find(function (t) {
-        return (s.tokenId && t.id === s.tokenId) || (s.token && t.token === s.token);
-      });
-      if (!found && s.token) {
-        var parsed = parseSignedToken(s.token);
-        if (parsed.ok) found = parsed.item;
-      }
-      var now = Date.now();
-      var isExpired = found && found.expiresAt && found.expiresAt > 0 && now > found.expiresAt;
-      if (!found || found.paused || found.revoked || isExpired) {
-        clearSession();
-        return null;
-      }
-      return {
-        ok: true,
-        role: 'editor',
-        name: found.name,
-        title: found.title || ('受邀管理员 · ' + found.name),
-        tokenId: found.id,
-        token: found.token,
-        loginAt: s.loginAt
-      };
-    }
-    return null;
+    var data = readSession(null);
+    if (!data || !data.bearer || data.expiresAt <= Date.now()) { removeSession(); return null; }
+    return data;
   }
-
   function clearSession() {
     removeSession();
+    write(LS.tokens, []);
+    write(LS.locked_clients, []);
   }
-
+  async function logout() {
+    try { await cloudRequest({ action: 'logout' }); } finally { clearSession(); }
+  }
 
   /* ---------- 知识库 ---------- */
 
@@ -1610,9 +714,9 @@
 
   function resetKB() {
     try {
-      localStorage.removeItem(LS.custom);
-      localStorage.removeItem(LS.deleted);
-      localStorage.removeItem(LS.edited);
+      remove(LS.custom);
+      remove(LS.deleted);
+      remove(LS.edited);
       syncCustomToCloud();
     } catch (e) {}
   }
@@ -1764,8 +868,8 @@
 
   function resetApi() {
     try {
-      localStorage.removeItem(LS.api);
-      localStorage.removeItem(LS.workflow);
+      remove(LS.api);
+      remove(LS.workflow);
       syncCustomToCloud();
     } catch (e) {}
   }
@@ -1803,9 +907,10 @@
   /* ---------- 全站资产一键备份与恢复 ---------- */
 
   function exportFullBundle() {
-    var bundle = {
+    var exported = {
       app: '龙南客家非遗数字助手',
-      version: 'v2-pro',
+      version: 'v3-cloud',
+      cloudDraft: bundle(),
       exportedAt: new Date().toISOString(),
       knowledgeBase: getEntries(),
       heritageCardsCustom: read(LS.kepu_custom, []),
@@ -1814,13 +919,24 @@
       apiConfig: getApiOverrides(),
       workflowConfig: getWorkflowConfig()
     };
-    return JSON.stringify(bundle, null, 2);
+    return JSON.stringify(exported, null, 2);
   }
 
   function importFullBundle(jsonStr) {
     try {
       var data = JSON.parse(jsonStr);
       if (!data || typeof data !== 'object') return false;
+      if (data.cloudDraft) {
+        var draft = data.cloudDraft;
+        if (!Object.keys(CONTENT_KEYS).every(function (key) {
+          return OBJECT_KEYS.indexOf(key) >= 0
+            ? draft[key] && typeof draft[key] === 'object' && !Array.isArray(draft[key])
+            : Array.isArray(draft[key]);
+        })) return false;
+        Object.keys(CONTENT_KEYS).forEach(function (key) { write(CONTENT_KEYS[key], draft[key]); });
+        syncCustomToCloud();
+        return true;
+      }
       if (Array.isArray(data.knowledgeBase)) {
         importKB(JSON.stringify(data.knowledgeBase));
       }
@@ -1850,8 +966,6 @@
   window.Store = {
     // 权限与邀请令牌
     normalizeAuthInput: normalizeAuthInput,
-    resetAdminAuth: resetAdminAuth,
-    getAdminPassword: getAdminPassword,
     setAdminPassword: setAdminPassword,
     getInviteTokens: getInviteTokens,
     generateInviteToken: generateInviteToken,
@@ -1866,6 +980,9 @@
     saveSession: saveSession,
     getSession: getSession,
     clearSession: clearSession,
+    logout: logout,
+    getSyncStatus: function () { return syncStatus; },
+    reloadCloudContent: reloadCloudContent,
     getAuditLogs: getAuditLogs,
     clearAuditLogs: clearAuditLogs,
     addAuditLog: addAuditLog,
@@ -1908,38 +1025,29 @@
     exportFullBundle: exportFullBundle,
     importFullBundle: importFullBundle,
 
-    // 单二维码凭证同步
-    buildSyncPayload: buildSyncPayload,
-    applySyncPayload: applySyncPayload,
-
     // 全站多端云同步与客户端锁定监控
     detectClientInfo: detectClientInfo,
     getLockedClients: getLockedClients,
-    reportClientLock: reportClientLock,
     unlockClient: unlockClient,
     unlockAllClients: unlockAllClients,
-    isClientUnlocked: isClientUnlocked,
-    consumeClientUnlock: consumeClientUnlock,
     syncWithCloud: syncWithCloud,
     syncCustomToCloud: syncCustomToCloud,
-    syncTokensToCloud: syncTokensToCloud,
-    syncPasswordToCloud: syncPasswordToCloud,
     triggerFrontEndRefresh: triggerFrontEndRefresh
   };
 
-  // 页面载入时自动解析并应用单二维码凭证同步包，并与云端同步最新令牌与安全状态，并启动秒级全自动无感静默同步
-  try {
-    applySyncPayload();
+  // Remove obsolete local credentials. They cannot authenticate against the server.
+  ['nfyj_admin_pw', 'nfyj_admin_pw_hash', 'nfyj_admin_session', 'nfyj_login_lock_state', 'nfyj_admin_tokens'].forEach(function (key) {
+    try { localStorage.removeItem(key); } catch (_) {}
+  });
+  if (typeof window.addEventListener === 'function') {
     syncWithCloud();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', function () { syncWithCloud(); });
-      if (typeof document !== 'undefined') {
-        document.addEventListener('visibilitychange', function () {
-          if (document.visibilityState === 'visible') syncWithCloud();
-        });
-      }
-      setInterval(function () { syncWithCloud(); }, 2500);
-    }
-  } catch (_) {}
+    window.addEventListener('focus', function () { syncWithCloud(); });
+    window.addEventListener('online', function () { syncWithCloud(); });
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') syncWithCloud();
+    });
+    setInterval(function () {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') syncWithCloud();
+    }, 15000);
+  }
 })();
-

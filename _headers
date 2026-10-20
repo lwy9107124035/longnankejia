@@ -7,3 +7,9 @@
   X-XSS-Protection: 1; mode=block
   Cross-Origin-Opener-Policy: same-origin
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://*.hlcode.pro; frame-src 'self' https://*.hlcode.pro; connect-src 'self' https://api.siliconflow.cn https://*.pages.dev; font-src 'self' data:; object-src 'none'; base-uri 'self';
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/js/*
+  Cache-Control: no-cache

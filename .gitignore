@@ -36,3 +36,6 @@ __pycache__/
 
 # wrangler 本地缓存（含账号 ID 与邮箱，不进公开仓库）
 .wrangler/
+# CI 生成的部署绑定配置、以及仅供本地的密码配置。
+wrangler.admin.json
+.dev.vars*

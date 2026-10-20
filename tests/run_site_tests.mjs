@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createAdminBackend } from './helpers/admin-harness.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = path.join(ROOT, '.cache', 'test-shots');
@@ -50,11 +51,18 @@ const MIME = {
 };
 
 function startServer() {
-  const server = http.createServer((req, res) => {
+  const backend = createAdminBackend();
+  const server = http.createServer(async (req, res) => {
     const pathname = decodeURIComponent(req.url.split('?')[0]);
     if (pathname === '/api/admin/sync') {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, clientIp: '127.0.0.1', clientGeo: '本地开发/测试环境', tokens: [], lockouts: [] }));
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const response = await backend.fetchApi(BASE + req.url, {
+        method: req.method, headers: req.headers,
+        body: req.method === 'POST' ? Buffer.concat(chunks) : undefined
+      });
+      res.writeHead(response.status, Object.fromEntries(response.headers));
+      res.end(await response.text());
       return;
     }
     const rel = pathname.replace(/^\/+/, '') || 'index.html';
@@ -83,6 +91,7 @@ function startServer() {
       }
     });
   });
+  server.on('close', () => backend.close());
   return new Promise((resolve, reject) => {
     server.once('error', (e) => reject(new Error(
       e.code === 'EADDRINUSE'
@@ -99,9 +108,13 @@ class Page {
   static async attach(targetUrl) {
     const res = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`);
     const list = await res.json();
-    const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+    const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && (!targetUrl || t.id === targetUrl));
     if (!page) throw new Error('no debuggable page; is Chrome up?');
-    const ws = new WebSocket(page.webSocketDebuggerUrl);
+    return Page.connect(page.webSocketDebuggerUrl);
+  }
+
+  static async connect(url) {
+    const ws = new WebSocket(url);
     await new Promise((resolve, reject) => {
       ws.addEventListener('open', resolve, { once: true });
       ws.addEventListener('error', reject, { once: true });
@@ -213,12 +226,13 @@ async function run() {
   const netFailures = [];
   const netRequests = [];
   const pendingRequests = new Map();
+  const expectedFailures = new Set();
   const page = await Page.attach();
 
   page.on((m) => {
     if (m.method === 'Log.entryAdded') {
       const e = m.params.entry;
-      if (e.level === 'error') consoleErrors.push(`[${e.source}] ${e.text}`);
+      if (e.level === 'error' && !expectedFailures.has(e.networkRequestId)) consoleErrors.push(`[${e.source}] ${e.text}`);
     }
     if (m.method === 'Runtime.exceptionThrown') {
       const d = m.params.exceptionDetails;
@@ -227,6 +241,10 @@ async function run() {
     if (m.method === 'Network.requestWillBeSent') {
       netRequests.push(m.params.request.url);
       pendingRequests.set(m.params.requestId, m.params.request.url);
+      if (m.params.request.url.endsWith('/api/admin/sync') && m.params.request.postData) {
+        const body = JSON.parse(m.params.request.postData);
+        if (body.action === 'login' && body.credential === 'wrong-password') expectedFailures.add(m.params.requestId);
+      }
     }
     if (m.method === 'Network.loadingFailed') {
       // errorText alone can't be filtered by host, and the README promises third-party
@@ -235,7 +253,7 @@ async function run() {
       netFailures.push(m.params.errorText + ' ' + (m.params.type || '') + ' ' + u.replace(BASE, ''));
     }
     if (m.method === 'Network.responseReceived' && m.params.response.status >= 400) {
-      netFailures.push(m.params.response.status + ' ' + m.params.response.url.replace(BASE, ''));
+      if (!expectedFailures.has(m.params.requestId)) netFailures.push(m.params.response.status + ' ' + m.params.response.url.replace(BASE, ''));
     }
   });
 
@@ -257,6 +275,7 @@ async function run() {
     if (ONLY.includes('4e')) { await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`); await sectionVoice(); }
     if (ONLY.includes('3d')) { await section3dModels(); await sectionCloth(); }
     if (ONLY.includes('8')) await sectionAccess();
+    if (ONLY.includes('admin')) await sectionAdminDevices();
     if (ONLY.includes('rhyme')) await sectionRhyme();
     if (ONLY.includes('dialogue')) await sectionConversation();
     return { passed, failed, results };
@@ -1246,6 +1265,70 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   await page.evaluate(`document.getElementById('kpSaveBtn').click()`);
   check('新增科普卡片写入持久化', await until(page, `window.Store.getHeritageCards().length === ${kepuBefore + 1}`));
   await page.evaluate(`document.getElementById('adminMask').click()`);
+
+  await sectionAdminDevices();
+
+  async function sectionAdminDevices() {
+    if (BASE !== `http://127.0.0.1:${PORT}`) throw new Error('Administrator mutation tests must use the isolated local test server.');
+    console.log('\n8b. 独立电脑/手机的管理员登录与持久化');
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+    await page.send('Page.navigate', { url: BASE + '/index.html#admin-auth=super' });
+    await until(page, `!!window.Admin && !!window.Store`);
+    await page.evaluate(`window.Store.clearSession(); window.Admin.open(); window.__alerts=[]; window.alert=(text)=>window.__alerts.push(text)`);
+    check('URL 免密参数不能赋予管理员身份', await page.evaluate(`!window.Store.getSession() && !!document.getElementById('adminLoginBtn')`));
+    async function uiLogin(target, password) {
+      await target.evaluate(`document.getElementById('adminPwInput').value=${JSON.stringify(password)}; document.getElementById('adminLoginBtn').click()`);
+      return until(target, `!!document.getElementById('adminHeaderLogoutBtn')`, 8000);
+    }
+    check('电脑端由真实接口登录管理员', await uiLogin(page, 'admin123'));
+    const adminStyle = await page.evaluate(`(()=>{let e=document.getElementById('adminPanel');return {className:e.className,maxWidth:getComputedStyle(e).maxWidth}})()`);
+    check('电脑管理面板使用 960px 工作区', adminStyle.maxWidth === '960px', JSON.stringify(adminStyle));
+    await page.evaluate(`document.querySelector('[data-tab="sys"]').click(); document.getElementById('newPw1').value='DeviceCheck2026!'; document.getElementById('newPw2').value='DeviceCheck2026!'; document.getElementById('pwSaveBtn').click()`);
+    check('改密在服务器确认之后才提示成功', await until(page, `window.__alerts.some(t=>t.includes('主密码已在云端修改'))`));
+    await shot(page, 'admin-desktop');
+    const version = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).json();
+    const browser = await Page.connect(version.webSocketDebuggerUrl);
+    const { browserContextId } = await browser.send('Target.createBrowserContext');
+    let phone;
+    const phoneErrors = [];
+    try {
+      const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank', browserContextId });
+      phone = await Page.attach(targetId);
+      phone.on(m => { if (m.method === 'Runtime.exceptionThrown') phoneErrors.push(m.params.exceptionDetails.text); });
+      await phone.send('Page.enable'); await phone.send('Runtime.enable'); await phone.send('Network.enable');
+      await phone.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 2, mobile: true });
+      await phone.send('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1' });
+      await phone.send('Page.navigate', { url: BASE + '/index.html' });
+      await until(phone, `!!window.Admin && !!window.Store`);
+      check('新手机没有共享电脑的本地会话', await phone.evaluate(`window.Store.getSession() === null && !localStorage.getItem('nfyj_admin_pw')`));
+      await phone.evaluate(`window.Admin.open()`);
+      await phone.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      await phone.evaluate(`document.getElementById('adminPwInput').value='DeviceCheck2026!'; document.getElementById('adminLoginBtn').click()`);
+      check('断网显示网络错误而非密码错误', await until(phone, `document.getElementById('adminPwError').textContent.includes('连不上管理服务器')`));
+      check('网络错误不清空已输入的密码', await phone.evaluate(`document.getElementById('adminPwInput').value==='DeviceCheck2026!'`));
+      await phone.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      check('手机连接恢复后用电脑修改的新密码登录', await uiLogin(phone, 'DeviceCheck2026!'));
+      check('手机管理员面板在 360px 内显示', await phone.evaluate(`document.documentElement.scrollWidth <= window.innerWidth + 1`));
+      check('手机顶部按钮保持完整文字并换行布局', await phone.evaluate(`getComputedStyle(document.getElementById('adminHeaderSyncBtn')).whiteSpace==='nowrap' && getComputedStyle(document.querySelector('.admin-header')).flexWrap==='wrap'`));
+      const added = await page.evaluate(`(async()=>{const entry=window.Store.addEntry({title:'跨端浏览器验证',answer:'同一服务器持久化'});await window.Store.syncWithCloud();return entry.id})()`, true);
+      await phone.evaluate(`window.Store.syncWithCloud()`, true);
+      check('电脑录入的内容同步到全新手机', await phone.evaluate(`window.Store.getEntries().some(e=>e.id===${JSON.stringify(added)})`));
+      await phone.send('Page.reload');
+      await until(phone, `!!window.Store && !!window.Admin`);
+      check('手机刷新保留自己的服务器会话', await phone.evaluate(`window.Store.getSession()?.role==='super_admin'`));
+      await phone.evaluate(`window.Admin.open()`); await until(phone, `!!document.getElementById('adminCloudStatus')`);
+      await shot(phone, 'admin-phone');
+      await phone.evaluate(`window.Store.logout()`, true);
+      check('手机退出不影响电脑会话', await page.evaluate(`(async()=>!!(await window.Store.syncWithCloud())?.session)()`, true));
+      await phone.evaluate(`window.Admin.open()`);
+      await phone.evaluate(`document.getElementById('adminPwInput').value='admin123'; document.getElementById('adminLoginBtn').click()`);
+      check('改密后旧默认密码确实被拒绝', await until(phone, `document.getElementById('adminPwError').textContent.includes('密码错误或邀请令牌无效')`));
+      check('手机端无未捕获脚本异常', phoneErrors.length === 0, phoneErrors.join(' | '));
+    } finally {
+      phone?.ws.close();
+      await browser.send('Target.disposeBrowserContext', { browserContextId }); browser.ws.close();
+    }
+  }
 
   console.log('\n9. 布局');
   await page.evaluate(`localStorage.removeItem('nfyj_kb_custom'); localStorage.removeItem('nfyj_kepu_custom');`);

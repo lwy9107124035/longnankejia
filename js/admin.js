@@ -37,39 +37,15 @@
   }
 
   /* ==================== 登录模块 (支持邀请制令牌与防刷锁定) ==================== */
-  var LOCK_STORAGE_KEY = 'nfyj_login_lock_state';
-
-  function getLoginLockState() {
-    try {
-      var raw = localStorage.getItem(LOCK_STORAGE_KEY);
-      if (!raw) return { count: 0, until: 0 };
-      var parsed = JSON.parse(raw);
-      return {
-        count: Number(parsed.count) || 0,
-        until: Number(parsed.until) || 0
-      };
-    } catch (_) {
-      return { count: 0, until: 0 };
-    }
+  function showSyncStatus() {
+    var status = window.Store.getSyncStatus();
+    var label = $('#adminCloudStatus');
+    if (label) { label.textContent = status.message; label.dataset.status = status.status; }
+    var reload = $('#reloadCloudBtn');
+    if (reload) reload.hidden = status.status !== 'conflict';
   }
-
-  function setLoginLockState(count, until, lockedAt) {
-    try {
-      localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify({
-        count: count,
-        until: until,
-        lockedAt: lockedAt || (until ? Date.now() : 0)
-      }));
-    } catch (_) {}
-  }
-
-  function clearLoginLockState() {
-    try {
-      localStorage.removeItem(LOCK_STORAGE_KEY);
-      if (window.Store && window.Store.consumeClientUnlock) {
-        window.Store.consumeClientUnlock();
-      }
-    } catch (_) {}
+  function adminAction(action) {
+    return Promise.resolve().then(action).catch(function (error) { alert(error.message); });
   }
 
   function showAdminToast(msg) {
@@ -88,230 +64,61 @@
     }, 3200);
   }
 
-  function showLogin() {
-    var panel = $('#adminPanel');
-    panel.innerHTML =
-      '<div class="admin-login">' +
-      '  <div class="admin-login-icon">🔐</div>' +
-      '  <div class="admin-login-title">数智管理工作台</div>' +
-      '  <div class="admin-login-hint">请输入超级管理员密码或邀请令牌</div>' +
-      '  <form class="admin-login-form" id="adminLoginForm" onsubmit="return false;">' +
-      '    <div class="admin-pw-wrap">' +
-      '      <input type="password" id="adminPwInput" placeholder="请输入密码或邀请码" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text">' +
-      '      <button type="button" id="adminPwToggle" class="admin-pw-toggle" title="显示明文">👁️</button>' +
-      '    </div>' +
-      '    <div class="admin-login-error" id="adminPwError"></div>' +
-      '    <button type="button" class="admin-login-btn" id="adminLoginBtn">登 录</button>' +
-      '    <button type="button" class="admin-login-cancel" id="adminCancelBtn">返回用户页面</button>' +
-      '  </form>' +
-      '</div>';
-
+  function showLogin(message) {
+    authenticated = false;
+    currentUser = null;
+    $('#adminPanel').classList.remove('admin-workspace');
+    $('#adminPanel').innerHTML =
+      '<div class="admin-login"><div class="admin-login-icon">🔐</div>' +
+      '<div class="admin-login-title">数智管理工作台</div>' +
+      '<div class="admin-login-hint">请输入管理员密码或邀请令牌</div>' +
+      '<form class="admin-login-form" id="adminLoginForm">' +
+      '<div class="admin-pw-wrap"><input type="password" id="adminPwInput" placeholder="请输入密码或邀请码" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false">' +
+      '<button type="button" id="adminPwToggle" class="admin-pw-toggle" title="显示密码">👁️</button></div>' +
+      '<div class="admin-login-error" id="adminPwError" role="alert"></div>' +
+      '<button type="submit" class="admin-login-btn" id="adminLoginBtn">登 录</button></form>' +
+      '<button type="button" class="admin-login-cancel" id="adminCancelBtn">返回用户页面</button></div>';
     var input = $('#adminPwInput');
-    var btn = $('#adminLoginBtn');
-    var err = $('#adminPwError');
-    var toggleBtn = $('#adminPwToggle');
-    var form = $('#adminLoginForm');
-
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', function () {
-        if (input.type === 'password') {
-          input.type = 'text';
-          toggleBtn.textContent = '🙈';
-          toggleBtn.title = '隐藏明文';
-        } else {
-          input.type = 'password';
-          toggleBtn.textContent = '👁️';
-          toggleBtn.title = '显示明文';
-        }
-      });
-    }
-
-    var lockTimer = null;
-
-    var lastCloudSync = 0;
-
-    function checkLockStatus() {
-      var state = getLoginLockState();
-      var now = Date.now();
-      var isLocked = !!(state.until && now < state.until);
-
-      if (isLocked) {
-        if (window.Store && window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
-          clearLoginLockState();
-          if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
-          input.disabled = false;
-          btn.disabled = false;
-          btn.style.opacity = '';
-          err.className = 'admin-login-error';
-          err.textContent = '✅ 管理员已手动解除锁定，请重新输入口令';
-          return false;
-        }
-
-        var remainSec = Math.ceil((state.until - now) / 1000);
-        input.disabled = true;
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        err.className = 'admin-login-error admin-lock-countdown';
-        err.textContent = '⚠️ 连续输错超限，系统已锁定保护。请等待 ' + remainSec + ' 秒后再试（刷新页面不会重置锁定）';
-        if (!lockTimer) {
-          lockTimer = setInterval(function () {
-            var curNow = Date.now();
-            if (window.Store && window.Store.syncWithCloud && curNow - lastCloudSync > 2500) {
-              lastCloudSync = curNow;
-              window.Store.syncWithCloud(function () {
-                if (window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
-                  clearInterval(lockTimer);
-                  lockTimer = null;
-                  clearLoginLockState();
-                  input.disabled = false;
-                  btn.disabled = false;
-                  btn.style.opacity = '';
-                  err.className = 'admin-login-error';
-                  err.textContent = '✅ 管理员已手动解除锁定，请重新输入口令';
-                }
-              });
-            }
-
-            if (window.Store && window.Store.isClientUnlocked && window.Store.isClientUnlocked()) {
-              clearInterval(lockTimer);
-              lockTimer = null;
-              clearLoginLockState();
-              input.disabled = false;
-              btn.disabled = false;
-              btn.style.opacity = '';
-              err.className = 'admin-login-error';
-              err.textContent = '✅ 管理员已手动解除锁定，请重新输入口令';
-              return;
-            }
-            var curState = getLoginLockState();
-            if (curState.until && curNow < curState.until) {
-              var left = Math.ceil((curState.until - curNow) / 1000);
-              err.textContent = '⚠️ 连续输错超限，系统已锁定保护。请等待 ' + left + ' 秒后再试（刷新页面不会重置锁定）';
-            } else {
-              clearInterval(lockTimer);
-              lockTimer = null;
-              input.disabled = false;
-              btn.disabled = false;
-              btn.style.opacity = '';
-              err.className = 'admin-login-error';
-              err.textContent = '锁定已解除，请重新输入正确口令';
-              setLoginLockState(0, 0);
-            }
-          }, 1000);
-        }
-        return true;
-      } else {
-        if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
-        input.disabled = false;
-        btn.disabled = false;
-        btn.style.opacity = '';
-        return false;
-      }
-    }
-
-    checkLockStatus();
-
-    var onWakeUp = function () {
-      checkLockStatus();
-    };
-    window.addEventListener('focus', onWakeUp);
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', onWakeUp);
-    }
-
-    function doLogin() {
-      var raw = input.value || '';
-      var pw = (window.Store && window.Store.normalizeAuthInput)
-        ? window.Store.normalizeAuthInput(raw)
-        : raw.trim().replace(/^['"“‘]+|['"”’]+$/g, '').trim();
-      var sLower = pw.toLowerCase();
-      if (sLower === 'admin123' || sLower === 'admin') {
-        clearLoginLockState();
-        if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
-        input.disabled = false;
-        btn.disabled = false;
-        btn.style.opacity = '';
-      } else if (checkLockStatus()) {
+    var button = $('#adminLoginBtn');
+    var error = $('#adminPwError');
+    error.textContent = message || '';
+    $('#adminPwToggle').addEventListener('click', function () { input.type = input.type === 'password' ? 'text' : 'password'; });
+    $('#adminCancelBtn').addEventListener('click', close);
+    $('#adminLoginForm').addEventListener('submit', async function (event) {
+      event.preventDefault();
+      if (button.disabled) return;
+      if (!window.Store.normalizeAuthInput(input.value)) { error.textContent = '请输入密码或邀请令牌'; input.focus(); return; }
+      button.disabled = true;
+      button.textContent = '正在连接服务器…';
+      error.textContent = '';
+      var result = await window.Store.verifyLogin(input.value);
+      button.disabled = false;
+      button.textContent = '登 录';
+      if (!result.ok) {
+        error.textContent = result.error;
+        // Service and network errors do not count as bad passwords or erase input.
+        if (result.code === 'INVALID_CREDENTIALS') input.value = '';
         return;
       }
-      if (!pw) {
-        err.className = 'admin-login-error';
-        err.style.color = '#B5432A';
-        err.textContent = '请输入登录密码或邀请令牌';
-        input.focus();
-        return;
-      }
-      var authResult = window.Store.verifyLogin(pw);
-      if (authResult.ok) {
-        clearLoginLockState();
-        if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
-        window.removeEventListener('focus', onWakeUp);
-        if (typeof document !== 'undefined') {
-          document.removeEventListener('visibilitychange', onWakeUp);
-        }
-        authenticated = true;
-        currentUser = authResult;
-        if (window.Store && window.Store.saveSession) {
-          window.Store.saveSession(authResult);
-        }
-        showMain();
-      } else {
-        var state = getLoginLockState();
-        var nextCount = (Number(state.count) || 0) + 1;
-        if (nextCount >= 5) {
-          var lockUntil = Date.now() + 60000;
-          setLoginLockState(nextCount, lockUntil, Date.now());
-          if (window.Store && window.Store.reportClientLock) {
-            window.Store.reportClientLock(nextCount, lockUntil);
-          }
-          checkLockStatus();
-        } else {
-          setLoginLockState(nextCount, 0);
-          err.className = 'admin-login-error';
-          err.style.color = '#B5432A';
-          err.textContent = '密码错误或邀请令牌无效，请重试（还剩 ' + (5 - nextCount) + ' 次机会）';
-        }
-        input.value = '';
-        input.focus();
-      }
-    }
-
-    btn.addEventListener('click', function (e) {
-      if (e) {
-        if (e.preventDefault) e.preventDefault();
-        if (e.stopPropagation) e.stopPropagation();
-      }
-      doLogin();
-    });
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        if (e.preventDefault) e.preventDefault();
-        if (e.stopPropagation) e.stopPropagation();
-        doLogin();
-      }
-    });
-    $('#adminCancelBtn').addEventListener('click', function () {
-      window.removeEventListener('focus', onWakeUp);
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', onWakeUp);
-      }
-      close();
+      window.Store.saveSession(result);
+      authenticated = true;
+      currentUser = result;
+      await window.Store.syncWithCloud();
+      if (window.Store.getSession()) showMain();
     });
     setTimeout(function () { input.focus(); }, 100);
   }
-
   function doLogout() {
-    authenticated = false;
-    currentUser = null;
-    if (window.Store && window.Store.clearSession) {
-      window.Store.clearSession();
-    }
+    var request = window.Store.logout();
+    request.catch(function (error) { showAdminToast(error.message); });
+    window.Store.clearSession();
     showLogin();
   }
 
   /* ==================== 主工作台面板 ==================== */
   function showMain() {
     var panel = $('#adminPanel');
+    panel.classList.add('admin-workspace');
     var isSuper = currentUser && currentUser.role === 'super_admin';
     var userBadge = isSuper
       ? '<span class="admin-role-badge super">超级管理员</span>'
@@ -347,6 +154,7 @@
       '    <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
       '  </div>' +
       '</div>' +
+      '<div class="admin-cloud-bar"><span id="adminCloudStatus" role="status"></span><button class="admin-btn-sm" id="backupDraftBtn">导出本机备份</button><button class="admin-btn-sm" id="reloadCloudBtn" hidden>重新加载云端内容</button></div>' +
       notifBanner +
       '<div class="admin-tabs">' +
       '  <button class="admin-tab active" data-tab="kb">📚 知识库</button>' +
@@ -362,33 +170,24 @@
     $('#adminCloseBtn').addEventListener('click', close);
     $('#adminHeaderLogoutBtn').addEventListener('click', doLogout);
 
-    var syncBtn = $('#adminHeaderSyncBtn');
-    if (syncBtn) {
-      syncBtn.addEventListener('click', function () {
-        syncBtn.disabled = true;
-        syncBtn.textContent = '⏳ 同步中...';
-        if (window.Store && window.Store.syncCustomToCloud) {
-          window.Store.syncCustomToCloud(function () {
-            if (window.Store.syncWithCloud) {
-              window.Store.syncWithCloud(function (data) {
-                syncBtn.disabled = false;
-                syncBtn.textContent = '☁️ 立即同步云端';
-                refreshFrontEnd();
-                renderTab();
-                if (data && data.ok) {
-                  alert('✅ 双向云同步成功！\n电脑端与手机端自定义内容已全量同步完成。');
-                } else {
-                  alert('⚠️ 已提交同步请求，请确保两端网络通畅。');
-                }
-              });
-            } else {
-              syncBtn.disabled = false;
-              syncBtn.textContent = '☁️ 立即同步云端';
-            }
-          });
-        }
+    showSyncStatus();
+    $('#backupDraftBtn').addEventListener('click', function () {
+      downloadJson(window.Store.exportFullBundle(), 'longnan-local-backup.json');
+    });
+    $('#reloadCloudBtn').addEventListener('click', function () {
+      if (confirm('请先导出本机备份。重新加载会用云端版本替换本机尚未同步的编辑，确定继续吗？')) adminAction(async function () {
+        await window.Store.reloadCloudContent(); renderTab();
       });
-    }
+    });
+    var syncBtn = $('#adminHeaderSyncBtn');
+    syncBtn.addEventListener('click', async function () {
+      syncBtn.disabled = true;
+      try {
+        var data = await window.Store.syncWithCloud();
+        if (data) { refreshFrontEnd(); renderTab(); }
+        else alert(window.Store.getSyncStatus().message);
+      } finally { syncBtn.disabled = false; }
+    });
 
     var ackBtn = $('#ackNotifBtn');
     if (ackBtn) {
@@ -1940,7 +1739,7 @@
           var token = btn.getAttribute('data-copy-link');
           var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
           var url = isLocal
-            ? ('https://antigravity.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
+            ? ('https://codex.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
             : (window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token));
           if (navigator.clipboard) {
             navigator.clipboard.writeText(url).then(function () {
@@ -1958,7 +1757,7 @@
           var name = btn.getAttribute('data-name');
           var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
           var url = isLocal
-            ? ('https://antigravity.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
+            ? ('https://codex.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
             : (window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token));
           showTokenQrModal(name, token, url);
         });
@@ -1975,8 +1774,7 @@
         btn.addEventListener('click', function () {
           var id = btn.getAttribute('data-pause-token');
           if (confirm('确定暂停该令牌授权？暂停期间对方将暂时无法登录。')) {
-            window.Store.pauseInviteToken(id);
-            renderTab();
+            adminAction(async function () { await window.Store.pauseInviteToken(id); renderTab(); });
           }
         });
       });
@@ -1984,8 +1782,7 @@
       list.querySelectorAll('[data-resume-token]').forEach(function (btn) {
         btn.addEventListener('click', function () {
           var id = btn.getAttribute('data-resume-token');
-          window.Store.resumeInviteToken(id);
-          renderTab();
+          adminAction(async function () { await window.Store.resumeInviteToken(id); renderTab(); });
         });
       });
 
@@ -2007,8 +1804,7 @@
         btn.addEventListener('click', function () {
           var id = btn.getAttribute('data-revoke-token');
           if (confirm('确定销毁该管理员令牌？销毁后对方将永久无法登录。')) {
-            window.Store.revokeInviteToken(id);
-            renderTab();
+            adminAction(async function () { await window.Store.revokeInviteToken(id); renderTab(); });
           }
         });
       });
@@ -2017,8 +1813,7 @@
         btn.addEventListener('click', function () {
           var id = btn.getAttribute('data-del-token');
           if (confirm('确定彻底删除该令牌记录？')) {
-            window.Store.deleteInviteToken(id);
-            renderTab();
+            adminAction(async function () { await window.Store.deleteInviteToken(id); renderTab(); });
           }
         });
       });
@@ -2096,11 +1891,11 @@
       }
     });
 
-    $('#tokGenBtn').addEventListener('click', function () {
+    $('#tokGenBtn').addEventListener('click', function () { adminAction(async function () {
       var name = $('#tokName').value.trim();
       var days = Number($('#tokDays').value);
       if (!name) { alert('请输入受邀人员姓名或单位备注'); return; }
-      var created = window.Store.generateInviteToken(name, days);
+      var created = await window.Store.generateInviteToken(name, days);
       var disp = $('#tokNewDisplay');
       disp.style.display = 'block';
       disp.innerHTML =
@@ -2117,33 +1912,20 @@
       });
       $('#tokName').value = '';
       renderTab();
-    });
+    }); });
 
-    body.querySelectorAll('[data-unlock-client]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var id = btn.getAttribute('data-unlock-client');
-        var ip = btn.getAttribute('data-ip');
-        var cid = btn.getAttribute('data-cid');
-        if (window.Store && window.Store.unlockClient) {
-          window.Store.unlockClient(cid || id || ip);
-        }
-        showAdminToast('已手动解除客户端 [' + ip + '] 的登录封锁！');
-        renderTab();
-      });
+    body.querySelectorAll('[data-unlock-client]').forEach(function (button) {
+      button.addEventListener('click', function () { adminAction(async function () {
+        await window.Store.unlockClient(button.getAttribute('data-unlock-client'));
+        showAdminToast('已解除该设备的登录锁定'); renderTab();
+      }); });
     });
-
     var unlockAllBtn = $('#unlockAllClientsBtn');
-    if (unlockAllBtn) {
-      unlockAllBtn.addEventListener('click', function () {
-        if (confirm('确定一键解除所有客户端的登录封锁？')) {
-          if (window.Store && window.Store.unlockAllClients) {
-            window.Store.unlockAllClients();
-          }
-          showAdminToast('已一键解除所有客户端的登录封锁！');
-          renderTab();
-        }
+    if (unlockAllBtn) unlockAllBtn.addEventListener('click', function () {
+      if (confirm('确定解除所有设备的登录锁定？')) adminAction(async function () {
+        await window.Store.unlockAllClients(); showAdminToast('已解除全部登录锁定'); renderTab();
       });
-    }
+    });
 
     var refreshLocksBtn = $('#refreshLocksBtn');
     if (refreshLocksBtn) {
@@ -2154,6 +1936,7 @@
           window.Store.syncWithCloud(function (data) {
             refreshLocksBtn.disabled = false;
             refreshLocksBtn.textContent = '🔄 刷新监控';
+            if (!data) { showAdminToast(window.Store.getSyncStatus().message); return; }
             var list = (data && data.lockouts) || (window.Store.getLockedClients ? window.Store.getLockedClients() : []);
             var lockedCount = list.filter(function (l) { return l.status === 'locked' && (!l.lockedUntil || Date.now() < l.lockedUntil); }).length;
             showAdminToast('已同步最新监控：共 ' + list.length + ' 台设备记录（' + lockedCount + ' 台锁定中）');
@@ -2212,10 +1995,13 @@
       $('#pwSaveBtn').addEventListener('click', function () {
         var p1 = $('#newPw1').value;
         var p2 = $('#newPw2').value;
-        if (!p1 || p1.length < 4) { alert('密码至少 4 位'); return; }
+        if (!p1 || p1.length < 8) { alert('密码至少 8 位'); return; }
         if (p1 !== p2) { alert('两次密码不一致'); return; }
-        window.Store.setAdminPassword(p1);
-        alert('主密码修改成功');
+        adminAction(async function () {
+          await window.Store.setAdminPassword(p1);
+          $('#newPw1').value = ''; $('#newPw2').value = '';
+          alert('主密码已在云端修改，其他设备请使用新密码重新登录。');
+        });
       });
     }
 
@@ -2305,7 +2091,7 @@
     var isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
     if (!url) {
       url = isLocal
-        ? ('https://antigravity.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
+        ? ('https://codex.longnankejia-dev.pages.dev/#admin-token=' + encodeURIComponent(token))
         : (window.location.origin + window.location.pathname + '#admin-token=' + encodeURIComponent(token));
     }
 
@@ -2350,13 +2136,10 @@
   function open() {
     var mask = $('#adminMask');
     mask.hidden = false;
-    if (!authenticated) {
-      var saved = window.Store && window.Store.getSession ? window.Store.getSession() : null;
-      if (saved) {
-        authenticated = true;
-        currentUser = saved;
-      }
-    }
+    var saved = window.Store.getSession();
+    authenticated = !!saved;
+    currentUser = saved;
+
     if (authenticated) {
       showMain();
     } else {
@@ -2378,78 +2161,27 @@
       }
     } catch (_) {}
 
-    // 检查 URL 中是否携带免密超管同步或受邀专属令牌参数
-    try {
-      var hash = window.location.hash || '';
-      var search = window.location.search || '';
-      var authSuperMatch = hash.match(/admin-auth=super/) || search.match(/admin-auth=super/);
-      if (authSuperMatch) {
-        var keyMatch = hash.match(/key=([^&]+)/) || search.match(/key=([^&]+)/);
-        var keyParam = keyMatch ? decodeURIComponent(keyMatch[1]) : '';
-        if (window.Store && window.Store.normalizeAuthInput) {
-          keyParam = window.Store.normalizeAuthInput(keyParam);
-        }
-        var customPw = null;
-        try { customPw = localStorage.getItem('nfyj_admin_pw'); } catch (_) {}
-        var validKey = false;
-        var actualPw = window.Store && window.Store.getAdminPassword ? window.Store.getAdminPassword() : 'admin123';
-        if (customPw) {
-          validKey = (keyParam === customPw) || (keyParam.toLowerCase() === customPw.toLowerCase());
-        } else {
-          validKey = !keyParam || keyParam === actualPw || keyParam.toLowerCase() === actualPw.toLowerCase();
-        }
-        if (validKey) {
-          clearLoginLockState();
-          try {
-            if (actualPw) {
-              localStorage.setItem('nfyj_admin_pw', actualPw);
-            }
-          } catch (_) {}
-          authenticated = true;
-          currentUser = {
-            role: 'super_admin',
-            title: '超级管理员',
-            name: '超级管理员'
-          };
-          if (window.Store && window.Store.saveSession) {
-            window.Store.saveSession(currentUser);
-          }
-          if (window.history && window.history.replaceState) {
-            var cleanH = hash.replace(/[?&]?admin-auth=[^&]+/, '').replace(/[?&]?key=[^&]+/, '');
-            window.history.replaceState(null, '', window.location.pathname + cleanH);
-          }
-          setTimeout(function () {
-            open();
-            showAdminToast('📱 手机端已成功同步免密登录超级管理员工作台！');
-          }, 200);
-        }
-      }
-
-      var m = hash.match(/admin-token=([^&]+)/) || search.match(/admin-token=([^&]+)/);
-      if (m && m[1]) {
-        var tokenParam = decodeURIComponent(m[1]);
-        if (window.Store && window.Store.normalizeAuthInput) {
-          tokenParam = window.Store.normalizeAuthInput(tokenParam);
-        }
-        var res = window.Store && window.Store.verifyLogin ? window.Store.verifyLogin(tokenParam) : null;
-        if (res && res.ok) {
-          clearLoginLockState();
-          authenticated = true;
-          currentUser = res;
-          if (window.Store && window.Store.saveSession) {
-            window.Store.saveSession(res);
-          }
-          if (window.history && window.history.replaceState) {
-            var cleanHash = hash.replace(/[?&]?admin-token=[^&]+/, '');
-            window.history.replaceState(null, '', window.location.pathname + cleanHash);
-          }
-          setTimeout(function () {
-            open();
-            showAdminToast('📱 欢迎受邀管理员「' + res.name + '」！工作台已成功就绪。');
-          }, 200);
-        }
-      }
-    } catch (_) {}
+    // Invitation links are checked by the server; legacy URL flags never grant a role.
+    var hash = window.location.hash || '';
+    var url = new URL(window.location.href);
+    var match = hash.match(/(?:^#|[?&])admin-token=([^&]+)/);
+    var invite = url.searchParams.get('admin-token');
+    if (match) { try { invite = decodeURIComponent(match[1]); } catch (_) { invite = ''; } }
+    ['admin-auth', 'key', 'sync', 'admin-token'].forEach(function (key) {
+      url.searchParams.delete(key);
+      hash = hash.replace(new RegExp('([#?&])' + key + '=[^&]*', 'g'), '$1').replace(/[?&]+$/, '');
+    });
+    window.history.replaceState(null, '', url.pathname + url.search + (hash === '#' ? '' : hash));
+    if (invite) window.Store.verifyLogin(invite).then(async function (result) {
+      if (result.ok) {
+        window.Store.saveSession(result); currentUser = result; authenticated = true;
+        await window.Store.syncWithCloud(); open();
+      } else { open(); showLogin(result.error); }
+    });
+    window.addEventListener('admin-sync-status', function () {
+      if (authenticated && !window.Store.getSession()) showLogin('登录已失效，请重新登录。');
+      showSyncStatus();
+    });
 
     var entry = document.getElementById('adminEntry');
     if (entry) {

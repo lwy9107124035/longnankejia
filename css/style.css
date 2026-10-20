@@ -1408,6 +1408,7 @@ input { font-family: inherit; }
   background: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B;
   padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
   text-align: center; margin: 8px 0;
+}
 /* ---------- Admin Image Upload Component ---------- */
 .admin-upload-zone {
   border: 1.5px dashed rgba(47,93,80,0.3);
@@ -1498,4 +1499,22 @@ input { font-family: inherit; }
   .avatar-wrap.is-talking .avatar-stage, .avatar-wrap.is-thinking .avatar-stage,
   .avatar-wrap.is-talking .avatar-mouth,
   .avatar-wrap.is-talking .avatar-ring, .avatar-wrap.is-thinking .avatar-ring { animation: none; }
+}
+/* 管理保存状态在窄屏上换行，长错误说明也不会撑开面板。 */
+.admin-panel.admin-workspace { max-width:960px; max-height:92dvh; overflow:hidden; }
+.admin-header { flex-wrap:wrap; gap:10px; }
+.admin-header-left { flex-wrap:wrap; min-width:0; }
+.admin-header-right { margin-left:auto; }
+.admin-header-right button, .admin-role-badge { white-space:nowrap; }
+.admin-tabs { overflow-x:auto; }
+.admin-tab { flex:0 0 auto; white-space:nowrap; }
+.admin-body { min-height:0; }
+.admin-login input { font-size:16px; }
+.admin-cloud-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); font-size:13px; }
+#adminCloudStatus { flex:1 1 180px; overflow-wrap:anywhere; }
+#adminCloudStatus[data-status="error"], #adminCloudStatus[data-status="conflict"] { color:#B5432A; }
+@media (max-width:600px) {
+  .admin-header-left, .admin-header-right { width:100%; }
+  .admin-header-right { justify-content:flex-end; }
+  .admin-header-right button { min-height:36px; }
 }

@@ -69,9 +69,6 @@ window.APP_CONFIG = {
     pitch: 1.05
   },
 
-  // 管理员界面
-  admin: {
-    // 默认密码（管理员可在界面中修改，修改后存 localStorage 覆盖此值）
-    password: 'admin123'
-  }
+  // 管理员密码只在服务端配置，浏览器不保存密码。
+  admin: {}
 };
