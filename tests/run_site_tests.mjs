@@ -276,6 +276,7 @@ async function run() {
     if (ONLY.includes('3d')) { await section3dModels(); await sectionCloth(); }
     if (ONLY.includes('8')) await sectionAccess();
     if (ONLY.includes('admin')) await sectionAdminDevices();
+    if (ONLY.includes('kepu-crud')) await sectionKepuCrud();
     if (ONLY.includes('rhyme')) await sectionRhyme();
     if (ONLY.includes('dialogue')) await sectionConversation();
     return { passed, failed, results };
@@ -1266,7 +1267,62 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   check('新增科普卡片写入持久化', await until(page, `window.Store.getHeritageCards().length === ${kepuBefore + 1}`));
   await page.evaluate(`document.getElementById('adminMask').click()`);
 
+  await sectionKepuCrud();
   await sectionAdminDevices();
+
+  async function sectionKepuCrud() {
+    if (BASE !== `http://127.0.0.1:${PORT}`) throw new Error('Card mutation tests must use the isolated local test server.');
+    console.log('\n8b2. 科普卡片新增、编辑和删除的显示数量');
+    await page.evaluate(`window.Admin.open()`);
+    if (await page.evaluate(`!!document.getElementById('adminLoginBtn')`)) {
+      await page.evaluate(`document.getElementById('adminPwInput').value='admin123'; document.getElementById('adminLoginBtn').click()`);
+      if (!await until(page, `!!document.querySelector('[data-tab="kepu"]')`)) throw new Error('Local administrator login failed.');
+    }
+    await page.evaluate(`window.confirm=()=>true; document.querySelector('[data-tab="kepu"]').click()`);
+    const backup = await page.evaluate(`window.Store.exportFullBundle()`);
+    const baseCount = await page.evaluate(`window.Heritage.list().length`);
+    const names = ['西昌围·重复核验', '关西围·重复核验'];
+    const ids = [];
+    const count = id => page.evaluate(`document.querySelectorAll(${JSON.stringify('[data-del-kepu="' + id + '"]')}).length`);
+    const savedCount = id => page.evaluate(`window.Store.getHeritageCards().filter(c=>c.id===${JSON.stringify(id)}).length`);
+    async function openKepu() {
+      await page.evaluate(`window.Admin.open(); document.querySelector('[data-tab="kepu"]').click()`);
+    }
+    try {
+      for (const name of names) {
+        await page.evaluate(`document.getElementById('kepuAddBtn').click(); document.getElementById('kpName').value=${JSON.stringify(name)}; document.getElementById('kpDetail').value='新增与删除重复反馈核验'; document.getElementById('kpSaveBtn').click()`);
+        const id = await page.evaluate(`window.Store.getHeritageCards().find(c=>c.name===${JSON.stringify(name)}).id`);
+        ids.push(id);
+        const actual = { saved: await savedCount(id), listed: await count(id) };
+        check('每次新增只保存并显示一条：' + name, actual.saved === 1 && actual.listed === 1, JSON.stringify(actual));
+      }
+      check('科普后台总数与游客端一致', await page.evaluate(`document.querySelectorAll('#kepuList [data-del-kepu]').length === window.Heritage.list().length`));
+      const customExpected = await page.evaluate(`window.Store.getHeritageCards().length`);
+      check('自定义卡片统计没有翻倍', await page.evaluate(`Number(document.querySelectorAll('#adminBody .admin-stat-val')[1].textContent)===${customExpected}`));
+      await shot(page, await count(ids[0]) === 1 ? 'kepu-single-after' : 'kepu-duplicate-before');
+      await page.evaluate(`window.Store.syncWithCloud()`, true);
+      check('云端每个新增 ID 只有一条', await page.evaluate(`(async()=>{const d=await(await fetch('/api/admin/sync')).json();return ${JSON.stringify(ids)}.every(id=>d.kepuCustom.filter(c=>c.id===id).length===1)})()`, true));
+      await page.send('Page.reload');
+      await until(page, `!!window.Store && !!window.Admin`);
+      await openKepu();
+      check('刷新后每个新增 ID 仍只显示一条', (await count(ids[0])) === 1 && (await count(ids[1])) === 1);
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 2, mobile: true });
+      check('360px 手机界面也只显示一条', (await count(ids[0])) === 1 && (await count(ids[1])) === 1);
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+      await page.evaluate(`document.querySelector(${JSON.stringify('[data-edit-kepu="' + ids[0] + '"]')}).click(); document.getElementById('kpDetail').value='编辑只更新当前卡片'; document.getElementById('kpSaveBtn').click()`);
+      check('编辑不增添副本，另一条不受影响', (await count(ids[0])) === 1 && await page.evaluate(`window.Store.getHeritageCards().find(c=>c.id===${JSON.stringify(ids[0])}).detail==='编辑只更新当前卡片' && window.Store.getHeritageCards().find(c=>c.id===${JSON.stringify(ids[1])}).detail==='新增与删除重复反馈核验'`));
+      await page.evaluate(`window.confirm=()=>true; document.querySelector(${JSON.stringify('[data-del-kepu="' + ids[0] + '"]')}).click()`);
+      const deleted = { saved: await savedCount(ids[0]), listed: await count(ids[0]), otherSaved: await savedCount(ids[1]), otherListed: await count(ids[1]) };
+      check('删除只移除选中的一条，保留另一条', deleted.saved === 0 && deleted.listed === 0 && deleted.otherSaved === 1 && deleted.otherListed === 1, JSON.stringify(deleted));
+      await page.evaluate(`document.querySelector(${JSON.stringify('[data-del-kepu="' + ids[1] + '"]')}).click(); window.Store.syncWithCloud()`, true);
+      check('删除两条后恢复原有卡片数量', await page.evaluate(`window.Heritage.list().length===${baseCount} && document.querySelectorAll('#kepuList [data-del-kepu]').length===${baseCount}`));
+      await page.send('Page.reload'); await until(page, `!!window.Store && !!window.Admin`); await openKepu();
+      check('删除后刷新不会重新出现', (await count(ids[0])) === 0 && (await count(ids[1])) === 0);
+    } finally {
+      await page.evaluate(`window.Store.importFullBundle(${JSON.stringify(backup)}); window.Store.syncWithCloud()`, true);
+      await page.evaluate(`window.Admin.close()`);
+    }
+  }
 
   async function sectionAdminDevices() {
     if (BASE !== `http://127.0.0.1:${PORT}`) throw new Error('Administrator mutation tests must use the isolated local test server.');

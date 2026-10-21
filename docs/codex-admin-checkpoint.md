@@ -65,3 +65,17 @@
 - 正式 AI 代理真实调用返回 HTTP 200 且有回复；发布后 secret 列表仍只有原有加密 `SILICONFLOW_API_KEY`，没有写入或重设初始化密码。
 - 原二维码保持 main 固定网址，因此直接访问更新后的正式站。codex 远程分支保持 a559d95，不受本次正式数据库迁移和发布影响。
 - 本地生成的生产绑定配置已清理；正式迁移的核验文件和临时 SQL 留在忽略目录，未发布。
+
+## 第四轮：2026-10-21 科普后台新增重复反馈
+
+- 用户要求核查老师反馈：新增一条同时出现两个副本，删除一个时两个副本同时消失。截图对应“科普管理”的自定义卡片。
+- 已完整复现。`Heritage.list()` 在 `js/ui.js:736` 已返回内置数据与自定义数据合并后的列表，`renderKepu()` 原先再次调用 `Store.getHeritageCards(Heritage.list())`，把自定义数据追加第二次。
+- 修复前浏览器实际结果：新增西昌围和关西围各保存 1 条，各显示 2 条；云端每个新增 ID 都只有 1 条。刷新和手机宽度下仍重复，删除一个 ID 后该 ID 的两份显示一起消失，另一个 ID 的真实数据保持 1 条。
+- 线上只读检查：main 当时 revision 32，自定义科普共 1 条（西昌围），没有重复 ID；codex revision 6，自定义科普为 0 条。未对线上执行新增、编辑或删除。
+- 本地最小修复：`js/admin.js:651` 直接使用 `Heritage.list()` 的结果，不再重复合并；保留 Heritage 模块尚未初始化时的自定义列表回退。
+- 新增浏览器回归 `node tests/run_site_tests.mjs --only=kepu-crud`，通过真实本地接口验证新增、统计、云端条数、刷新、手机宽度、编辑和独立删除。修复前 8 项断言失败，修复后 13/13 通过（含原有冷启动 2 项）。
+- `node --test tests/admin-sync.test.mjs tests/v3_admin_ux.test.mjs`：16/16 通过；`git diff --check` 通过。
+- 复现截图 `.cache/test-shots/kepu-duplicate-before.png`；修复截图 `.cache/test-shots/kepu-single-after.png`。
+- 此次请求为排查核实；修复和回归保留在本地 main 工作区，尚未提交、推送或部署。线上密码、密钥、老师数据均未修改。
+- 用户随后明确授权“发布线上”。本次发布仅修复后台重复合并，并加入回归检查，不运行数据库迁移、数据清理或密码/密钥重设。
+- 发布前正式接口快照：revision 32、自定义科普 1 条，摘要保存在 `.cache/kepu-release-before.json`，用于部署后核对现有内容未变。

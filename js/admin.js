@@ -648,7 +648,7 @@
   var kepuCurSource = 'all';
 
   function renderKepu(body) {
-    var rawCards = window.Store.getHeritageCards(window.Heritage ? window.Heritage.list() : []);
+    var rawCards = window.Heritage ? window.Heritage.list() : window.Store.getHeritageCards([]);
     var customCards = rawCards.filter(function (c) {
       return (c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员');
     });
