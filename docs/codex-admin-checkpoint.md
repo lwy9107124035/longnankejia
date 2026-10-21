@@ -76,6 +76,9 @@
 - 新增浏览器回归 `node tests/run_site_tests.mjs --only=kepu-crud`，通过真实本地接口验证新增、统计、云端条数、刷新、手机宽度、编辑和独立删除。修复前 8 项断言失败，修复后 13/13 通过（含原有冷启动 2 项）。
 - `node --test tests/admin-sync.test.mjs tests/v3_admin_ux.test.mjs`：16/16 通过；`git diff --check` 通过。
 - 复现截图 `.cache/test-shots/kepu-duplicate-before.png`；修复截图 `.cache/test-shots/kepu-single-after.png`。
-- 此次请求为排查核实；修复和回归保留在本地 main 工作区，尚未提交、推送或部署。线上密码、密钥、老师数据均未修改。
+- 最初排查阶段仅在本地 main 修复并完成回归，未提交、推送或部署；线上密码、密钥、老师数据均未修改。
 - 用户随后明确授权“发布线上”。本次发布仅修复后台重复合并，并加入回归检查，不运行数据库迁移、数据清理或密码/密钥重设。
 - 发布前正式接口快照：revision 32、自定义科普 1 条，摘要保存在 `.cache/kepu-release-before.json`，用于部署后核对现有内容未变。
+- 修复提交 `c97d1ed342369f4b7b7127a74df32710decdcdf8` 已推送 main；[CI 39566905960](https://github.com/lwy9107124035/longnankejia/actions/runs/39566905960) 成功，33 项检查全部通过，日志确认保留正式站现有服务端密钥。
+- 正式部署地址 `https://3916334a.longnankejia.pages.dev/`，固定入口 `https://longnankejia.pages.dev/` 已更新。线上 `js/admin.js` 与本地已验证源码逐字一致，并返回 no-cache。
+- `.cache/check-kepu-release.mjs` 在线只读核验通过：发布前后共享内容 SHA-256 完全相同，revision 仍为 32、自定义科普仍为 1 条；结果保存在 `.cache/kepu-release-after.json`。此次没有对线上内容执行增删改，也没有重设密码或密钥。
