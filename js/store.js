@@ -36,7 +36,7 @@
   var useDraftDb = typeof indexedDB !== 'undefined';
   function read(key, fallback) {
     if (Object.prototype.hasOwnProperty.call(memoryValues, key)) return memoryValues[key];
-    if (key === LS.tokens || key === LS.locked_clients) return fallback;
+    if ([LS.tokens, LS.locked_clients, LS.audit_logs, LS.notifications].indexOf(key) >= 0) return fallback;
     try {
       var raw = localStorage.getItem(key);
       if (!raw) return fallback;
@@ -47,8 +47,8 @@
 
   function write(key, val) {
     memoryValues[key] = val;
-    if (key === LS.tokens || key === LS.locked_clients) return;
-    if (useDraftDb && (Object.values(CONTENT_KEYS || {}).indexOf(key) >= 0 || /^nfyj_cloud_/.test(key))) return;
+    if ([LS.tokens, LS.locked_clients, LS.audit_logs, LS.notifications].indexOf(key) >= 0) return;
+    if (Object.values(CONTENT_KEYS || {}).indexOf(key) >= 0 || /^nfyj_cloud_/.test(key)) return;
     try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; }
   }
 
@@ -57,11 +57,13 @@
     try { localStorage.removeItem(key); } catch (_) {}
   }
 
-  var memorySession = null;
+  var memorySession;
   function readSession(fallback) {
+    if (memorySession !== undefined) return memorySession || fallback;
     try {
       var raw = sessionStorage.getItem(SS.admin_session);
-      return raw ? JSON.parse(raw) : (memorySession || fallback);
+      memorySession = raw ? JSON.parse(raw) : null;
+      return memorySession || fallback;
     } catch (_) { return memorySession || fallback; }
   }
   function writeSession(value) {
@@ -134,7 +136,7 @@
     kbCustom: LS.custom, kbEdited: LS.edited, kbDeleted: LS.deleted,
     kepuCustom: LS.kepu_custom, kepuEdited: LS.kepu_edited, kepuDeleted: LS.kepu_deleted,
     dialectCustom: LS.dialect_custom, dialectDeleted: LS.dialect_deleted,
-    apiConfig: LS.api, workflowConfig: LS.workflow, auditLogs: LS.audit_logs
+    apiConfig: LS.api, workflowConfig: LS.workflow
   };
   var OBJECT_KEYS = ['kbEdited', 'kepuEdited', 'apiConfig', 'workflowConfig'];
   var cloudRevision = read('nfyj_cloud_revision', null);
@@ -147,6 +149,7 @@
   var syncStatus = { status: 'idle', message: '等待连接云端' };
   var cloudBase = read('nfyj_cloud_base', null);
   var publishedBundle = null;
+  var contentIssue = '';
   var draftDb = null;
   var durableDraft = true;
   // Keep pre-upgrade local edits until an authenticated upload or an explicit discard.
@@ -158,10 +161,21 @@
     if (pending) { cloudRevision = 0; write('nfyj_cloud_pending', true); }
   }
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
-  // One atomic IndexedDB checkpoint holds large image drafts and their merge base.
+  var draftId = 'draft:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+  var previousDraftId = '';
+  var draftOwner = '';
+  var recoverySource = null;
+  try { previousDraftId = sessionStorage.getItem('nfyj_draft_pointer') || ''; } catch (_) {}
+  function principal() { var user = getSession(); return user ? (user.tokenId || 'super_admin') : ''; }
+  function restoreState(saved) {
+    if (!saved || !saved.bundle) return;
+    Object.keys(CONTENT_KEYS).forEach(function (key) { memoryValues[CONTENT_KEYS[key]] = saved.bundle[key] || (OBJECT_KEYS.indexOf(key) >= 0 ? {} : []); });
+    cloudRevision = saved.revision; cloudBase = saved.base; pending = saved.pending; draftOwner = saved.owner || '';
+    recoverySource = saved.source || null;
+  }
+  // Published cache is shared; each page owns a separate unacknowledged draft snapshot.
   var storageReady = useDraftDb ? new Promise(function (resolve) {
-    var request;
-    var finished = false;
+    var request, finished = false;
     var timer = setTimeout(function () { useDraftDb = false; finish(); }, 4000);
     function finish() { finished = true; clearTimeout(timer); resolve(); }
     try { request = indexedDB.open('nfyj-admin-content', 1); }
@@ -171,51 +185,112 @@
     request.onsuccess = function () {
       if (finished) { request.result.close(); return; }
       draftDb = request.result;
-      var tx = draftDb.transaction('state', 'readonly');
-      var load = tx.objectStore('state').get('current');
-      load.onsuccess = function () {
-        var saved = load.result;
-        if (saved && generation === 0) {
-          Object.keys(CONTENT_KEYS).forEach(function (key) { memoryValues[CONTENT_KEYS[key]] = saved.bundle[key]; });
-          cloudRevision = saved.revision;
-          cloudBase = saved.base;
-          pending = saved.pending;
-        }
+      var tx = draftDb.transaction('state', 'readonly'), store = tx.objectStore('state');
+      var own = previousDraftId ? store.get(previousDraftId) : null;
+      var cache = store.get('current');
+      tx.oncomplete = function () {
+        if (generation === 0) restoreState((own && own.result) || cache.result);
+        triggerFrontEndRefresh(); finish();
       };
-      tx.oncomplete = function () { triggerFrontEndRefresh(); finish(); };
       tx.onerror = tx.onabort = function () { useDraftDb = false; draftDb = null; finish(); };
     };
-  }) : Promise.resolve();
+  }) : Promise.resolve().then(function () {
+    if (previousDraftId) restoreState(read('nfyj_' + previousDraftId, null));
+  });
   var storageLoaded = false;
   storageReady.then(function () { storageLoaded = true; });
   async function persistState() {
     await storageReady;
-    var saved = { bundle: copy(bundle()), revision: cloudRevision, base: cloudBase, pending: pending };
+    if (pending && !draftOwner) draftOwner = principal();
+    var saved = { bundle: copy(bundle()), revision: cloudRevision, base: copy(cloudBase), pending: pending, owner: draftOwner, time: Date.now(),
+      snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2), source: recoverySource };
     if (draftDb) {
       durableDraft = await new Promise(function (resolve) {
-        var tx;
         try {
-          tx = draftDb.transaction('state', 'readwrite');
-          tx.objectStore('state').put(saved, 'current');
+          var tx = draftDb.transaction('state', 'readwrite'), store = tx.objectStore('state');
+          if (saved.pending) store.put(saved, draftId);
+          else { store.put(saved, 'current'); store.delete(draftId); }
+          if (!saved.pending && recoverySource && recoverySource.snapshotId) {
+            var source = store.get(recoverySource.id), acknowledged = recoverySource;
+            source.onsuccess = function () {
+              // The original page may have made newer edits after this snapshot was restored.
+              if (source.result && source.result.snapshotId === acknowledged.snapshotId) store.delete(acknowledged.id);
+            };
+          }
+          if (previousDraftId && previousDraftId !== draftId) store.delete(previousDraftId);
           tx.oncomplete = function () { resolve(true); };
           tx.onerror = tx.onabort = function () { resolve(false); };
         } catch (_) { resolve(false); }
       });
-      if (durableDraft) {
-        Object.values(CONTENT_KEYS).concat(['nfyj_cloud_base', 'nfyj_cloud_revision', 'nfyj_cloud_pending']).forEach(function (key) {
-          try { localStorage.removeItem(key); } catch (_) {}
-        });
-      }
+      if (durableDraft) Object.values(CONTENT_KEYS).concat(['nfyj_cloud_base', 'nfyj_cloud_revision', 'nfyj_cloud_pending']).forEach(function (key) {
+        try { localStorage.removeItem(key); } catch (_) {}
+      });
     } else {
-      durableDraft = Object.keys(CONTENT_KEYS).map(function (key) { return write(CONTENT_KEYS[key], saved.bundle[key]); }).every(Boolean);
-      durableDraft = write('nfyj_cloud_base', cloudBase) && write('nfyj_cloud_revision', cloudRevision) && write('nfyj_cloud_pending', pending) && durableDraft;
+      // A per-page key also prevents snapshot replacement when IndexedDB is unavailable.
+      try {
+        localStorage.setItem('nfyj_' + draftId, JSON.stringify(saved));
+        if (previousDraftId && previousDraftId !== draftId) localStorage.removeItem('nfyj_' + previousDraftId);
+        durableDraft = true;
+        Object.values(CONTENT_KEYS).concat(['nfyj_cloud_base', 'nfyj_cloud_revision', 'nfyj_cloud_pending']).forEach(function (key) { localStorage.removeItem(key); });
+      } catch (_) { durableDraft = false; }
+    }
+    if (durableDraft) {
+      if (!saved.pending) recoverySource = null;
+      previousDraftId = draftId;
+      try { sessionStorage.setItem('nfyj_draft_pointer', draftId); } catch (_) {}
     }
     return durableDraft;
   }
+  async function draftSnapshots() {
+    await storageReady;
+    if (draftDb) return new Promise(function (resolve, reject) {
+      var tx = draftDb.transaction('state', 'readonly'), store = tx.objectStore('state');
+      var keys = store.getAllKeys(), rows = store.getAll();
+      tx.oncomplete = function () { resolve(keys.result.map(function (key, i) { return { id: key, saved: rows.result[i] }; })); };
+      tx.onerror = function () { reject(new Error('读取草稿失败，请先导出当前页面备份')); };
+    });
+    var rows = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (key && key.indexOf('nfyj_draft:') === 0) rows.push({ id: key.slice(5), saved: read(key, null) });
+    }
+    return rows;
+  }
+  async function getRecoveryDrafts() {
+    return (await draftSnapshots()).filter(function (row) { return row.saved && row.saved.pending && row.id !== draftId && row.id !== previousDraftId && (!row.saved.owner || row.saved.owner === principal() || principal() === 'super_admin'); }).map(function (row) {
+      return { id: row.id, time: row.saved.time || 0, owner: row.saved.owner, count: ['kbCustom', 'kepuCustom', 'dialectCustom'].reduce(function (n, key) { return n + row.saved.bundle[key].length; }, 0) };
+    });
+  }
+  async function restoreRecoveryDraft(id) {
+    await persistState();
+    var row = (await draftSnapshots()).find(function (row) { return row.id === id; });
+    if (!row || !row.saved.pending || (row.saved.owner && row.saved.owner !== principal() && principal() !== 'super_admin')) throw new Error('未找到当前账号可恢复的草稿');
+    draftId = 'draft:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+    previousDraftId = '';
+    restoreState(row.saved); generation++;
+    recoverySource = { id: row.id, snapshotId: row.saved.snapshotId };
+    if (principal() === 'super_admin') draftOwner = principal();
+    await persistState();
+    triggerFrontEndRefresh();
+    setSyncStatus('pending', '已恢复所选草稿，原页面草稿仍单独保留。请核对后点击同步上传。');
+  }
   function visibleContent(key, fallback) {
-    return publishedBundle && !getSession() ? publishedBundle[key] : read(CONTENT_KEYS[key], fallback);
+    var value = publishedBundle && !getSession() ? publishedBundle[key] : read(CONTENT_KEYS[key], fallback);
+    return Array.isArray(fallback) ? (Array.isArray(value) ? value : fallback)
+      : (value && typeof value === 'object' && !Array.isArray(value) ? value : fallback);
+  }
+  function displayRecords(records, type) {
+    var seen = new Set();
+    return (Array.isArray(records) ? records : []).filter(function (entry) {
+      try {
+        globalThis.HeritageContent.record(entry, type, type, false);
+        if (seen.has(entry.id)) return false;
+        seen.add(entry.id); return true;
+      } catch (_) { return false; }
+    });
   }
   function setSyncStatus(status, message) {
+    if (status === 'saved' && contentIssue) { status = 'error'; message = contentIssue; }
     syncStatus = { status: status, message: message };
     if (window.dispatchEvent && typeof CustomEvent !== 'undefined') {
       window.dispatchEvent(new CustomEvent('admin-sync-status', { detail: syncStatus }));
@@ -264,6 +339,10 @@
     if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
   }
   function applyCloud(data) {
+    contentIssue = '';
+    try { globalThis.HeritageContent.validateBundle(data); }
+    catch (error) { contentIssue = '云端历史数据存在格式问题，异常条目已隔离显示；请导出备份并修复：' + error.message; }
+    if (Array.isArray(data.auditLogs)) write(LS.audit_logs, data.auditLogs);
     Object.keys(CONTENT_KEYS).forEach(function (key) {
       if (Object.prototype.hasOwnProperty.call(data, key)) write(CONTENT_KEYS[key], data[key]);
     });
@@ -274,6 +353,13 @@
     triggerFrontEndRefresh();
   }
   function mergeBundles(base, local, remote) {
+    function comparable(value) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        value = Object.assign({}, value);
+        ['creatorName', 'creatorTokenId', 'createdAt'].forEach(function (key) { delete value[key]; });
+      }
+      return globalThis.HeritageContent.canonical(value);
+    }
     var merged = {};
     Object.keys(CONTENT_KEYS).forEach(function (key) {
       var isArray = OBJECT_KEYS.indexOf(key) < 0;
@@ -290,13 +376,12 @@
       Array.from(new Set(Object.keys(theirs).concat(Object.keys(ours), Object.keys(before)))).forEach(function (id) {
         var b = before[id], l = ours[id], r = theirs[id];
         var value;
-        if ((!base && l === undefined) || JSON.stringify(l) === JSON.stringify(b)) value = r;
-        else if (JSON.stringify(r) === JSON.stringify(b) || JSON.stringify(l) === JSON.stringify(r)) value = l;
+        if ((!base && l === undefined) || comparable(l) === comparable(b)) value = r;
+        else if (comparable(r) === comparable(b) || comparable(l) === comparable(r)) value = l;
         else throw Object.assign(new Error('同一条内容在不同设备被修改，本机草稿已保留。请导出备份后核对，避免覆盖老师的内容。'), { code: 'SYNC_CONFLICT' });
         if (value !== undefined) result[id] = value;
       });
       merged[key] = isArray ? Object.values(result) : result;
-      if (key === 'auditLogs') merged[key] = merged[key].sort(function (a, b) { return b.time - a.time; }).slice(0, 200);
     });
     return merged;
   }
@@ -316,6 +401,7 @@
       try {
         await storageReady;
         if (!pending) return true;
+        if (draftOwner && principal() && draftOwner !== principal()) { await persistState(); setSyncStatus('error', '本机草稿属于另一账号，请使用原账号登录或导出备份后重新加载云端。'); return false; }
         if (!getSession()) { await persistState(); setSyncStatus('pending', '本机有未上传草稿，登录后可继续上传'); return false; }
         if (syncStatus.status === 'conflict') return false;
         await persistState();
@@ -324,6 +410,7 @@
         while (pending) {
           var sentGeneration = generation;
           var sent = copy(bundle());
+          globalThis.HeritageContent.validateBundle(sent);
           var data;
           try {
             data = await cloudRequest(Object.assign({ action: 'update_custom_bundle', revision: cloudRevision === null ? 0 : cloudRevision }, sent));
@@ -333,9 +420,14 @@
             continue;
           }
           cloudRevision = data.revision;
-          cloudBase = sent;
+          cloudBase = data.content || sent;
+          lastReadSession = null;
+          if (data.content && Array.isArray(data.content.auditLogs)) write(LS.audit_logs, data.content.auditLogs);
+          if (sentGeneration === generation && data.content) {
+            Object.keys(CONTENT_KEYS).forEach(function (key) { write(CONTENT_KEYS[key], data.content[key]); });
+          }
           write('nfyj_cloud_revision', cloudRevision);
-          if (sentGeneration === generation) { pending = false; write('nfyj_cloud_pending', false); }
+          if (sentGeneration === generation) { pending = false; draftOwner = ''; write('nfyj_cloud_pending', false); }
           await persistState();
         }
         publishedBundle = null;
@@ -351,6 +443,7 @@
     return uploadPromise;
   }
   function syncCustomToCloud(callback) {
+    if (!pending) draftOwner = principal();
     pending = true;
     generation++;
     write('nfyj_cloud_pending', true);
@@ -371,6 +464,8 @@
         var data = await cloudRequest(null, false, !pending && cloudBase && lastReadSession === bearer ? cloudRevision : undefined);
         if (Array.isArray(data.tokens)) write(LS.tokens, data.tokens);
         if (Array.isArray(data.lockouts)) write(LS.locked_clients, data.lockouts);
+        if (Array.isArray(data.notifications)) write(LS.notifications, data.notifications);
+        if (Array.isArray(data.contributions)) contributionRows = data.contributions;
         if (data.unchanged) {
           if (!pending) setSyncStatus('saved', '已与云端同步');
         } else if (pending && !getSession()) {
@@ -396,10 +491,16 @@
     return pullPromise;
   }
   async function reloadCloudContent() {
+    var startedGeneration = generation;
     await storageReady;
     if (uploadPromise) await uploadPromise;
+    await persistState();
     var data = await cloudRequest();
-    pending = false;
+    if (generation !== startedGeneration) {
+      await persistState();
+      throw new Error('重新加载期间有新的编辑，已保留本机草稿。请核对并导出备份后重试。');
+    }
+    pending = false; draftOwner = '';
     write('nfyj_cloud_pending', false);
     applyCloud(data);
     await persistState();
@@ -412,29 +513,13 @@
 
   /* ---------- 操作审计日志 ---------- */
 
-  function addAuditLog(actor, action, detail) {
-    try {
-      var logs = read(LS.audit_logs, []);
-      var now = Date.now();
-      logs.unshift({
-        id: 'log-' + now + '-' + Math.floor(Math.random() * 1000),
-        time: now,
-        actor: String(actor || '超级管理员'),
-        action: String(action || '操作'),
-        detail: String(detail || '')
-      });
-      if (logs.length > 200) logs = logs.slice(0, 200);
-      write(LS.audit_logs, logs);
-    } catch (e) {}
-  }
-
   function getAuditLogs() {
     return read(LS.audit_logs, []);
   }
 
-  function clearAuditLogs() {
-    write(LS.audit_logs, []);
-    syncCustomToCloud();
+  async function clearAuditLogs() {
+    await cloudRequest({ action: 'clear_audit_logs' });
+    return syncWithCloud();
   }
 
   /* ---------- 权限与邀请令牌体系 ---------- */
@@ -448,10 +533,6 @@
       return t && t.id && t.id.indexOf('tok-short-') !== 0 && t.name !== '受邀协管员';
     });
     var now = Date.now();
-    var customKb = read(LS.custom, []);
-    var customKepu = read(LS.kepu_custom, []);
-    var customDialect = read(LS.dialect_custom, []);
-
     return list.map(function (item) {
       var isExpired = item.expiresAt && item.expiresAt > 0 && now > item.expiresAt;
       var isRevoked = !!item.revoked;
@@ -459,15 +540,10 @@
       var statusCode = isRevoked ? 'revoked' : (isPaused ? 'paused' : (isExpired ? 'expired' : 'active'));
       var statusText = isRevoked ? '已销毁' : (isPaused ? '已暂停' : (isExpired ? '已过期' : '生效中'));
 
-      var kbCount = customKb.filter(function (e) {
-        return e.creatorTokenId === item.id || e.creatorTokenId === item.token;
-      }).length;
-      var kepuCount = customKepu.filter(function (c) {
-        return c.creatorTokenId === item.id || c.creatorTokenId === item.token;
-      }).length;
-      var dialectCount = customDialect.filter(function (d) {
-        return d.creatorTokenId === item.id || d.creatorTokenId === item.token;
-      }).length;
+      var rows = contributionRows.filter(function (row) { return row.tokenId === item.id; });
+      var kbCount = rows.filter(function (row) { return row.type === 'kb'; }).length;
+      var kepuCount = rows.filter(function (row) { return row.type === 'kepu'; }).length;
+      var dialectCount = rows.filter(function (row) { return row.type === 'dialect'; }).length;
 
       return Object.assign({}, item, {
         isExpired: isExpired,
@@ -501,263 +577,34 @@
   function revokeInviteToken(id) { return changeInviteToken(id, 'revoke'); }
   function deleteInviteToken(id) { return changeInviteToken(id, 'delete'); }
 
-  function rollbackTokenChanges(tokenIdOrStr) {
-    var tokens = read(LS.tokens, []);
-    var tokObj = tokens.find(function (t) { return t.id === tokenIdOrStr || t.token === tokenIdOrStr; });
-    var tokId = tokObj ? tokObj.id : tokenIdOrStr;
-    var tokCode = tokObj ? tokObj.token : tokenIdOrStr;
-    var tokName = tokObj ? tokObj.name : '受邀管理员';
-
-    var customKb = read(LS.custom, []);
-    var beforeKb = customKb.length;
-    customKb = customKb.filter(function (e) {
-      return e.creatorTokenId !== tokId && e.creatorTokenId !== tokCode;
-    });
-    var removedKb = beforeKb - customKb.length;
-    write(LS.custom, customKb);
-
-    var customKepu = read(LS.kepu_custom, []);
-    var beforeKepu = customKepu.length;
-    customKepu = customKepu.filter(function (c) {
-      return c.creatorTokenId !== tokId && c.creatorTokenId !== tokCode;
-    });
-    var removedKepu = beforeKepu - customKepu.length;
-    write(LS.kepu_custom, customKepu);
-
-    var customDialect = read(LS.dialect_custom, []);
-    var beforeDialect = customDialect.length;
-    customDialect = customDialect.filter(function (d) {
-      return d.creatorTokenId !== tokId && d.creatorTokenId !== tokCode;
-    });
-    var removedDialect = beforeDialect - customDialect.length;
-    write(LS.dialect_custom, customDialect);
-
-    var totalRemoved = removedKb + removedKepu + removedDialect;
-    addAuditLog('超级管理员', '撤销修改', '回滚撤销了令牌 [' + tokCode + ' · ' + tokName + '] 录入的全部内容，共清除 ' + totalRemoved + ' 项数据');
-    syncCustomToCloud();
-
-    // 发送全量撤回通知至该令牌
-    if (totalRemoved > 0) {
-      addTokenNotification(tokId, {
-        targetType: 'all',
-        targetTypeName: '全部修改数据',
-        targetTitle: '批量录入内容（共 ' + totalRemoved + ' 项）',
-        reason: '超级管理员已执行全量回滚，所录入内容已全部撤回'
-      });
-      if (tokCode && tokCode !== tokId) {
-        addTokenNotification(tokCode, {
-          targetType: 'all',
-          targetTypeName: '全部修改数据',
-          targetTitle: '批量录入内容（共 ' + totalRemoved + ' 项）',
-          reason: '超级管理员已执行全量回滚，所录入内容已全部撤回'
-        });
-      }
-    }
-
-    return {
-      ok: true,
-      totalRemoved: totalRemoved,
-      removedKb: removedKb,
-      removedKepu: removedKepu,
-      removedDialect: removedDialect,
-      tokenName: tokName,
-      tokenCode: tokCode
-    };
+  async function moderate(body) {
+    if (pending && !(await uploadPending())) throw new Error('请先上传或处理本机草稿：' + syncStatus.message);
+    var result = await cloudRequest(body);
+    await syncWithCloud();
+    return result;
   }
-
-  /* ---------- 令牌改动明细审查与单项剔除 ---------- */
-
-  function getTokenDetailedContributions(tokenIdOrStr) {
-    var tokens = read(LS.tokens, []);
-    var tokObj = tokens.find(function (t) { return t.id === tokenIdOrStr || t.token === tokenIdOrStr; });
-    var tokId = tokObj ? tokObj.id : tokenIdOrStr;
-    var tokCode = tokObj ? tokObj.token : tokenIdOrStr;
-    var tokName = tokObj ? tokObj.name : '受邀管理员';
-
-    var customKb = read(LS.custom, []);
-    var customKepu = read(LS.kepu_custom, []);
-    var customDialect = read(LS.dialect_custom, []);
-
-    var items = [];
-
-    customKb.forEach(function (e) {
-      if (e.creatorTokenId === tokId || e.creatorTokenId === tokCode) {
-        items.push({
-          id: e.id,
-          type: 'kb',
-          typeName: '知识库条目',
-          typeBadge: '📚 知识库',
-          title: e.title,
-          preview: (e.answer || '').slice(0, 90) + (e.answer && e.answer.length > 90 ? '…' : ''),
-          createdAt: e.createdAt || 0,
-          raw: e
-        });
-      }
-    });
-
-    customKepu.forEach(function (c) {
-      if (c.creatorTokenId === tokId || c.creatorTokenId === tokCode) {
-        items.push({
-          id: c.id,
-          type: 'kepu',
-          typeName: '科普卡片',
-          typeBadge: '🏮 科普卡片',
-          title: c.name,
-          preview: (c.detail || c.tag || '').slice(0, 90),
-          createdAt: c.createdAt || 0,
-          raw: c
-        });
-      }
-    });
-
-    customDialect.forEach(function (d) {
-      if (d.creatorTokenId === tokId || d.creatorTokenId === tokCode) {
-        var tName = (d.item && d.item.name) || d.name || '方言展品';
-        var tUrl = (d.item && d.item.videoUrl) || d.url || '';
-        items.push({
-          id: d.id,
-          type: 'dialect',
-          typeName: '方言讲解',
-          typeBadge: '🗣 方言讲解',
-          title: tName,
-          preview: tUrl,
-          createdAt: d.createdAt || 0,
-          raw: d
-        });
-      }
-    });
-
-    // 默认按创建时间倒序排列
-    items.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
-
-    return {
-      token: tokObj || { id: tokId, token: tokCode, name: tokName },
-      items: items
-    };
+  function rollbackTokenChanges(tokenId) {
+    return moderate({ action: 'rollback_token', tokenId: tokenId });
   }
-
-  function rejectTokenItem(tokenIdOrStr, itemId, itemType, reason) {
-    reason = String(reason || '内容审核未通过，已被超级管理员剔除').trim();
-    var tokens = read(LS.tokens, []);
-    var tokObj = tokens.find(function (t) { return t.id === tokenIdOrStr || t.token === tokenIdOrStr; });
-    var tokId = tokObj ? tokObj.id : tokenIdOrStr;
-    var tokCode = tokObj ? tokObj.token : tokenIdOrStr;
-    var tokName = tokObj ? tokObj.name : '受邀管理员';
-
-    var itemTitle = '';
-    var typeName = '';
-
-    if (itemType === 'kb') {
-      var customKb = read(LS.custom, []);
-      var targetKb = customKb.find(function (e) { return e.id === itemId; });
-      if (targetKb) {
-        itemTitle = targetKb.title;
-        typeName = '知识库条目';
-        customKb = customKb.filter(function (e) { return e.id !== itemId; });
-        write(LS.custom, customKb);
-      }
-    } else if (itemType === 'kepu') {
-      var customKepu = read(LS.kepu_custom, []);
-      var targetKepu = customKepu.find(function (c) { return c.id === itemId; });
-      if (targetKepu) {
-        itemTitle = targetKepu.name;
-        typeName = '科普卡片';
-        customKepu = customKepu.filter(function (c) { return c.id !== itemId; });
-        write(LS.kepu_custom, customKepu);
-      }
-    } else if (itemType === 'dialect') {
-      var customDialect = read(LS.dialect_custom, []);
-      var targetDialect = customDialect.find(function (d) { return d.id === itemId; });
-      if (targetDialect) {
-        itemTitle = (targetDialect.item && targetDialect.item.name) || targetDialect.name || '方言讲解';
-        typeName = '方言讲解';
-        customDialect = customDialect.filter(function (d) { return d.id !== itemId; });
-        write(LS.dialect_custom, customDialect);
-      }
-    }
-
-    if (!itemTitle) return { ok: false, error: '未找到对应修改条目' };
-
-    // 1. 记入审计流水
-    addAuditLog('超级管理员', '剔除修改', '剔除了令牌 [' + tokCode + ' · ' + tokName + '] 录入的' + typeName + '「' + itemTitle + '」，原因：' + reason);
-
-    // 2. 将消息精准派发至该受邀管理员的消息中心
-    addTokenNotification(tokId, {
-      targetType: itemType,
-      targetTypeName: typeName,
-      targetTitle: itemTitle,
-      reason: reason
-    });
-    if (tokCode && tokCode !== tokId) {
-      addTokenNotification(tokCode, {
-        targetType: itemType,
-        targetTypeName: typeName,
-        targetTitle: itemTitle,
-        reason: reason
-      });
-    }
-
-    syncCustomToCloud();
-    return {
-      ok: true,
-      itemTitle: itemTitle,
-      typeName: typeName,
-      tokenName: tokName
-    };
+  var contributionRows = [];
+  function getTokenDetailedContributions(tokenId) {
+    var token = read(LS.tokens, []).find(function (t) { return t.id === tokenId; });
+    return { token: token || { id: tokenId, name: '受邀管理员' }, items: contributionRows.filter(function (row) { return row.tokenId === tokenId; }).map(function (row) {
+      var names = { kb: ['知识库条目', '📚 知识库'], kepu: ['科普卡片', '🏮 科普卡片'], dialect: ['方言讲解', '🗣 方言讲解'] };
+      return Object.assign({}, row, { typeName: names[row.type][0], typeBadge: names[row.type][1] });
+    }) };
   }
-
-  /* ---------- 消息通知中心（面向受邀管理员） ---------- */
-
-  function addTokenNotification(tokenIdOrStr, notif) {
-    try {
-      var list = read(LS.notifications, []);
-      var item = {
-        id: 'notif-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-        tokenId: String(tokenIdOrStr),
-        targetType: notif.targetType || 'kb',
-        targetTypeName: notif.targetTypeName || '非遗内容',
-        targetTitle: notif.targetTitle || '未命名条目',
-        reason: notif.reason || '审核未通过',
-        time: Date.now(),
-        read: false
-      };
-      list.unshift(item);
-      if (list.length > 100) list = list.slice(0, 100);
-      write(LS.notifications, list);
-      return item;
-    } catch (e) { return null; }
+  function rejectTokenItem(tokenId, itemId, itemType, reason) {
+    return moderate({ action: 'reject_item', tokenId: tokenId, itemId: itemId, itemType: itemType, reason: reason });
   }
-
-  function getTokenNotifications(tokenIdOrStr) {
-    var list = read(LS.notifications, []);
-    if (!tokenIdOrStr) return list;
-    var str = String(tokenIdOrStr);
-    return list.filter(function (n) {
-      return n.tokenId === str;
-    });
+  function getTokenNotifications(tokenId) {
+    return read(LS.notifications, []).filter(function (n) { return !n.read && (!tokenId || n.tokenId === tokenId); });
   }
-
-  function markTokenNotificationRead(notifId) {
-    var list = read(LS.notifications, []);
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === notifId) {
-        list[i].read = true;
-        break;
-      }
-    }
-    write(LS.notifications, list);
+  async function markTokenNotificationRead(id) {
+    await cloudRequest({ action: 'read_notifications', id: id });
+    return syncWithCloud();
   }
-
-  function clearTokenNotifications(tokenIdOrStr) {
-    var list = read(LS.notifications, []);
-    if (!tokenIdOrStr) {
-      write(LS.notifications, []);
-    } else {
-      var str = String(tokenIdOrStr);
-      var filtered = list.filter(function (n) { return n.tokenId !== str; });
-      write(LS.notifications, filtered);
-    }
-  }
+  function clearTokenNotifications() { return markTokenNotificationRead(); }
 
   async function verifyLogin(input) {
     try {
@@ -779,6 +626,9 @@
     removeSession();
     write(LS.tokens, []);
     write(LS.locked_clients, []);
+    write(LS.notifications, []);
+    write(LS.audit_logs, []);
+    contributionRows = [];
     if (pending && cloudBase) publishedBundle = cloudBase;
   }
   async function logout() {
@@ -795,9 +645,9 @@
 
     var merged = base
       .filter(function (e) { return deleted.indexOf(e.id) === -1; })
-      .map(function (e) { return edited[e.id] || e; });
+      .map(function (e) { return Object.assign({}, e, edited[e.id]); });
 
-    return merged.concat(custom);
+    return displayRecords(merged.concat(custom), 'kb');
   }
 
   function addEntry(entry, creatorInfo) {
@@ -810,20 +660,20 @@
       entry.creatorName = '超级管理员';
     }
     entry.createdAt = Date.now();
+    checkNewRecord(entry, 'kb', custom);
     custom.push(entry);
     write(LS.custom, custom);
-    addAuditLog(entry.creatorName, '新增知识', '新增知识条目「' + entry.title + '」');
     syncCustomToCloud();
     return entry;
   }
 
   function updateEntry(id, patch, creatorInfo) {
     var custom = read(LS.custom, []);
+    if (!unambiguous(custom, id, 'kb')) return false;
     for (var i = 0; i < custom.length; i++) {
       if (custom[i].id === id) {
         custom[i] = Object.assign({}, custom[i], patch, { id: id });
         write(LS.custom, custom);
-        addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '更新知识', '更新了知识条目「' + custom[i].title + '」');
         syncCustomToCloud();
         return true;
       }
@@ -833,18 +683,17 @@
     if (!base) return false;
     edited[id] = Object.assign({}, base, patch, { id: id });
     write(LS.edited, edited);
-    addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '更新知识', '编辑内置知识条目「' + edited[id].title + '」');
     syncCustomToCloud();
     return true;
   }
 
   function deleteEntry(id, creatorInfo) {
     var custom = read(LS.custom, []);
+    if (!unambiguous(custom, id, 'kb')) return false;
     var before = custom.length;
     custom = custom.filter(function (e) { return e.id !== id; });
     if (custom.length < before) {
       write(LS.custom, custom);
-      addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除知识', '删除了自定义条目 ID:' + id);
       syncCustomToCloud();
       return true;
     }
@@ -856,7 +705,6 @@
     var edited = read(LS.edited, {});
     delete edited[id];
     write(LS.edited, edited);
-    addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除知识', '删除了内置条目 ID:' + id);
     syncCustomToCloud();
     return true;
   }
@@ -874,28 +722,37 @@
     return JSON.stringify(getEntries(), null, 2);
   }
 
+  function kbImportPatch(entries) {
+    if (!Array.isArray(entries)) throw new Error('知识库必须是数组');
+    var base = window.KNOWLEDGE_BASE || [], ids = new Set(base.map(function (e) { return e.id; }));
+    var custom = [], edited = {}, seen = new Set();
+    entries.forEach(function (entry) {
+      globalThis.HeritageContent.record(entry, 'kb', 'knowledgeBase', false);
+      if (seen.has(entry.id)) throw new Error('导入包含重复 ID：' + entry.id);
+      seen.add(entry.id);
+      if (ids.has(entry.id)) edited[entry.id] = entry; else custom.push(entry);
+    });
+    return { kbCustom: custom, kbEdited: edited, kbDeleted: base.filter(function (e) { return !seen.has(e.id); }).map(function (e) { return e.id; }) };
+  }
   function importKB(jsonStr) {
     try {
-      var entries = JSON.parse(jsonStr);
-      if (!Array.isArray(entries)) return false;
-      var cleaned = entries.map(function (e, i) {
-        return {
-          id: e.id || 'imported-' + i + '-' + Date.now(),
-          title: String(e.title || '未命名'),
-          keywords: Array.isArray(e.keywords) ? e.keywords.map(String) : [],
-          answer: String(e.answer || ''),
-          topics: Array.isArray(e.topics) ? e.topics.map(String) : undefined,
-          aliases: Array.isArray(e.aliases) ? e.aliases.map(String) : undefined,
-          relatedTopics: Array.isArray(e.relatedTopics) ? e.relatedTopics.map(String) : [],
-          sources: Array.isArray(e.sources) ? e.sources.map(function(s) { return { title: String(s.title || ''), url: String(s.url || '') }; }) : []
-        };
-      });
-      write(LS.custom, cleaned);
-      write(LS.deleted, []);
-      write(LS.edited, {});
-      syncCustomToCloud();
-      return true;
-    } catch (e) { return false; }
+      var candidate = Object.assign(bundle(), kbImportPatch(JSON.parse(jsonStr)));
+      globalThis.HeritageContent.validateBundle(candidate);
+      ['kbCustom', 'kbEdited', 'kbDeleted'].forEach(function (key) { write(CONTENT_KEYS[key], candidate[key]); });
+      syncCustomToCloud(); return true;
+    } catch (e) { setSyncStatus('error', e.message); return false; }
+  }
+  function checkNewRecord(entry, type, records) {
+    globalThis.HeritageContent.record(entry, type, type, false);
+    if (records.some(function (other) { return other && other.id === entry.id; }) || (globalThis.HeritageContent.reserved[type] || []).includes(entry.id)) throw new Error('ID 已存在，请重新创建或更换导入记录的 ID：' + entry.id);
+  }
+  function unambiguous(records, id, type) {
+    var matches = records.filter(function (record) { return record && record.id === id; });
+    if (matches.length > 1 || (matches.length && (globalThis.HeritageContent.reserved[type] || []).includes(id))) {
+      setSyncStatus('error', '该 ID 存在历史重复或内置冲突，已停止修改和删除。请先导出备份，修正重复 ID 后整体导入。');
+      return false;
+    }
+    return true;
   }
 
   /* ---------- 科普模块卡片管理 ---------- */
@@ -908,9 +765,9 @@
 
     var merged = base
       .filter(function (c) { return deleted.indexOf(c.id) === -1; })
-      .map(function (c) { return edited[c.id] || c; });
+      .map(function (c) { return Object.assign({}, c, edited[c.id]); });
 
-    return merged.concat(custom);
+    return displayRecords(merged.concat(custom), 'kepu');
   }
 
   function addHeritageCard(card, creatorInfo) {
@@ -923,15 +780,16 @@
     }
     card.createdAt = Date.now();
     var custom = read(LS.kepu_custom, []);
+    checkNewRecord(card, 'kepu', custom);
     custom.push(card);
     write(LS.kepu_custom, custom);
-    addAuditLog(card.creatorName, '新增科普', '新增非遗卡片「' + card.name + '」');
     syncCustomToCloud();
     return card;
   }
 
   function updateHeritageCard(id, patch) {
     var custom = read(LS.kepu_custom, []);
+    if (!unambiguous(custom, id, 'kepu')) return false;
     for (var i = 0; i < custom.length; i++) {
       if (custom[i].id === id) {
         custom[i] = Object.assign({}, custom[i], patch, { id: id });
@@ -949,11 +807,11 @@
 
   function deleteHeritageCard(id, creatorInfo) {
     var custom = read(LS.kepu_custom, []);
+    if (!unambiguous(custom, id, 'kepu')) return false;
     var before = custom.length;
     custom = custom.filter(function (c) { return c.id !== id; });
     if (custom.length < before) {
       write(LS.kepu_custom, custom);
-      addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除科普', '删除科普卡片 ID:' + id);
       syncCustomToCloud();
       return true;
     }
@@ -965,7 +823,6 @@
     var edited = read(LS.kepu_edited, {});
     delete edited[id];
     write(LS.kepu_edited, edited);
-    addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除科普', '删除科普卡片 ID:' + id);
     syncCustomToCloud();
     return true;
   }
@@ -973,7 +830,7 @@
   /* ---------- 方言模块管理 ---------- */
 
   function getCustomDialectTracks() {
-    return visibleContent('dialectCustom', []);
+    return displayRecords(visibleContent('dialectCustom', []), 'dialect');
   }
 
   function addDialectTrack(track, creatorInfo) {
@@ -986,19 +843,18 @@
     }
     track.createdAt = Date.now();
     var list = read(LS.dialect_custom, []);
+    checkNewRecord(track, 'dialect', list);
     list.push(track);
     write(LS.dialect_custom, list);
-    var trackName = (track.item && track.item.name) || track.name || '';
-    addAuditLog(track.creatorName, '新增方言', '新增客家方言讲解「' + trackName + '」');
     syncCustomToCloud();
     return track;
   }
 
   function deleteDialectTrack(id, creatorInfo) {
     var list = read(LS.dialect_custom, []);
+    if (!unambiguous(list, id, 'dialect')) return false;
     var filtered = list.filter(function (t) { return (t.id || t.item && t.item.name) !== id; });
     write(LS.dialect_custom, filtered);
-    addAuditLog((creatorInfo && creatorInfo.name) || '超级管理员', '删除方言', '删除方言展品语音 ID:' + id);
     syncCustomToCloud();
     return filtered.length < list.length;
   }
@@ -1074,41 +930,16 @@
   function importFullBundle(jsonStr) {
     try {
       var data = JSON.parse(jsonStr);
-      if (!data || typeof data !== 'object') return false;
-      if (data.cloudDraft) {
-        var draft = data.cloudDraft;
-        if (!Object.keys(CONTENT_KEYS).every(function (key) {
-          return OBJECT_KEYS.indexOf(key) >= 0
-            ? draft[key] && typeof draft[key] === 'object' && !Array.isArray(draft[key])
-            : Array.isArray(draft[key]);
-        })) return false;
-        Object.keys(CONTENT_KEYS).forEach(function (key) { write(CONTENT_KEYS[key], draft[key]); });
-        syncCustomToCloud();
-        return true;
+      if (!data || Array.isArray(data) || typeof data !== 'object') return false;
+      var candidate = data.cloudDraft ? copy(data.cloudDraft) : Object.assign(bundle(), Array.isArray(data.knowledgeBase) ? kbImportPatch(data.knowledgeBase) : {});
+      if (!data.cloudDraft) {
+        var legacy = { heritageCardsCustom: 'kepuCustom', heritageCardsEdited: 'kepuEdited', dialectTracksCustom: 'dialectCustom', apiConfig: 'apiConfig', workflowConfig: 'workflowConfig' };
+        Object.keys(legacy).forEach(function (key) { if (data[key] !== undefined) candidate[legacy[key]] = data[key]; });
       }
-      if (Array.isArray(data.knowledgeBase)) {
-        importKB(JSON.stringify(data.knowledgeBase));
-      }
-      if (Array.isArray(data.heritageCardsCustom)) {
-        write(LS.kepu_custom, data.heritageCardsCustom);
-      }
-      if (data.heritageCardsEdited && typeof data.heritageCardsEdited === 'object') {
-        write(LS.kepu_edited, data.heritageCardsEdited);
-      }
-      if (Array.isArray(data.dialectTracksCustom)) {
-        write(LS.dialect_custom, data.dialectTracksCustom);
-      }
-      if (data.apiConfig) {
-        write(LS.api, data.apiConfig);
-      }
-      if (data.workflowConfig) {
-        write(LS.workflow, data.workflowConfig);
-      }
-      syncCustomToCloud();
-      return true;
-    } catch (e) {
-      return false;
-    }
+      globalThis.HeritageContent.validateBundle(candidate);
+      Object.keys(CONTENT_KEYS).forEach(function (key) { if (key !== 'auditLogs') write(CONTENT_KEYS[key], candidate[key]); });
+      syncCustomToCloud(); return true;
+    } catch (e) { setSyncStatus('error', e.message); return false; }
   }
 
   /* ---------- 导出接口 ---------- */
@@ -1132,13 +963,13 @@
     logout: logout,
     getSyncStatus: function () { return Object.assign({ pending: pending, revision: cloudRevision }, syncStatus); },
     reloadCloudContent: reloadCloudContent,
+    getRecoveryDrafts: getRecoveryDrafts,
+    restoreRecoveryDraft: restoreRecoveryDraft,
     getAuditLogs: getAuditLogs,
     clearAuditLogs: clearAuditLogs,
-    addAuditLog: addAuditLog,
 
     // 消息通知中心
     getTokenNotifications: getTokenNotifications,
-    addTokenNotification: addTokenNotification,
     markTokenNotificationRead: markTokenNotificationRead,
     clearTokenNotifications: clearTokenNotifications,
 
@@ -1188,7 +1019,7 @@
   };
 
   // Remove obsolete local credentials. They cannot authenticate against the server.
-  ['nfyj_admin_pw', 'nfyj_admin_pw_hash', 'nfyj_admin_session', 'nfyj_login_lock_state', 'nfyj_admin_tokens'].forEach(function (key) {
+  ['nfyj_admin_pw', 'nfyj_admin_pw_hash', 'nfyj_admin_session', 'nfyj_login_lock_state', 'nfyj_admin_tokens', 'nfyj_audit_logs', 'nfyj_token_notifications'].forEach(function (key) {
     try { localStorage.removeItem(key); } catch (_) {}
   });
   if (typeof window.addEventListener === 'function') {

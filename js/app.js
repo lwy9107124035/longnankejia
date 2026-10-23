@@ -3,6 +3,7 @@
  */
 (function () {
   'use strict';
+  document.addEventListener('error', function (event) { if (event.target.tagName === 'IMG') event.target.hidden = true; }, true);
 
   var input, sendBtn;
   var busy = false;

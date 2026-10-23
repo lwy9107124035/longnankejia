@@ -5,7 +5,7 @@ import { createAdminBackend } from './helpers/admin-harness.mjs';
 const original = fs.readFileSync(new URL('../functions/api/admin/sync.js', import.meta.url), 'utf8');
 async function mutant(from, to) {
   assert.ok(original.includes(from), 'mutation target must still exist');
-  return import('data:text/javascript;base64,' + Buffer.from(original.replace(from, to)).toString('base64'));
+  return import('data:text/javascript;base64,' + Buffer.from(original.replace(from, to).replace(/from '(\.\.[^']+)'/g, (_, specifier) => 'from ' + JSON.stringify(new URL(specifier, new URL('../functions/api/admin/sync.js', import.meta.url)).href))).toString('base64'));
 }
 async function call(module, backend, body, bearer) {
   const request = new Request('http://127.0.0.1:8931/api/admin/sync', {
@@ -26,7 +26,7 @@ try {
   const { ok, ...payload } = current;
   Object.assign(payload, { action: 'update_custom_bundle', auditLogs: [] });
   assert.equal((await call(overwrite, backend, payload, admin.bearer)).status, 200);
-  const stale = await call(overwrite, backend, { ...payload, kbCustom: [{ id: 'overwritten' }] }, admin.bearer);
+  const stale = await call(overwrite, backend, { ...payload, kbCustom: [{ id: 'overwritten', title: '试图覆盖' }] }, admin.bearer);
   assert.throws(() => assert.equal(stale.status, 409), 'removing the version guard must fail the stale-device assertion');
 
   const fakeSuccess = await mutant("return json(503, { ok: false, code: 'STORAGE_UNAVAILABLE'", "return json(200, { ok: true, code: 'STORAGE_UNAVAILABLE'");

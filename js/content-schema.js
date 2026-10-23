@@ -1,0 +1,102 @@
+(function (root) {
+  'use strict';
+  var fields = {
+    kbCustom: [], kbEdited: {}, kbDeleted: [], kepuCustom: [], kepuEdited: {}, kepuDeleted: [],
+    dialectCustom: [], dialectDeleted: [], apiConfig: {}, workflowConfig: {}
+  };
+  var reserved = {"kb":["about-project","longnan-feiyi-overview","hakka-food-overview","landye","v2-zhidai","v2-zhubian","v2-nantong-blue-print","v2-dali-bai-tie-dye","pattern-overview","zhubian","zhidai","weiwu","shange","tongyao","fangyan","api-basics","experience","guangzhou-project","qr-guide","weixin-gzh","diancang","jingshen","platform","dc-shoudan","dc-daqi","dc-xiqu","dc-luodihuagu","dc-huangjiangdoufu","dc-xianshuidong","dc-sanjidi","dc-yizhuocai","dc-lingmao","dc-zisundai","dc-wushiwei","dc-huxingwei","dc-caichaxi","dc-lianhuadiao","dc-muou","dc-niangdoufu","dc-leicha","dc-meicaikouro","dc-sijingwangyue","dc-huangyuanmiguo","dc-huadai","dc-bandenglong","dc-shaowata","dc-longzhou","dc-shikehui","dc-huomao","dc-huolong","dc-zougushi","dc-jiushibaixiang","jiangyi-weiwu-overview","jiangyi-weiwu-defense","jiangyi-weiwu-windows","jiangyi-weiwu-red","jiangyi-costume-dialect","jiangyi-liangmao-dialect","jiangyi-clothing-colors","jiangyi-dialect-wu","jiangyi-dialect-ancient-words","jiangyi-toponym-culture","jiangyi-liyuanwei-grains","longnan-wenbao-count","weave-tools","weave-process","weave-patterns","weave-people","bamboo-material","bamboo-tools","bamboo-process","bamboo-inheritance","indigo-process","indigo-status","winter-cloth","photo-dajinshan","photo-bowei","photo-zisundai","pattern-clothing","pattern-nature","pattern-cultivation","pattern-door","pattern-safety","pattern-family","pattern-practice"],"kepu":["landye","zhubian","zhidai","lacquer","weiwu","guanxi","opera","festival","lifecustom","dialect","dragonboat","hakkaconvention","food","huangyuan","zhenzhu"]};
+  function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+  function id(value) { return typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\/\\\u0000-\u0020\u007f]/.test(value) && !/^(?:__proto__|prototype|constructor)$/.test(value); }
+  function safeUrl(value, image) {
+    if (typeof value !== 'string' || /[\u0000-\u0020\u007f]/.test(value)) return false;
+    if (!value) return true;
+    if (image && /^data:image\/(?:png|jpeg|gif|webp|avif);base64,[a-z0-9+/=]+$/i.test(value)) return true;
+    if (/^https?:\/\//i.test(value)) return true;
+    return /^(?:\.?\.?\/|\/|assets\/)/.test(value) && !/^\/\//.test(value) && !value.includes('\\');
+  }
+  function fail(path) { throw new Error('内容格式不正确：' + path); }
+  function canonical(value) {
+    if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
+    if (object(value)) return '{' + Object.keys(value).sort().map(function (key) { return JSON.stringify(key) + ':' + canonical(value[key]); }).join(',') + '}';
+    return JSON.stringify(value);
+  }
+  function tree(value, path, depth) {
+    if (depth > 8) fail(path + ' 层级过深');
+    if (value === null || ['string', 'boolean'].includes(typeof value)) return;
+    if (typeof value === 'number' && Number.isFinite(value)) return;
+    if (!object(value) && !Array.isArray(value)) fail(path);
+    Object.keys(value).forEach(function (key) {
+      if (['__proto__', 'constructor', 'prototype'].includes(key)) fail(path + '.' + key);
+      tree(value[key], path + '.' + key, depth + 1);
+    });
+  }
+  function record(value, type, path, partial) {
+    if (!object(value) || !id(value.id)) fail(path + '.id');
+    var name = type === 'kb' ? 'title' : 'name';
+    if (!partial && type !== 'dialect' && (typeof value[name] !== 'string' || !value[name].trim())) fail(path + '.' + name);
+    if (type === 'dialect' && (!object(value.item) || typeof value.item.name !== 'string' || !value.item.name.trim())) fail(path + '.item.name');
+    Object.keys(value).forEach(function (key) {
+      var v = value[key];
+      if (['keywords', 'topics', 'aliases', 'relatedTopics'].includes(key)) {
+        if (!Array.isArray(v) || v.length > 200 || v.some(function (s) { return typeof s !== 'string' || s.length > 500; })) fail(path + '.' + key);
+      } else if (key === 'sources') {
+        if (!Array.isArray(v) || v.length > 100) fail(path + '.sources');
+        v.forEach(function (s) { if (!object(s) || typeof s.title !== 'string' || (s.url !== undefined && !safeUrl(s.url, false))) fail(path + '.sources'); });
+      } else if (key === 'item') {
+        if (!object(v) || typeof v.name !== 'string') fail(path + '.item');
+        Object.keys(v).forEach(function (k) {
+          if (['videoUrl', 'audioUrl', 'imageUrl'].includes(k)) { if (!safeUrl(v[k], k === 'imageUrl')) fail(path + '.item.' + k); }
+          else if (k === 'page' || k === 'sheet') { if (!Number.isFinite(v[k])) fail(path + '.item.' + k); }
+          else if (typeof v[k] !== 'string') fail(path + '.item.' + k);
+        });
+      } else if (['createdAt', 'updatedAt', 'page', 'sheet'].includes(key)) {
+        if (!Number.isFinite(v)) fail(path + '.' + key);
+      } else if (['isCustom'].includes(key)) {
+        if (typeof v !== 'boolean') fail(path + '.' + key);
+      } else if (['accent', 'bg'].includes(key)) {
+        if (typeof v !== 'string' || (v && !/^(?:#[0-9a-f]{3,8}|rgba?\([\d.,% ]+\)|hsla?\([\d.,% ]+\)|[a-z]+)$/i.test(v))) fail(path + '.' + key);
+      } else {
+        var limit = ['detail', 'answer'].includes(key) ? 1000000 : ['image', 'imageUrl'].includes(key) ? 5000000 : 4000;
+        if (typeof v !== 'string' || v.length > limit) fail(path + '.' + key);
+        if (['image', 'imageUrl', 'video', 'videoUrl', 'audioUrl', 'url'].includes(key) && !safeUrl(v, key === 'image' || key === 'imageUrl')) fail(path + '.' + key);
+      }
+    });
+    tree(value, path, 0);
+    return value;
+  }
+  function validateBundle(input) {
+    var result = {};
+    Object.keys(fields).forEach(function (key) {
+      var value = input[key];
+      if (Array.isArray(fields[key]) ? !Array.isArray(value) : !object(value)) fail(key);
+      result[key] = value;
+    });
+    ['kb', 'kepu', 'dialect'].forEach(function (type) {
+      var custom = result[type + 'Custom'], seen = new Set();
+      if (custom.length > 10000) fail(type + 'Custom 数量过多');
+      custom.forEach(function (v, i) {
+        record(v, type, type + 'Custom[' + i + ']', false);
+        if (seen.has(v.id) || (reserved[type] || []).includes(v.id)) fail(type + 'Custom 重复或内置 ID：' + v.id);
+        seen.add(v.id);
+      });
+      var deleted = result[type + 'Deleted'];
+      if (deleted.some(function (v) { return !id(v); }) || new Set(deleted).size !== deleted.length) fail(type + 'Deleted');
+      if (type !== 'dialect') Object.keys(result[type + 'Edited']).forEach(function (key) {
+        var v = result[type + 'Edited'][key];
+        record(v, type, type + 'Edited.' + key, true);
+        if (key !== v.id || seen.has(key) || deleted.includes(key)) fail(type + 'Edited.' + key);
+      });
+    });
+    tree(result.apiConfig, 'apiConfig', 0); tree(result.workflowConfig, 'workflowConfig', 0);
+    if (Object.keys(result.apiConfig).some(function (k) { return !['mode', 'model', 'temperature', 'maxTokens'].includes(k); })) fail('apiConfig');
+    if (result.apiConfig.model !== undefined && typeof result.apiConfig.model !== 'string') fail('apiConfig.model');
+    if (result.apiConfig.mode !== undefined && typeof result.apiConfig.mode !== 'string') fail('apiConfig.mode');
+    ['temperature', 'maxTokens'].forEach(function (k) { if (result.apiConfig[k] !== undefined && !Number.isFinite(result.apiConfig[k])) fail('apiConfig.' + k); });
+    Object.keys(result.workflowConfig).forEach(function (k) {
+      var v = result.workflowConfig[k];
+      if (k === 'systemPrompt' ? typeof v !== 'string' || v.length > 20000 : k === 'minScore' ? !Number.isFinite(v) : !['strictMode', 'enableThinking'].includes(k) || typeof v !== 'boolean') fail('workflowConfig.' + k);
+    });
+    return result;
+  }
+  root.HeritageContent = { defaults: fields, validateBundle: validateBundle, record: record, safeUrl: safeUrl, reserved: reserved, canonical: canonical };
+})(globalThis);

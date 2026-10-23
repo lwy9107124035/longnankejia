@@ -18,7 +18,7 @@
     var p = item.sheet || item.page;
     if (!p) return '';
     p = String(p).padStart(2, '0');
-    return '<img class="dc-item-thumb" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+    return '<img class="dc-item-thumb" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" loading="lazy">';
   }
 
   function switchToChat(question) {
@@ -95,7 +95,7 @@
     var imgPage = item.sheet || item.page;
     if (imgPage) {
       var p = String(imgPage).padStart(2, '0');
-      imgHtml = '<img class="dc-detail-img" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" onerror="this.style.display=\'none\'">' +
+      imgHtml = '<img class="dc-detail-img" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '">' +
         '<div class="dc-detail-cite">《文化典藏》第 ' + esc(item.page) + ' 页</div>';
     }
 
@@ -138,6 +138,7 @@
   }
 
   function showVideoPlayer(item) {
+    if (!globalThis.HeritageContent.safeUrl(item.videoUrl, false)) return;
     var mask = document.getElementById('videoMask');
     var title = document.getElementById('videoTitle');
     var frame = document.getElementById('videoFrame');
@@ -157,7 +158,7 @@
     if (!mask || !body || !data) return;
     body.innerHTML =
       '<div class="dc-detail-name">前言</div>' +
-      '<img class="dc-detail-img" src="assets/pdf-imgs/page-02.jpg" alt="前言" onerror="this.style.display=\'none\'">' +
+      '<img class="dc-detail-img" src="assets/pdf-imgs/page-02.jpg" alt="前言">' +
       '<div class="dc-detail-desc"><p>' + esc((data.meta && data.meta.preface) || '') + '</p></div>' +
       '<div class="dc-detail-meta">' + esc((data.meta && data.meta.compiler) || '') + ' · ' + esc((data.meta && data.meta.date) || '') + '</div>';
     mask.hidden = false;
@@ -169,7 +170,7 @@
     if (!mask || !body || !data) return;
     body.innerHTML =
       '<div class="dc-detail-name">后记</div>' +
-      '<img class="dc-detail-img" src="assets/pdf-imgs/page-67.jpg" alt="后记" onerror="this.style.display=\'none\'">' +
+      '<img class="dc-detail-img" src="assets/pdf-imgs/page-67.jpg" alt="后记">' +
       '<div class="dc-detail-desc"><p>' + esc(data.epilogue || '') + '</p></div>';
     mask.hidden = false;
   }

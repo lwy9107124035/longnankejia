@@ -1,22 +1,10 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
 import test from 'node:test';
 import { createAdminBackend } from './helpers/admin-harness.mjs';
 
-export function setupEnvironment(backend, { local = new Map(), tab = new Map(), blocked = false } = {}) {
-  const storage = map => ({
-    getItem(key) { if (blocked) throw new Error('Storage denied'); return map.get(key) || null; },
-    setItem(key, value) { if (blocked) throw new Error('Storage denied'); map.set(key, String(value)); },
-    removeItem(key) { if (blocked) throw new Error('Storage denied'); map.delete(key); }
-  });
-  const window = { location: new URL('http://127.0.0.1:8931'), KNOWLEDGE_BASE: [{ id: 'base', title: '客家蓝染', answer: '传统工艺' }] };
-  const sandbox = { window, localStorage: storage(local), sessionStorage: storage(tab), navigator: { userAgent: 'iPhone Safari' },
-    fetch: (...args) => backend.fetchApi(...args), AbortController, setTimeout, clearTimeout, console, Date, Math, JSON, Promise };
-  vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(new URL('../js/store.js', import.meta.url), 'utf8'), sandbox);
-  return { window, store: window.Store, sandbox, local, tab };
-}
+import { setupEnvironment } from './helpers/store-harness.mjs';
+export { setupEnvironment };
+
 function setup(t) { const backend = createAdminBackend(); t.after(() => backend.close()); return backend; }
 async function login(device, password = 'admin123') {
   const result = await device.store.verifyLogin(password);

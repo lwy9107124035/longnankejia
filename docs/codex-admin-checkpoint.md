@@ -114,3 +114,33 @@
 - 正式发布提交 `7c4f0cd9efebb63b6da261415f80285b397f1ef3` 已推送 main；[CI 39920128872](https://github.com/lwy9107124035/longnankejia/actions/runs/39920128872) 成功，40 项检查全部通过，日志确认保留原正式站服务端密钥。部署地址 `https://99030e39.longnankejia.pages.dev/`，固定正式入口 `https://longnankejia.pages.dev/` 已更新。
 - `.cache/check-main-content-sync-release.mjs after` 核验通过：store/admin/ui/CSS/index 五份源码与已验收版本逐字一致，版本未变化时的轻量 API 响应有效；发布前后正式内容摘要和密码派生记录指纹完全相同，内容 revision 67、自定义科普 26 条、密码 revision 1。证据在 `.cache/main-content-sync-after.json`。
 - 本次继续绑定原正式 D1，没有复制预览库、迁移或清理正式内容，没有重设密码或覆盖 API 密钥。codex 仍使用独立预览库，正式网址和原二维码均可继续使用；原设备草稿可在正式站登录后恢复同步，若同条冲突则先导出备份核对。
+
+## 2026-10-23 codex 安全与质量审查（完成）
+
+- 用户要求对 codex 详细审查、排查漏洞；当前只做审查及隔离复现，不修改产品实现，不向线上写入测试数据。已切换本地 codex `7405e03`，与正式 main `bce4c6b` 的应用代码相同，仅发布记录不同。
+- 基线 Node 管理、接口、知识和模型 80/80 通过，负向变异 3 项及静态检查通过；完整浏览器回归 318/318 通过，输出保存在 `.cache/codex-audit-full-browser-output.txt`。这些基线没有覆盖下述对抗场景，不能当成安全验收结论。
+- 复用真实 SQLite 管理接口和现有 Store VM 测试夹具，新增 `tests/audit_codex_20261023.mjs`。9 个探针已复现：无效记录入库、重复 ID 删除连带、审计及归属伪造、回滚遗漏内置修改/删除、日志泄漏有效邀请码、跨设备审核通知缺失、重新加载竞态丢草稿、sessionStorage 仅写失败导致新会话丢失、匿名超大请求整包读取后才限长。结果在 `.cache/codex-audit-api.json`，该探针退出码 1 表示发现缺陷，不能解释为普通测试通过。
+- 原浏览器脚本新增仅手动运行的 `--only=security-audit`，使用正式 CSP 配置在本地复现：协管员卡片图标脚本借超管会话改密成功、正文 HTML 事件执行、null 记录导致渲染异常、正常压缩 DOCX 读取不到正文、同源双标签页离线草稿互相覆盖。结果 `.cache/codex-audit-browser.json`；“7 passed”包含 2 项冷启动和 5 个复现探针，不是安全通过，确认缺陷时脚本退出码为 1。Word 样本通过 `tests/helpers/create-audit-word-fixture.py` 自动生成。线上注入和改密均未执行，测试使用隔离后端的合成口令。
+- 正式/预览只读快照 `.cache/codex-audit-online-before.json` 与 `codex-audit-online-after.json` 内容摘要相同：正式 revision 67、科普 26 条，预览 revision 10、科普 0 条。API 顶层未直接暴露密码、会话或令牌字段；线上 CSP 确实允许 unsafe-inline/unsafe-eval。漏洞均在本地真实接口/浏览器复现，没有对线上执行攻击或写入。
+- 最终报告 `docs/codex-security-review-2026-10-23.md`：14 个对抗探针归并 12 项确认问题，4 项 P1、7 项 P2、1 项 P3，逐项含源码行号、条件、复现、影响、建议及验收标准。待环境核对的分布式限流、上游超时、真实 iOS/微信等没有计为确认漏洞。
+- 本轮本地只修改审查报告/记录和测试工具，没有业务实现变更，没有提交或推送。后续优先修复 F01–F04，再做其他修复及回归；用户尚未要求本轮实施修复。
+
+## 2026-10-23 全部 12 项整改（已推送 codex，预览部署完成）
+- 用户授权：只在 codex 修复全部审查问题，main 不动。当前分支 codex。
+- 已实现：共享结构验证（前后端）、DOMPurify 3.4.17 与 fflate 0.8.3（npm sha512 校验后本地 vendor），收紧 CSP；服务器记录内容归属、审计、回滚前后版本、审核通知及已读状态；限制请求流读取；独立页面草稿与恢复；重载 generation 守卫、会话内存优先；DOCX ZIP/XML 正文解析。
+- 修改路径：functions/_lib/admin-content.js、read-limited.js、api/admin/sync.js、js/content-schema.js/store.js/ui.js/admin.js/dialect.js/diancang.js/app.js、index.html、_headers。无真实账号、密码、密钥或线上数据操作。
+- 初次 50 项相关 Node 回归：两处失败是新增服务端归属字段及更严格必填校验导致旧测试数据不适用；已更新断言/有效夹具，50 项已通过。
+- 回归：新增 19 项安全/启动测试；原 80 项仍通过。真实 CSP 完整浏览器 319/319、浏览器安全 13/13、独立手机/电脑管理 18/18；静态、3 项负向变异和 Wrangler Functions 构建通过。曾发现初始化竞态与测试等待不足，已修复并重跑。
+- 细节与边界：docs/codex-security-fixes-2026-10-23.md。旧审查命令转为防回归断言；测试 fixture 提取至 tests/helpers/store-harness.mjs。
+- 最终合并 Node 99/99 已通过，最后浏览器同步/安全专测通过，Functions 编译再次成功；待检查 staged diff 后提交并只推送 codex，观察 CI 部署，不改变 main。本机 Node/urllib 在线读取出现 fetch failed/403，改用 curl GET 成功取得只读快照（.cache/codex-fix-online-before.json）：codex revision 10/自定义科普 0、main revision 67/自定义科普 26。HEAD 不经过 Functions 会返回静态 HTML，在线核验必须用 GET JSON。
+- 修复提交 `a4da1579fdfd03b6106c2203d29cb6955020eb63` 已只推送 codex。[CI 39937924225](https://github.com/lwy9107124035/longnankejia/actions/runs/39937924225) 成功，CI 管理/接口 59/59；部署 `https://512f574d.longnankejia-dev.pages.dev/`，固定预览 `https://codex.longnankejia-dev.pages.dev/`。
+- `.cache/verify-codex-security-release.mjs` 在线只读核验通过，结果 `.cache/codex-fix-online-after.json`：首页及 6 份关键 JS 与本地已测试源码一致，script-src 不含 unsafe-inline/unsafe-eval，API 返回 JSON/no-store。首次对 `/index.html` 检查遇 Cloudflare 308 规范跳转，改用实际首页 `/` 后通过，并非应用故障。
+- 对两站公开接口 JSON 全量规范化比较，部署前后完全相同：codex revision 10/科普 0，main revision 67/科普 26。没有向线上执行攻击或增删改测试，没有重设密码、邀请码或密钥；两库仍独立。远端 main 保持 `bce4c6b1bccb0325c0b086edc73273e8d76c0a24`。
+- 本轮已完成，等待用户验收 codex 后明确授权 main；旧数据恢复和真实 iOS/微信验证等边界见整改文档。
+
+## 2026-10-23 用户授权将全部安全整改发布 main
+
+- 用户已明确要求“推送到 main 分支”，解除上一轮等待 codex 验收的限制。合并已验证的 codex `863fecf` 到 main，保留正式分支原发布记录；冲突只发生在本记录末尾，两边历史均保留，应用代码没有冲突。
+- 发布前正式接口只读快照 `.cache/security-main-before.json`：revision 67、自定义科普 26 条；现有公开内容通过新版本共享 schema 验证，不需要清理或改写内容。
+- 检查 `地址.html`：五个分支 URL 已是稳定入口，无需每次发布修改 URL；说明仍停留在旧版本并错误地只标 antigravity 为当前主力，本次更新说明、顺序和快捷入口。今后继续保留稳定分支地址，部署成功后该地址提供最新已部署版本。
+- 当前步骤：提交合并与地址页更新，只推送 main；沿用正式 D1，保留现有密码、邀请码、服务端密钥；等待 CI 和正式站只读核验。

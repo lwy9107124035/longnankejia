@@ -11,13 +11,14 @@
  *
  * Exits non-zero on the first failing assertion group.
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createAdminBackend } from './helpers/admin-harness.mjs';
+import { runSecurityRegression } from './helpers/browser-security.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = path.join(ROOT, '.cache', 'test-shots');
@@ -75,6 +76,7 @@ function startServer() {
     fs.readFile(file, (err, buf) => {
       if (err) { res.writeHead(404).end('not found'); return; }
       const headers = { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'accept-ranges': 'bytes' };
+      headers['content-security-policy'] = fs.readFileSync(path.join(ROOT,'_headers'),'utf8').split('\n').find(line=>line.trim().startsWith('Content-Security-Policy:')).trim().slice('Content-Security-Policy:'.length).trim();
       if (req.headers.range) {
         const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
         const start = range?.[1] ? Number(range[1]) : Math.max(0, buf.length-Number(range?.[2]));
@@ -283,6 +285,7 @@ async function run() {
     if (ONLY.includes('8')) await sectionAccess();
     if (ONLY.includes('kepu-crud')) await sectionKepuCrud();
     if (ONLY.includes('content-sync')) await sectionContentSync();
+    if (ONLY.includes('security-audit') || ONLY.includes('security-regression')) await runSecurityRegression({ page, Page, BASE, CDP_PORT, ROOT, check, until, reloadPage, shot });
     if (ONLY.includes('admin')) await sectionAdminDevices();
     if (ONLY.includes('rhyme')) await sectionRhyme();
     if (ONLY.includes('dialogue')) await sectionConversation();
@@ -1425,6 +1428,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     await page.evaluate(`window.Store.clearSession(); window.Admin.open(); window.__alerts=[]; window.alert=(text)=>window.__alerts.push(text)`);
     check('URL 免密参数不能赋予管理员身份', await page.evaluate(`!window.Store.getSession() && !!document.getElementById('adminLoginBtn')`));
     async function uiLogin(target, password) {
+      if (!(await until(target, "!!document.getElementById('adminPwInput')"))) return false;
       await target.evaluate(`document.getElementById('adminPwInput').value=${JSON.stringify(password)}; document.getElementById('adminLoginBtn').click()`);
       return until(target, `!!document.getElementById('adminHeaderLogoutBtn')`, 8000);
     }
@@ -1450,6 +1454,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
       await until(phone, `!!window.Admin && !!window.Store`);
       check('新手机没有共享电脑的本地会话', await phone.evaluate(`window.Store.getSession() === null && !localStorage.getItem('nfyj_admin_pw')`));
       await phone.evaluate(`window.Admin.open()`);
+      check('手机本机存储就绪后显示登录表单', await until(phone, "!!document.getElementById('adminPwInput')"));
       await phone.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
       await phone.evaluate(`document.getElementById('adminPwInput').value='DeviceCheck2026!'; document.getElementById('adminLoginBtn').click()`);
       check('断网显示网络错误而非密码错误', await until(phone, `document.getElementById('adminPwError').textContent.includes('连不上管理服务器')`));

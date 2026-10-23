@@ -31,7 +31,9 @@ test('dozens of illustrated cards exceed the former row limit and survive a rest
   backend.close();
   const restarted = createAdminBackend({ filename });
   t.after(() => { restarted.close(); fs.rmSync(dir, { recursive: true }); });
-  assert.deepEqual((await restarted.call()).data.kepuCustom, cards);
+  const restored = (await restarted.call()).data.kepuCustom;
+  assert.deepEqual(restored.map(({ creatorName, creatorTokenId, createdAt, ...card }) => card), cards);
+  assert.ok(restored.every(card => card.creatorName === '超级管理员' && Number.isFinite(card.createdAt)));
 });
 
 test('a failed chunk transaction leaves all previously published content intact', async t => {
@@ -40,7 +42,7 @@ test('a failed chunk transaction leaves all previously published content intact'
   await backend.call({ ...base, kepuCustom: [{ id: 'original', name: '原内容' }] }, admin.bearer);
   const current = await content(backend);
   backend.sqlite.exec("CREATE TRIGGER fail_chunk BEFORE INSERT ON admin_state WHEN NEW.key = 'content:chunk:1' BEGIN SELECT RAISE(ABORT, 'disk full'); END;");
-  const response = await backend.call({ ...current, kepuCustom: [{ id: 'new', detail: 'a'.repeat(600000) }] }, admin.bearer);
+  const response = await backend.call({ ...current, kepuCustom: [{ id: 'new', name: '新稿', detail: 'a'.repeat(600000) }] }, admin.bearer);
   assert.equal(response.status, 503);
   const after = (await backend.call()).data;
   assert.equal(after.revision, current.revision);
@@ -136,7 +138,7 @@ test('contents, changed password and sessions survive a cold backend restart', a
   const admin = (await login(first)).data;
   await first.call({ action: 'update_password', password: 'Persistent2026!' }, admin.bearer);
   const base = await content(first);
-  await first.call({ ...base, dialectCustom: [{ id: 'recording', name: '讲解' }] }, admin.bearer);
+  await first.call({ ...base, dialectCustom: [{ id: 'recording', item: { name: '讲解' } }] }, admin.bearer);
   first.close();
   const restarted = createAdminBackend({ filename });
   t.after(() => { restarted.close(); fs.unlinkSync(filename); fs.rmdirSync(dir); });

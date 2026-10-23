@@ -1,8 +1,6 @@
 // Credentials and shared state belong in D1, never in a Worker isolate.
-const DEFAULTS = {
-  kbCustom: [], kbEdited: {}, kbDeleted: [], kepuCustom: [], kepuEdited: {},
-  kepuDeleted: [], dialectCustom: [], dialectDeleted: [], apiConfig: {}, workflowConfig: {}, auditLogs: []
-};
+import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions } from '../../_lib/admin-content.js';
+import { readLimited } from '../../_lib/read-limited.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
 const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
@@ -161,15 +159,8 @@ async function login(db, env, request, body) {
   return { ok: true, ...user, title: user.role === 'super_admin' ? user.name : '受邀管理员 · ' + user.name, bearer, expiresAt };
 }
 function contentPayload(body) {
-  const value = {};
-  for (const [key, fallback] of Object.entries(DEFAULTS)) {
-    const input = body[key];
-    const valid = Array.isArray(fallback) ? Array.isArray(input) : input && typeof input === 'object' && !Array.isArray(input);
-    if (!valid) throw new ApiError(400, 'INVALID_CONTENT', '同步内容格式不正确：' + key);
-    value[key] = input;
-  }
-  for (const key of Object.keys(value.apiConfig)) if (!['mode', 'model', 'temperature', 'maxTokens'].includes(key)) delete value.apiConfig[key];
-  return value;
+  try { return validateContent(body); }
+  catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
 }
 async function getData(db, request) {
   const user = await session(db, request, false);
@@ -177,13 +168,16 @@ async function getData(db, request) {
   const known = since !== null && await db.prepare("SELECT revision FROM admin_state WHERE key = 'content'").first();
   const unchanged = known && String(known.revision) === since;
   const content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
-  const result = { ok: true, ...content.value, revision: content.revision, ...(unchanged && { unchanged: true }) };
-  delete result.auditLogs;
+  const tokens = await state(db, 'tokens', []);
+  const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), revision: content.revision, ...(unchanged && { unchanged: true }) };
   if (user) {
     result.session = { role: user.role, name: user.name, tokenId: user.tokenId, expiresAt: user.expiresAt };
-    if (!unchanged) result.auditLogs = content.value.auditLogs || [];
+    if (!unchanged) {
+      result.auditLogs = user.role === 'super_admin' ? safeAudit(content.value, tokens.value) : [];
+      result.notifications = (content.value._notifications || []).filter(n => user.role === 'super_admin' || n.tokenId === user.tokenId);
+      if (user.role === 'super_admin') result.contributions = contributions(content.value, tokens.value);
+    }
     if (user.role === 'super_admin') {
-      const tokens = await state(db, 'tokens', []);
       result.tokens = tokens.value;
       result.tokenRevision = tokens.revision;
       const locks = await db.prepare("SELECT id, attempts, locked_until, updated_at, device FROM admin_attempts WHERE id LIKE 'client:%' ORDER BY updated_at DESC LIMIT 50").all();
@@ -201,11 +195,43 @@ async function postData(db, env, request, body) {
       return { ok: true };
     case 'update_custom_bundle': {
       const current = await state(db, 'content', DEFAULTS);
-      const next = contentPayload(body);
+      const submitted = contentPayload(body);
       if (user.role !== 'super_admin') for (const key of ['apiConfig', 'workflowConfig']) {
-        if (JSON.stringify(next[key]) !== JSON.stringify(current.value[key])) requireSuper(user);
+        if (JSON.stringify(submitted[key]) !== JSON.stringify(current.value[key])) requireSuper(user);
       }
+      const tokens = await state(db, 'tokens', []);
+      const next = await updatedContent(current.value, submitted, user, tokens.value);
       const revision = await saveState(db, 'content', next, body.revision);
+      return { ok: true, revision, content: { ...safeContent(next, tokens.value), auditLogs: user.role === 'super_admin' ? safeAudit(next, tokens.value) : [] } };
+    }
+    case 'rollback_token':
+    case 'reject_item': {
+      requireSuper(user);
+      const tokens = await state(db, 'tokens', []);
+      const token = tokens.value.find(t => t.id === body.tokenId);
+      if (!token) throw new ApiError(404, 'INVITE_NOT_FOUND', '邀请记录不存在。');
+      if (body.action === 'reject_item' && (!['kb', 'kepu', 'dialect'].includes(body.itemType) || typeof body.itemId !== 'string')) throw new ApiError(400, 'INVALID_INPUT', '请选择需要审核的条目。');
+      const current = await state(db, 'content', DEFAULTS);
+      const item = body.action === 'reject_item' ? contributions(current.value, tokens.value).find(c => c.tokenId === token.id && c.id === body.itemId && c.type === body.itemType) : null;
+      if (body.action === 'reject_item' && !item) throw new ApiError(404, 'ITEM_NOT_FOUND', '未找到该人员可撤回的修改。');
+      const reason = String(body.reason || '超级管理员已撤回相关修改').trim().slice(0, 2000);
+      const result = await rollback(current.value, token, user, tokens.value, item, reason);
+      validateContent(result.next);
+      const revision = await saveState(db, 'content', result.next, current.revision);
+      return { ok: true, revision, totalRemoved: result.totalRemoved, skipped: result.skipped, tokenName: token.name, itemTitle: item?.title };
+    }
+    case 'read_notifications': {
+      const current = await state(db, 'content', DEFAULTS);
+      for (const n of current.value._notifications || []) if ((user.role === 'super_admin' || n.tokenId === user.tokenId) && (!body.id || n.id === body.id)) n.read = true;
+      const revision = await saveState(db, 'content', current.value, current.revision);
+      return { ok: true, revision };
+    }
+    case 'clear_audit_logs': {
+      requireSuper(user);
+      const current = await state(db, 'content', DEFAULTS);
+      current.value.auditLogs = [];
+      audit(current.value, user, '归档日志', '已清空显示日志，版本回滚历史仍保留', []);
+      const revision = await saveState(db, 'content', current.value, current.revision);
       return { ok: true, revision };
     }
     case 'update_password': {
@@ -264,8 +290,16 @@ async function handle({ request, env = {} }) {
     if (request.method === 'GET') result = await getData(env.ADMIN_DB, request);
     else if (request.method === 'POST') {
       if (!request.headers.get('Content-Type')?.includes('application/json')) throw new ApiError(415, 'INVALID_TYPE', '请求需要使用 JSON。');
-      const text = await request.text();
-      if (encoder.encode(text).length > MAX_CONTENT_BYTES) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', '本站内容已达到当前容量上限，请联系维护人员扩容；本机草稿已保留，请导出备份。');
+      // Login stays available with an expired bearer; only validated sessions get the large upload budget.
+      let authenticated = false;
+      if (request.headers.has('Authorization')) {
+        try { authenticated = !!(await session(env.ADMIN_DB, request)); }
+        catch (error) { if (!(error instanceof ApiError) || error.status !== 401) throw error; }
+      }
+      let bytes;
+      try { bytes = await readLimited(request, authenticated ? MAX_CONTENT_BYTES : 8192); }
+      catch (error) { if (error instanceof RangeError) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', '请求内容超过允许大小，本机草稿已保留。'); throw error; }
+      const text = new TextDecoder().decode(bytes);
       let body;
       try { body = JSON.parse(text); } catch { throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。'); }
       if (!body || Array.isArray(body) || typeof body !== 'object') throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。');
