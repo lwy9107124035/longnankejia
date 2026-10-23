@@ -5,6 +5,8 @@ const DEFAULTS = {
 };
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
+const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
+const CHUNK_CHARS = 400000;
 class ApiError extends Error {
   constructor(status, code, message, extra = {}) { super(message); Object.assign(this, { status, code, extra }); }
 }
@@ -37,10 +39,47 @@ async function passwordHash(password, salt) {
   return Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, '0')).join('');
 }
 async function state(db, key, fallback) {
+  if (key === 'content') {
+    // Read the manifest and all parts in one SQL snapshot during concurrent writes.
+    const { results } = await db.prepare("SELECT key, value, revision FROM admin_state WHERE key = 'content' OR key GLOB 'content:chunk:*'").all();
+    const row = results.find(item => item.key === 'content');
+    if (!row) return { value: fallback, revision: 0 };
+    let value = JSON.parse(row.value);
+    if (value.storage === 'chunks-v1') {
+      const parts = new Map(results.map(item => [item.key, item.value]));
+      let text = '';
+      for (let i = 0; i < value.count; i++) {
+        const part = parts.get('content:chunk:' + i);
+        if (part === undefined) throw new Error('Incomplete content snapshot');
+        text += part;
+      }
+      value = JSON.parse(text);
+    }
+    return { value, revision: row.revision };
+  }
   const row = await db.prepare('SELECT value, revision FROM admin_state WHERE key = ?').bind(key).first();
   return row ? { value: JSON.parse(row.value), revision: row.revision } : { value: fallback, revision: 0 };
 }
 async function saveState(db, key, value, revision) {
+  if (key === 'content') {
+    const text = JSON.stringify(value);
+    if (encoder.encode(text).length > MAX_CONTENT_BYTES) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', '本站内容已达到当前容量上限，请联系维护人员扩容；本机草稿已保留，请导出备份。');
+    const chunks = [];
+    for (let start = 0; start < text.length;) {
+      let end = Math.min(start + CHUNK_CHARS, text.length);
+      const last = text.charCodeAt(end - 1);
+      if (end < text.length && last >= 0xD800 && last <= 0xDBFF) end--;
+      chunks.push(text.slice(start, end)); start = end;
+    }
+    const statements = [db.prepare("DELETE FROM admin_state WHERE key GLOB 'content:chunk:*' AND EXISTS (SELECT 1 FROM admin_state WHERE key = 'content' AND revision = ?)").bind(revision)];
+    chunks.forEach((part, i) => statements.push(db.prepare("INSERT INTO admin_state (key, value, revision) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM admin_state WHERE key = 'content' AND revision = ?)")
+      .bind('content:chunk:' + i, part, revision + 1, revision)));
+    statements.push(db.prepare("UPDATE admin_state SET value = ?, revision = revision + 1 WHERE key = 'content' AND revision = ?")
+      .bind(JSON.stringify({ storage: 'chunks-v1', count: chunks.length }), revision));
+    const results = await db.batch(statements);
+    if (results.at(-1).meta.changes !== 1) throw new ApiError(409, 'SYNC_CONFLICT', '云端已有新内容，请重新同步。本机草稿已保留。');
+    return revision + 1;
+  }
   const result = await db.prepare('UPDATE admin_state SET value = ?, revision = revision + 1 WHERE key = ? AND revision = ?')
     .bind(JSON.stringify(value), key, revision).run();
   if (result.meta.changes !== 1) throw new ApiError(409, 'SYNC_CONFLICT', '另一台设备已保存新内容。本机编辑已保留，请先导出备份，再重新加载云端内容。');
@@ -134,12 +173,15 @@ function contentPayload(body) {
 }
 async function getData(db, request) {
   const user = await session(db, request, false);
-  const content = await state(db, 'content', DEFAULTS);
-  const result = { ok: true, ...content.value, revision: content.revision };
+  const since = new URL(request.url).searchParams.get('revision');
+  const known = since !== null && await db.prepare("SELECT revision FROM admin_state WHERE key = 'content'").first();
+  const unchanged = known && String(known.revision) === since;
+  const content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
+  const result = { ok: true, ...content.value, revision: content.revision, ...(unchanged && { unchanged: true }) };
   delete result.auditLogs;
   if (user) {
     result.session = { role: user.role, name: user.name, tokenId: user.tokenId, expiresAt: user.expiresAt };
-    result.auditLogs = content.value.auditLogs || [];
+    if (!unchanged) result.auditLogs = content.value.auditLogs || [];
     if (user.role === 'super_admin') {
       const tokens = await state(db, 'tokens', []);
       result.tokens = tokens.value;
@@ -223,7 +265,7 @@ async function handle({ request, env = {} }) {
     else if (request.method === 'POST') {
       if (!request.headers.get('Content-Type')?.includes('application/json')) throw new ApiError(415, 'INVALID_TYPE', '请求需要使用 JSON。');
       const text = await request.text();
-      if (encoder.encode(text).length > 2 * 1024 * 1024) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', '同步内容超过 2 MB，请分批导入。');
+      if (encoder.encode(text).length > MAX_CONTENT_BYTES) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', '本站内容已达到当前容量上限，请联系维护人员扩容；本机草稿已保留，请导出备份。');
       let body;
       try { body = JSON.parse(text); } catch { throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。'); }
       if (!body || Array.isArray(body) || typeof body !== 'object') throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。');

@@ -91,18 +91,63 @@ test('offline editing stays local with an error and uploads on reconnection', as
   assert.equal((await backend.call()).data.kbCustom[0].title, '离线编辑');
 });
 
-test('simultaneous edits preserve both the cloud winner and the losing local draft; backup/reload is explicit', async t => {
+test('simultaneous edits to the same record preserve the cloud winner and the losing draft', async t => {
   const backend = setup(t);
   const a = setupEnvironment(backend); const b = setupEnvironment(backend);
   await login(a); await login(b);
-  a.store.addEntry({ title: '电脑编辑', answer: 'A' }); await a.store.syncWithCloud();
-  b.store.addEntry({ title: '手机编辑', answer: 'B' }); await b.store.syncWithCloud();
+  const record = a.store.addEntry({ title: '共同条目', answer: '原稿' }); await a.store.syncWithCloud();
+  await b.store.syncWithCloud();
+  a.store.updateEntry(record.id, { answer: 'A' }); await a.store.syncWithCloud();
+  b.store.updateEntry(record.id, { answer: 'B' }); await b.store.syncWithCloud();
   assert.equal(b.store.getSyncStatus().status, 'conflict');
-  assert.equal(b.store.getEntries()[1].title, '手机编辑');
-  assert.equal((await backend.call()).data.kbCustom[0].title, '电脑编辑');
+  assert.equal(b.store.getEntries()[1].answer, 'B');
+  assert.equal((await backend.call()).data.kbCustom[0].answer, 'A');
   const backup = JSON.parse(b.store.exportFullBundle());
-  assert.equal(backup.cloudDraft.kbCustom[0].title, '手机编辑');
-  await b.store.reloadCloudContent(); assert.equal(b.store.getEntries()[1].title, '电脑编辑');
+  assert.equal(backup.cloudDraft.kbCustom[0].answer, 'B');
+  await b.store.reloadCloudContent(); assert.equal(b.store.getEntries()[1].answer, 'A');
+});
+
+test('old local drafts do not prevent visitors reading all published cards and remain recoverable', async t => {
+  const backend = setup(t); const editor = setupEnvironment(backend); await login(editor);
+  editor.store.addHeritageCard({ id: 'published', name: '云端已发布' }); await editor.store.syncWithCloud();
+  const local = new Map([['nfyj_kepu_custom', JSON.stringify([{ id: 'unsent', name: '旧设备未上传' }])]]);
+  const visitor = setupEnvironment(backend, { local });
+  assert.ok(await visitor.store.syncWithCloud());
+  assert.equal(visitor.store.getHeritageCards([]).map(c => c.id).join(','), 'published');
+  assert.equal(JSON.parse(visitor.store.exportFullBundle()).cloudDraft.kepuCustom[0].id, 'unsent');
+  await login(visitor);
+  assert.equal((await backend.call()).data.kepuCustom.map(c => c.id).sort().join(','), 'published,unsent');
+});
+
+test('different devices adding different cards merge without losing either upload', async t => {
+  const backend = setup(t); const a = setupEnvironment(backend); const b = setupEnvironment(backend);
+  await login(a); await login(b);
+  a.store.addHeritageCard({ id: 'desktop-card', name: '电脑新增' }); await a.store.syncWithCloud();
+  b.store.addHeritageCard({ id: 'phone-card', name: '手机新增' });
+  assert.ok(await b.store.syncWithCloud());
+  await a.store.syncWithCloud();
+  assert.equal(a.store.getHeritageCards([]).map(c => c.id).sort().join(','), 'desktop-card,phone-card');
+});
+
+test('a delayed old read cannot replace a newer successful upload', async t => {
+  const backend = setup(t); const device = setupEnvironment(backend); await login(device);
+  const old = await backend.fetchApi('/api/admin/sync');
+  let release;
+  device.sandbox.fetch = (url, options = {}) => options.method === 'GET'
+    ? new Promise(resolve => { release = () => resolve(old); }) : backend.fetchApi(url, options);
+  const pull = device.store.syncWithCloud();
+  device.store.addHeritageCard({ id: 'newest', name: '最新保存' });
+  assert.equal(await device.store.syncCustomToCloud(), true);
+  release(); await pull;
+  assert.equal(device.store.getHeritageCards([])[0]?.id, 'newest');
+});
+
+test('quota exhaustion does not silently read stale content back over the latest edit', async t => {
+  const backend = setup(t); const device = setupEnvironment(backend); await login(device);
+  device.sandbox.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+  device.store.addHeritageCard({ id: 'quota-card', name: '缓存已满时新增' });
+  assert.ok(await device.store.syncWithCloud());
+  assert.equal((await backend.call()).data.kepuCustom[0]?.id, 'quota-card');
 });
 
 test('HTML endpoint and unavailable storage give service errors without claiming bad credentials', async t => {

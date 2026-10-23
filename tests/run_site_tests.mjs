@@ -214,6 +214,12 @@ async function until(page, expr, ms = 6000, label = expr) {
   return false;
 }
 
+async function reloadPage(target) {
+  const previous = await target.evaluate('performance.timeOrigin');
+  await target.send('Page.reload');
+  if (!await until(target, `performance.timeOrigin!==${previous} && document.readyState==='complete' && !!window.Store && !!window.Admin`, 10000)) throw new Error('Reload did not finish.');
+}
+
 async function shot(page, name) {
   const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(SHOTS, name + '.png'), Buffer.from(data, 'base64'));
@@ -275,8 +281,9 @@ async function run() {
     if (ONLY.includes('4e')) { await page.evaluate(`document.querySelector('[data-panel="panelChat"]').click()`); await sectionVoice(); }
     if (ONLY.includes('3d')) { await section3dModels(); await sectionCloth(); }
     if (ONLY.includes('8')) await sectionAccess();
-    if (ONLY.includes('admin')) await sectionAdminDevices();
     if (ONLY.includes('kepu-crud')) await sectionKepuCrud();
+    if (ONLY.includes('content-sync')) await sectionContentSync();
+    if (ONLY.includes('admin')) await sectionAdminDevices();
     if (ONLY.includes('rhyme')) await sectionRhyme();
     if (ONLY.includes('dialogue')) await sectionConversation();
     return { passed, failed, results };
@@ -1268,12 +1275,14 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
   await page.evaluate(`document.getElementById('adminMask').click()`);
 
   await sectionKepuCrud();
+  await sectionContentSync();
   await sectionAdminDevices();
 
   async function sectionKepuCrud() {
     if (BASE !== `http://127.0.0.1:${PORT}`) throw new Error('Card mutation tests must use the isolated local test server.');
     console.log('\n8b2. 科普卡片新增、编辑和删除的显示数量');
     await page.evaluate(`window.Admin.open()`);
+    await until(page, `!!document.getElementById('adminLoginBtn') || !!document.querySelector('[data-tab="kepu"]')`);
     if (await page.evaluate(`!!document.getElementById('adminLoginBtn')`)) {
       await page.evaluate(`document.getElementById('adminPwInput').value='admin123'; document.getElementById('adminLoginBtn').click()`);
       if (!await until(page, `!!document.querySelector('[data-tab="kepu"]')`)) throw new Error('Local administrator login failed.');
@@ -1286,11 +1295,14 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     const count = id => page.evaluate(`document.querySelectorAll(${JSON.stringify('[data-del-kepu="' + id + '"]')}).length`);
     const savedCount = id => page.evaluate(`window.Store.getHeritageCards().filter(c=>c.id===${JSON.stringify(id)}).length`);
     async function openKepu() {
-      await page.evaluate(`window.Admin.open(); document.querySelector('[data-tab="kepu"]').click()`);
+      await page.evaluate(`window.Admin.open()`);
+      await until(page, `!!document.querySelector('[data-tab="kepu"]')`);
+      await page.evaluate(`document.querySelector('[data-tab="kepu"]').click()`);
     }
     try {
       for (const name of names) {
         await page.evaluate(`document.getElementById('kepuAddBtn').click(); document.getElementById('kpName').value=${JSON.stringify(name)}; document.getElementById('kpDetail').value='新增与删除重复反馈核验'; document.getElementById('kpSaveBtn').click()`);
+        if (!await until(page, `document.getElementById('kepuForm').style.display==='none'`)) throw new Error('Card save did not finish.');
         const id = await page.evaluate(`window.Store.getHeritageCards().find(c=>c.name===${JSON.stringify(name)}).id`);
         ids.push(id);
         const actual = { saved: await savedCount(id), listed: await count(id) };
@@ -1300,27 +1312,107 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
       const customExpected = await page.evaluate(`window.Store.getHeritageCards().length`);
       check('自定义卡片统计没有翻倍', await page.evaluate(`Number(document.querySelectorAll('#adminBody .admin-stat-val')[1].textContent)===${customExpected}`));
       await shot(page, await count(ids[0]) === 1 ? 'kepu-single-after' : 'kepu-duplicate-before');
-      await page.evaluate(`window.Store.syncWithCloud()`, true);
+      await page.evaluate(`(async()=>!!(await window.Store.syncWithCloud()))()`, true);
       check('云端每个新增 ID 只有一条', await page.evaluate(`(async()=>{const d=await(await fetch('/api/admin/sync')).json();return ${JSON.stringify(ids)}.every(id=>d.kepuCustom.filter(c=>c.id===id).length===1)})()`, true));
-      await page.send('Page.reload');
-      await until(page, `!!window.Store && !!window.Admin`);
+      await reloadPage(page);
       await openKepu();
       check('刷新后每个新增 ID 仍只显示一条', (await count(ids[0])) === 1 && (await count(ids[1])) === 1);
       await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 2, mobile: true });
       check('360px 手机界面也只显示一条', (await count(ids[0])) === 1 && (await count(ids[1])) === 1);
       await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
       await page.evaluate(`document.querySelector(${JSON.stringify('[data-edit-kepu="' + ids[0] + '"]')}).click(); document.getElementById('kpDetail').value='编辑只更新当前卡片'; document.getElementById('kpSaveBtn').click()`);
+      await until(page, `document.getElementById('kepuForm').style.display==='none'`);
       check('编辑不增添副本，另一条不受影响', (await count(ids[0])) === 1 && await page.evaluate(`window.Store.getHeritageCards().find(c=>c.id===${JSON.stringify(ids[0])}).detail==='编辑只更新当前卡片' && window.Store.getHeritageCards().find(c=>c.id===${JSON.stringify(ids[1])}).detail==='新增与删除重复反馈核验'`));
       await page.evaluate(`window.confirm=()=>true; document.querySelector(${JSON.stringify('[data-del-kepu="' + ids[0] + '"]')}).click()`);
       const deleted = { saved: await savedCount(ids[0]), listed: await count(ids[0]), otherSaved: await savedCount(ids[1]), otherListed: await count(ids[1]) };
       check('删除只移除选中的一条，保留另一条', deleted.saved === 0 && deleted.listed === 0 && deleted.otherSaved === 1 && deleted.otherListed === 1, JSON.stringify(deleted));
       await page.evaluate(`document.querySelector(${JSON.stringify('[data-del-kepu="' + ids[1] + '"]')}).click(); window.Store.syncWithCloud()`, true);
       check('删除两条后恢复原有卡片数量', await page.evaluate(`window.Heritage.list().length===${baseCount} && document.querySelectorAll('#kepuList [data-del-kepu]').length===${baseCount}`));
-      await page.send('Page.reload'); await until(page, `!!window.Store && !!window.Admin`); await openKepu();
+      await reloadPage(page); await openKepu();
       check('删除后刷新不会重新出现', (await count(ids[0])) === 0 && (await count(ids[1])) === 0);
     } finally {
       await page.evaluate(`window.Store.importFullBundle(${JSON.stringify(backup)}); window.Store.syncWithCloud()`, true);
       await page.evaluate(`window.Admin.close()`);
+    }
+  }
+
+  async function sectionContentSync() {
+    if (BASE !== `http://127.0.0.1:${PORT}`) throw new Error('Content tests require the isolated local backend.');
+    console.log('\n8b3. 大批量带图上传、游客同步、离线恢复与普通正文换行');
+    await page.evaluate(`window.Admin.open()`);
+    await until(page, `!!document.getElementById('adminLoginBtn') || !!document.querySelector('[data-tab="kepu"]')`);
+    if (await page.evaluate(`!!document.getElementById('adminLoginBtn')`)) {
+      await page.evaluate(`document.getElementById('adminPwInput').value='admin123'; document.getElementById('adminLoginBtn').click()`);
+      await until(page, `!!document.querySelector('[data-tab="kepu"]')`);
+    }
+    await page.evaluate(`(async()=>!!(await window.Store.syncWithCloud()))()`, true);
+    const backup = await page.evaluate(`window.Store.exportFullBundle()`);
+    const originalCount = await page.evaluate(`window.Store.getHeritageCards([]).length`);
+    const browserInfo = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).json();
+    const browser = await Page.connect(browserInfo.webSocketDebuggerUrl);
+    const { browserContextId } = await browser.send('Target.createBrowserContext');
+    let phone;
+    try {
+      await page.evaluate(`document.querySelector('[data-tab="kepu"]').click(); document.getElementById('kepuAddBtn').click(); document.getElementById('kpName').value='普通正文与上传验证'; document.getElementById('kpDetail').value='第一段第一行\\n第一段第二行\\n\\n第二段：蓝染与竹编。'`);
+      await page.evaluate(`(async()=>{const blob=await(await fetch('assets/model-references/landye-237.jpg')).blob();const transfer=new DataTransfer();transfer.items.add(new File([blob],'blue-dye.jpg',{type:'image/jpeg'}));const input=document.getElementById('kpImageFile');input.files=transfer.files;input.dispatchEvent(new Event('change'));})()`, true);
+      check('实际选择本地图片后完成压缩且没有提示函数异常', await until(page, `document.getElementById('kpImage').value.startsWith('data:image/jpeg;') && document.getElementById('adminToast')?.textContent.includes('图片已读取并优化')`));
+      await page.evaluate(`window.__realFetch=window.fetch; window.fetch=(u,o)=>String(u).includes('/api/admin/sync')?Promise.reject(new Error('offline test')):window.__realFetch(u,o); document.getElementById('kpSaveBtn').click()`);
+      check('上传失败保留表单并明确提示尚未成功', await until(page, `!document.getElementById('kpSaveBtn').disabled && document.getElementById('adminToast')?.textContent.includes('尚未上传成功') && document.getElementById('kepuForm').style.display!=='none'`));
+      await page.evaluate(`window.fetch=window.__realFetch; document.getElementById('kpSaveBtn').click()`);
+      check('重试由服务器确认后关闭表单且没有重复新增', await until(page, `document.getElementById('kepuForm').style.display==='none' && window.Store.getSyncStatus().status==='saved' && window.Store.getHeritageCards([]).filter(c=>c.name==='普通正文与上传验证').length===1`));
+      await page.evaluate(`document.querySelector('[data-preview-kepu]').click()`);
+      check('后台游客预览保留普通回车和空行分段', await page.evaluate(`(()=>{const cards=[...document.querySelectorAll('.admin-kepu-card')];const el=cards.find(c=>c.textContent.includes('普通正文与上传验证')).querySelector('.heritage-detail');return el.querySelectorAll('p').length===2&&el.querySelectorAll('br').length===1})()`));
+      check('原有 HTML 正文保持兼容', await page.evaluate(`window.UI.formatHeritageDetail('<p>原有第一段</p><p>原有第二段</p>')==='<p>原有第一段</p><p>原有第二段</p>' && window.UI.formatHeritageDetail('温度 < 30℃').includes('&lt;')`));
+      // Avoid tracing multi-megabyte image bodies over CDP; verify upload state and fresh-device reads instead.
+      await page.send('Network.disable');
+      const uploaded = await page.evaluate(`(async()=>{const c=document.createElement('canvas');c.width=c.height=320;const ctx=c.getContext('2d');const image=ctx.createImageData(320,320);for(let i=0;i<image.data.length;i+=4){image.data[i]=Math.random()*255;image.data[i+1]=Math.random()*255;image.data[i+2]=Math.random()*255;image.data[i+3]=255}ctx.putImageData(image,0,0);const photo=c.toDataURL('image/jpeg',0.9);for(let i=0;i<60;i++)window.Store.addHeritageCard({id:'large-card-'+i,name:'带图馆藏批量'+i,category:'craft',detail:'第一行\\n第二行',imageUrl:photo});window.__batchSaved=null;window.__batchUpload=window.Store.flushPending().then(saved=>window.__batchSaved=saved);return {bytes:photo.length*60};})()`, true);
+      const batchFinished = await until(page, `window.__batchSaved!==null`, 20000);
+      uploaded.saved = batchFinished && await page.evaluate(`window.__batchSaved`);
+      check('60 条实际可解码图片超过旧 2MB 上限仍完整上传', uploaded.saved && uploaded.bytes > 2000000, JSON.stringify(uploaded));
+      await reloadPage(page);
+      await page.evaluate(`(async()=>!!(await window.Store.syncWithCloud()))()`, true);
+      check('大容量 IndexedDB 缓存刷新后完整恢复', await page.evaluate(`window.Store.getHeritageCards([]).length===${originalCount + 61}`));
+      const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank', browserContextId });
+      phone = await Page.attach(targetId);
+      await phone.send('Page.enable'); await phone.send('Runtime.enable');
+      await phone.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 2, mobile: true });
+      const { identifier } = await phone.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('nfyj_kepu_custom', JSON.stringify([{id:'legacy-draft',name:'旧手机尚未上传的资料'}]));` });
+      await phone.send('Page.navigate', { url: BASE + '/index.html#/heritage' });
+      await until(phone, `!!window.Store && !!window.Admin`);
+      await phone.evaluate(`(async()=>!!(await window.Store.syncWithCloud()))()`, true);
+      check('全新手机无需登录，旧草稿也不阻止显示全部云端馆藏', await phone.evaluate(`window.Store.getSession()===null && window.Store.getHeritageCards([]).length===${originalCount + 61} && Number(document.getElementById('hPillCustom').textContent)===${originalCount + 61}`), JSON.stringify(await phone.evaluate(`({count:window.Store.getHeritageCards([]).length,custom:document.getElementById('hPillCustom').textContent,status:window.Store.getSyncStatus(),session:window.Store.getSession()?.role,legacy:window.Store.getHeritageCards([]).some(c=>c.id==='legacy-draft')})`)));
+      check('游客读取云端时仍能导出原手机未上传资料', await phone.evaluate(`JSON.parse(window.Store.exportFullBundle()).cloudDraft.kepuCustom.some(c=>c.id==='legacy-draft')`));
+      await phone.send('Page.removeScriptToEvaluateOnNewDocument', { identifier });
+      await phone.evaluate(`document.querySelector('.h-card.is-custom .h-name').closest('button').click()`);
+      const openPlainCard = `(()=>{window.Admin.close();document.querySelectorAll('.h-card').forEach(b=>{if(b.querySelector('.h-name').textContent==='普通正文与上传验证')b.click()})})()`;
+      await phone.evaluate(openPlainCard);
+      check('手机游客详情自动换行分段且没有横向溢出', await phone.evaluate(`document.getElementById('detailBody').querySelectorAll('p').length===2 && document.getElementById('detailBody').querySelectorAll('br').length===1 && document.documentElement.scrollWidth<=window.innerWidth+1`));
+      await shot(phone, 'content-sync-phone-paragraphs');
+      await phone.evaluate(`(async()=>{const r=await window.Store.verifyLogin('admin123');window.Store.saveSession(r);return !!(await window.Store.syncWithCloud())})()`, true);
+      check('登录后自动合并旧手机独立新增，云端原内容不丢失', await phone.evaluate(`window.Store.getHeritageCards([]).length===${originalCount + 62} && window.Store.getHeritageCards([]).some(c=>c.id==='legacy-draft')`), JSON.stringify(await phone.evaluate(`({count:window.Store.getHeritageCards([]).length,custom:document.getElementById('hPillCustom').textContent,status:window.Store.getSyncStatus(),session:window.Store.getSession()?.role,legacy:window.Store.getHeritageCards([]).some(c=>c.id==='legacy-draft')})`)));
+      await page.evaluate(`window.Store.addHeritageCard({id:'desktop-extra',name:'另一台设备独立新增'}); window.Store.flushPending()`, true);
+      const offlineScript = `window.__onlineFetch=window.fetch;window.fetch=(u,o)=>String(u).includes('/api/admin/sync')?Promise.reject(new Error('offline test')):window.__onlineFetch(u,o);`;
+      const offline = await phone.send('Page.addScriptToEvaluateOnNewDocument', { source: offlineScript });
+      await phone.evaluate(offlineScript);
+      await phone.evaluate(`window.Store.addHeritageCard({id:'offline-draft',name:'手机断网时未完成的上传'}); window.Store.flushPending()`, true);
+      await reloadPage(phone);
+      await phone.evaluate(`(async()=>!!(await window.Store.syncWithCloud()))()`, true);
+      check('断网接口下刷新仍能从 IndexedDB 恢复未上传草稿', await phone.evaluate(`window.Store.getHeritageCards([]).some(c=>c.id==='offline-draft') && window.Store.getSyncStatus().status==='error'`));
+      check('游客页面明确提示联网失败而不是静默只显示内置条目', await phone.evaluate(`!document.getElementById('heritageSyncNotice').hidden && document.getElementById('heritageSyncLabel').textContent.includes('离线内容')`));
+      await phone.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: offline.identifier });
+      await phone.evaluate(`window.fetch=window.__onlineFetch; (async()=>!!(await window.Store.syncWithCloud()))()`, true);
+      check('联网后合并双方新增，所有旧内容及草稿均保留', await phone.evaluate(`window.Store.getHeritageCards([]).length===${originalCount + 64} && window.Store.getHeritageCards([]).some(c=>c.id==='desktop-extra') && window.Store.getHeritageCards([]).some(c=>c.id==='offline-draft')`), JSON.stringify(await phone.evaluate(`({count:window.Store.getHeritageCards([]).length,custom:document.getElementById('hPillCustom').textContent,status:window.Store.getSyncStatus(),session:window.Store.getSession()?.role,legacy:window.Store.getHeritageCards([]).some(c=>c.id==='legacy-draft')})`)));
+      await page.evaluate(`(async()=>!!(await window.Store.syncWithCloud()))()`, true);
+      await page.evaluate(`window.Store.deleteHeritageCard('large-card-0'); window.Store.flushPending()`, true);
+      await phone.evaluate(`window.Store.logout();`, true);
+      await phone.evaluate(`(async()=>!!(await window.Store.syncWithCloud()))()`, true);
+      check('删除只影响指定条目，游客手机与电脑数量一致', await phone.evaluate(`window.Store.getHeritageCards([]).length===${originalCount + 63} && !window.Store.getHeritageCards([]).some(c=>c.id==='large-card-0') && window.Store.getHeritageCards([]).some(c=>c.id==='large-card-1')`), JSON.stringify(await phone.evaluate(`({count:window.Store.getHeritageCards([]).length,custom:document.getElementById('hPillCustom').textContent,status:window.Store.getSyncStatus(),session:window.Store.getSession()?.role,legacy:window.Store.getHeritageCards([]).some(c=>c.id==='legacy-draft')})`)));
+    } finally {
+      phone?.ws.close();
+      await browser.send('Target.disposeBrowserContext', { browserContextId }); browser.ws.close();
+      await page.evaluate(`window.Store.importFullBundle(${JSON.stringify(backup)}); window.Store.flushPending()`, true);
+      await page.evaluate(`window.Admin.close()`);
+      await page.send('Network.enable');
     }
   }
 
@@ -1350,7 +1442,7 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
     try {
       const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank', browserContextId });
       phone = await Page.attach(targetId);
-      phone.on(m => { if (m.method === 'Runtime.exceptionThrown') phoneErrors.push(m.params.exceptionDetails.text); });
+      phone.on(m => { if (m.method === 'Runtime.exceptionThrown') phoneErrors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text); });
       await phone.send('Page.enable'); await phone.send('Runtime.enable'); await phone.send('Network.enable');
       await phone.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 2, mobile: true });
       await phone.send('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1' });
@@ -1367,10 +1459,9 @@ await page.evaluate(`(() => { window.fetch = window.__origFetch;
       check('手机管理员面板在 360px 内显示', await phone.evaluate(`document.documentElement.scrollWidth <= window.innerWidth + 1`));
       check('手机顶部按钮保持完整文字并换行布局', await phone.evaluate(`getComputedStyle(document.getElementById('adminHeaderSyncBtn')).whiteSpace==='nowrap' && getComputedStyle(document.querySelector('.admin-header')).flexWrap==='wrap'`));
       const added = await page.evaluate(`(async()=>{const entry=window.Store.addEntry({title:'跨端浏览器验证',answer:'同一服务器持久化'});await window.Store.syncWithCloud();return entry.id})()`, true);
-      await phone.evaluate(`window.Store.syncWithCloud()`, true);
+      await phone.evaluate(`(async()=>!!(await window.Store.syncWithCloud()))()`, true);
       check('电脑录入的内容同步到全新手机', await phone.evaluate(`window.Store.getEntries().some(e=>e.id===${JSON.stringify(added)})`));
-      await phone.send('Page.reload');
-      await until(phone, `!!window.Store && !!window.Admin`);
+      await reloadPage(phone);
       check('手机刷新保留自己的服务器会话', await phone.evaluate(`window.Store.getSession()?.role==='super_admin'`));
       await phone.evaluate(`window.Admin.open()`); await until(phone, `!!document.getElementById('adminCloudStatus')`);
       await shot(phone, 'admin-phone');

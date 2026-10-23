@@ -650,7 +650,7 @@
   function renderKepu(body) {
     var rawCards = window.Heritage ? window.Heritage.list() : window.Store.getHeritageCards([]);
     var customCards = rawCards.filter(function (c) {
-      return (c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员');
+      return (window.Heritage ? window.Heritage.isCustomCard(c) : true);
     });
     var builtinCards = rawCards.filter(function (c) { return customCards.indexOf(c) === -1; });
 
@@ -691,7 +691,7 @@
       if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
 
       var filtered = sortedCards.filter(function (c) {
-        var isCustom = (c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员');
+        var isCustom = (window.Heritage ? window.Heritage.isCustomCard(c) : true);
         if (kepuCurSource === 'custom' && !isCustom) return false;
         if (kepuCurSource === 'builtin' && isCustom) return false;
         if (q) {
@@ -736,7 +736,7 @@
     }
 
     list.innerHTML = cards.map(function (c) {
-      var isCustom = (c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员');
+      var isCustom = (window.Heritage ? window.Heritage.isCustomCard(c) : true);
       var badge = isCustom
         ? '<span class="admin-badge admin-badge-custom">自定义</span>' + (c.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(c.creatorName) + '</span>' : '')
         : '<span class="admin-badge admin-badge-default">内置</span>';
@@ -773,7 +773,7 @@
         '  <div style="font-weight:600;margin-bottom:4px;color:' + (c.accent || '#2F5D50') + '">【前台游客呈现预览】</div>' +
         '  <div style="background:' + (c.bg || '#E4EFEA') + ';padding:8px;border-radius:4px;color:var(--ink)">' +
         previewMediaHtml +
-        '    <div style="font-size:12px;margin-bottom:4px">' + (c.detail || '暂无详细介绍') + '</div>' +
+        '    <div class="heritage-detail" style="font-size:12px;margin-bottom:4px">' + window.UI.formatHeritageDetail(c.detail || '暂无详细介绍') + '</div>' +
         '    <div style="font-size:10px;color:var(--muted)">💬 点击卡片提问阿蓝：「' + esc(c.ask || ('介绍一下' + c.name)) + '」</div>' +
         '  </div>' +
         '</div>' +
@@ -890,6 +890,12 @@
           if (compressed.length > 250000) {
             compressed = canvas.toDataURL('image/jpeg', 0.68);
           }
+          while (compressed.length > 250000 && canvas.width > 160 && canvas.height > 160) {
+            canvas.width = Math.round(canvas.width * 0.8);
+            canvas.height = Math.round(canvas.height * 0.8);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            compressed = canvas.toDataURL('image/jpeg', 0.68);
+          }
 
           var sizeKb = Math.round(compressed.length * 0.75 / 1024);
           var origKb = Math.round(file.size / 1024);
@@ -900,12 +906,7 @@
             sizeKb: sizeKb
           });
         } catch (_) {
-          callback({
-            dataUrl: rawDataUrl,
-            fileName: file.name,
-            origSizeKb: Math.round(file.size / 1024),
-            sizeKb: Math.round(rawDataUrl.length * 0.75 / 1024)
-          });
+          if (typeof onError === 'function') onError('图片处理失败，请重新选择图片后再保存。');
         }
       };
       img.src = rawDataUrl;
@@ -986,8 +987,9 @@
       '  <label class="admin-label">讲解视频链接或本地MP4路径 (可选)</label>' +
       '  <input type="text" id="kpVideo" class="admin-input" value="' + esc(initialVid) + '" placeholder="例如：月光光童谣.mp4 或 https://...">' +
       '  <div class="admin-hint">支持本地视频文件名（如：月光光童谣.mp4）或在线视频讲解播放链接</div>' +
-      '  <label class="admin-label" style="margin-top:8px">科普详情正文 (支持HTML段落)</label>' +
-      '  <textarea id="kpDetail" class="admin-textarea" rows="5" placeholder="<p>科普介绍段落…</p>">' + esc(card ? card.detail : '') + '</textarea>' +
+      '  <label class="admin-label" style="margin-top:8px">科普详情正文</label>' +
+      '  <div class="admin-hint">直接按回车换行，空一行分段，无需输入标签。兼容已有 HTML 段落。</div>' +
+      '  <textarea id="kpDetail" class="admin-textarea" rows="8" placeholder="在此输入或粘贴正文，按回车即可换行…">' + esc(card ? card.detail : '') + '</textarea>' +
       '  <label class="admin-label">点击向阿蓝提问的默认问题</label>' +
       '  <input type="text" id="kpAsk" class="admin-input" value="' + esc(card ? card.ask : '') + '" placeholder="例如：龙南大漆有什么特色？">' +
       '  <div class="admin-form-actions">' +
@@ -1003,6 +1005,11 @@
     var imgThumb = $('#kpImgThumb');
     var infoText = $('#kpImgInfoText');
     var zone = $('#kpUploadZone');
+    var imageTask = 0;
+    function imageBusy(busy) {
+      $('#kpSaveBtn').disabled = busy;
+      $('#kpSaveBtn').textContent = busy ? '正在处理图片…' : '保 存';
+    }
 
     function applyImageData(dataUrl, label) {
       imageInput.value = dataUrl;
@@ -1015,10 +1022,16 @@
 
     function handleFile(file) {
       if (!file) return;
+      var task = ++imageTask;
+      imageBusy(true);
       compressAndReadImage(file, function (res) {
+        if (task !== imageTask) return;
+        imageBusy(false);
         applyImageData(res.dataUrl, res.fileName + ' (' + res.sizeKb + ' KB)');
-        toast('✅ 图片已读取并优化 (' + res.sizeKb + ' KB)，保存后即可跨端同步');
+        showAdminToast('图片已读取并优化 (' + res.sizeKb + ' KB)，点击保存后上传');
       }, function (err) {
+        if (task !== imageTask) return;
+        imageBusy(false);
         alert(err);
       });
     }
@@ -1032,6 +1045,8 @@
     });
 
     $('#kpRemoveImgBtn').addEventListener('click', function () {
+      imageTask++;
+      imageBusy(false);
       imageInput.value = '';
       fileInput.value = '';
       imgThumb.src = '';
@@ -1045,6 +1060,8 @@
     });
 
     imageInput.addEventListener('input', function () {
+      imageTask++;
+      imageBusy(false);
       var val = imageInput.value.trim();
       if (val) {
         applyImageData(val, val);
@@ -1072,7 +1089,9 @@
       });
     }
 
-    $('#kpSaveBtn').addEventListener('click', function () {
+    $('#kpSaveBtn').addEventListener('click', async function () {
+      var saveBtn = $('#kpSaveBtn');
+      if (saveBtn.disabled) return;
       var name = $('#kpName').value.trim();
       var category = $('#kpCategory') ? $('#kpCategory').value : 'craft';
       var icon = $('#kpIcon').value.trim() || '🏮';
@@ -1084,14 +1103,21 @@
       var detail = $('#kpDetail').value.trim();
       var ask = $('#kpAsk').value.trim() || ('介绍一下' + name);
       if (!name) { alert('卡片名称不能为空'); return; }
+      saveBtn.disabled = true;
+      saveBtn.textContent = '正在上传…';
 
       var data = { name: name, category: category, icon: icon, tag: tag, accent: accent, bg: bg, detail: detail, ask: ask, imageUrl: imageUrl, videoUrl: videoUrl };
       if (editingKepuId) {
         window.Store.updateHeritageCard(editingKepuId, data);
       } else {
-        window.Store.addHeritageCard(data, currentUser);
+        editingKepuId = window.Store.addHeritageCard(data, currentUser).id;
       }
       refreshFrontEnd();
+      var saved = await window.Store.flushPending();
+      saveBtn.disabled = false;
+      saveBtn.textContent = '保 存';
+      if (!saved) { showAdminToast('尚未上传成功：' + window.Store.getSyncStatus().message); return; }
+      showAdminToast('已保存到云端，其他设备可同步查看');
       form.style.display = 'none';
       editingKepuId = null;
       renderTab();
@@ -1356,8 +1382,10 @@
       }
     });
 
-    $('#batchCommitBtn').addEventListener('click', function () {
+    $('#batchCommitBtn').addEventListener('click', async function () {
       if (!parsedDrafts.length) return;
+      var count = parsedDrafts.length;
+      $('#batchCommitBtn').disabled = true;
       parsedDrafts.forEach(function (draft) {
         window.Store.addEntry({
           title: draft.title,
@@ -1366,8 +1394,9 @@
           sources: draft.sources
         }, currentUser);
       });
-      alert('成功批量入库 ' + parsedDrafts.length + ' 条非遗知识！');
       parsedDrafts = [];
+      var saved = await window.Store.flushPending();
+      alert(saved ? '已上传云端 ' + count + ' 条非遗知识。' : '已导入本机，尚未上传成功：' + window.Store.getSyncStatus().message);
       renderTab();
     });
 
@@ -2017,9 +2046,10 @@
       var file = this.files[0];
       if (!file) return;
       var reader = new FileReader();
-      reader.onload = function () {
+      reader.onload = async function () {
         if (window.Store.importFullBundle(reader.result)) {
-          alert('全站资产包恢复成功！');
+          var saved = await window.Store.flushPending();
+          alert(saved ? '全站资产包已恢复并上传云端。' : '已导入本机，尚未上传成功：' + window.Store.getSyncStatus().message);
           refreshFrontEnd();
           renderTab();
         } else {
@@ -2041,9 +2071,10 @@
       var file = this.files[0];
       if (!file) return;
       var reader = new FileReader();
-      reader.onload = function () {
+      reader.onload = async function () {
         if (window.Store.importKB(reader.result)) {
-          alert('导入成功！共 ' + window.Store.getEntries().length + ' 条知识');
+          var saved = await window.Store.flushPending();
+          alert(saved ? '已上传云端，共 ' + window.Store.getEntries().length + ' 条知识。' : '已导入本机，尚未上传成功：' + window.Store.getSyncStatus().message);
           if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
         } else {
           alert('导入失败：JSON 格式不正确');
@@ -2136,6 +2167,11 @@
   function open() {
     var mask = $('#adminMask');
     mask.hidden = false;
+    if (!window.Store.isReady()) {
+      $('#adminPanel').innerHTML = '<div class="admin-login">正在读取已保存的内容与草稿…</div>';
+      window.Store.ready.then(function () { if (!mask.hidden) open(); });
+      return;
+    }
     var saved = window.Store.getSession();
     authenticated = !!saved;
     currentUser = saved;

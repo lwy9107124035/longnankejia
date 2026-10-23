@@ -10,6 +10,13 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  function formatHeritageDetail(value) {
+    var text = String(value || '').replace(/\r\n?/g, '\n');
+    if (/<\/?(?:p|br|div|h[1-6]|ul|ol|li|strong|em|b|i|span|a|table|blockquote)\b[^>]*>/i.test(text)) return text;
+    return text.split(/\n\s*\n/).map(function (paragraph) {
+      return '<p>' + esc(paragraph).replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+  }
 
   /* ================================================================
      聊天 UI
@@ -480,7 +487,7 @@
     var eventsBound = false;
 
     function isCustomCard(c) {
-      return !!((c.id && c.id.indexOf('kepu-') === 0) || c.creatorTokenId || (c.creatorName && c.creatorName !== '超级管理员'));
+      return !CARDS.some(function (base) { return base.id === c.id; });
     }
 
     function matchCategory(c, cat) {
@@ -642,6 +649,17 @@
     function bindHeritageEvents() {
       if (eventsBound) return;
       eventsBound = true;
+      function updateSyncNotice() {
+        var status = window.Store.getSyncStatus();
+        var notice = document.getElementById('heritageSyncNotice');
+        var label = document.getElementById('heritageSyncLabel');
+        if (!notice || !label) return;
+        notice.hidden = status.status === 'saved' || status.status === 'pending';
+        label.textContent = status.status === 'idle' ? '正在加载最新馆藏内容…' : '暂时无法更新馆藏，当前显示离线内容，请联网后重试。';
+      }
+      window.addEventListener('admin-sync-status', updateSyncNotice);
+      document.getElementById('heritageSyncRetry').addEventListener('click', function () { window.Store.syncWithCloud(); });
+      updateSyncNotice();
       var sInput = document.getElementById('heritageSearch');
       var sClear = document.getElementById('heritageSearchClear');
       var pills = document.getElementById('heritageCatPills');
@@ -753,6 +771,7 @@
       init: init,
       render: render,
       list: list,
+      isCustomCard: isCustomCard,
       setupPillScroller: setupPillScroller,
       updateAllPillScrollers: updateAllPillScrollers
     };
@@ -943,7 +962,7 @@
     function open(card) {
       titleEl.textContent = card.name;
       renderMedia(card);
-      bodyEl.innerHTML = card.detail;
+      bodyEl.innerHTML = formatHeritageDetail(card.detail);
       iconEl.textContent = card.icon;
       iconEl.style.background = card.bg;
       currentAsk = card.ask;
@@ -1169,6 +1188,7 @@
   /* ---------- 导出 ---------- */
   window.Heritage = Heritage;
   window.UI = {
+    formatHeritageDetail: formatHeritageDetail,
     init: function () {
       Chat.init();
       ChatSearch.init();

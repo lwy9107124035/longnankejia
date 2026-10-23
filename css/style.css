@@ -1511,6 +1511,11 @@ input { font-family: inherit; }
 .admin-body { min-height:0; }
 .admin-login input { font-size:16px; }
 .admin-cloud-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); font-size:13px; }
+.h-sync-notice { margin:8px 0; padding:10px; border-radius:8px; background:#FFF2DC; color:#775528; font-size:13px; }
+.h-sync-notice[hidden] { display:none; }
+.h-sync-notice button { border:0; background:transparent; color:inherit; text-decoration:underline; cursor:pointer; }
+.heritage-detail, .detail-body { overflow-wrap:anywhere; }
+.heritage-detail p + p, .detail-body p + p { margin-top:0.8em; }
 #adminCloudStatus { flex:1 1 180px; overflow-wrap:anywhere; }
 #adminCloudStatus[data-status="error"], #adminCloudStatus[data-status="conflict"] { color:#B5432A; }
 @media (max-width:600px) {

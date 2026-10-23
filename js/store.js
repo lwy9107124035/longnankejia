@@ -33,18 +33,23 @@
   };
 
   var memoryValues = {};
+  var useDraftDb = typeof indexedDB !== 'undefined';
   function read(key, fallback) {
-    if (key === LS.tokens || key === LS.locked_clients) return memoryValues[key] || fallback;
+    if (Object.prototype.hasOwnProperty.call(memoryValues, key)) return memoryValues[key];
+    if (key === LS.tokens || key === LS.locked_clients) return fallback;
     try {
       var raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
+      if (!raw) return fallback;
+      memoryValues[key] = JSON.parse(raw);
+      return memoryValues[key];
     } catch (e) { return Object.prototype.hasOwnProperty.call(memoryValues, key) ? memoryValues[key] : fallback; }
   }
 
   function write(key, val) {
     memoryValues[key] = val;
     if (key === LS.tokens || key === LS.locked_clients) return;
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+    if (useDraftDb && (Object.values(CONTENT_KEYS || {}).indexOf(key) >= 0 || /^nfyj_cloud_/.test(key))) return;
+    try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; }
   }
 
   function remove(key) {
@@ -137,7 +142,13 @@
   var generation = 0;
   var uploadPromise = null;
   var pullPromise = null;
+  var pullSession = '';
+  var lastReadSession = null;
   var syncStatus = { status: 'idle', message: '等待连接云端' };
+  var cloudBase = read('nfyj_cloud_base', null);
+  var publishedBundle = null;
+  var draftDb = null;
+  var durableDraft = true;
   // Keep pre-upgrade local edits until an authenticated upload or an explicit discard.
   if (cloudRevision === null) {
     pending = Object.keys(CONTENT_KEYS).some(function (key) {
@@ -146,22 +157,82 @@
     });
     if (pending) { cloudRevision = 0; write('nfyj_cloud_pending', true); }
   }
+  function copy(value) { return JSON.parse(JSON.stringify(value)); }
+  // One atomic IndexedDB checkpoint holds large image drafts and their merge base.
+  var storageReady = useDraftDb ? new Promise(function (resolve) {
+    var request;
+    var finished = false;
+    var timer = setTimeout(function () { useDraftDb = false; finish(); }, 4000);
+    function finish() { finished = true; clearTimeout(timer); resolve(); }
+    try { request = indexedDB.open('nfyj-admin-content', 1); }
+    catch (_) { useDraftDb = false; finish(); return; }
+    request.onupgradeneeded = function () { request.result.createObjectStore('state'); };
+    request.onerror = request.onblocked = function () { useDraftDb = false; finish(); };
+    request.onsuccess = function () {
+      if (finished) { request.result.close(); return; }
+      draftDb = request.result;
+      var tx = draftDb.transaction('state', 'readonly');
+      var load = tx.objectStore('state').get('current');
+      load.onsuccess = function () {
+        var saved = load.result;
+        if (saved && generation === 0) {
+          Object.keys(CONTENT_KEYS).forEach(function (key) { memoryValues[CONTENT_KEYS[key]] = saved.bundle[key]; });
+          cloudRevision = saved.revision;
+          cloudBase = saved.base;
+          pending = saved.pending;
+        }
+      };
+      tx.oncomplete = function () { triggerFrontEndRefresh(); finish(); };
+      tx.onerror = tx.onabort = function () { useDraftDb = false; draftDb = null; finish(); };
+    };
+  }) : Promise.resolve();
+  var storageLoaded = false;
+  storageReady.then(function () { storageLoaded = true; });
+  async function persistState() {
+    await storageReady;
+    var saved = { bundle: copy(bundle()), revision: cloudRevision, base: cloudBase, pending: pending };
+    if (draftDb) {
+      durableDraft = await new Promise(function (resolve) {
+        var tx;
+        try {
+          tx = draftDb.transaction('state', 'readwrite');
+          tx.objectStore('state').put(saved, 'current');
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = tx.onabort = function () { resolve(false); };
+        } catch (_) { resolve(false); }
+      });
+      if (durableDraft) {
+        Object.values(CONTENT_KEYS).concat(['nfyj_cloud_base', 'nfyj_cloud_revision', 'nfyj_cloud_pending']).forEach(function (key) {
+          try { localStorage.removeItem(key); } catch (_) {}
+        });
+      }
+    } else {
+      durableDraft = Object.keys(CONTENT_KEYS).map(function (key) { return write(CONTENT_KEYS[key], saved.bundle[key]); }).every(Boolean);
+      durableDraft = write('nfyj_cloud_base', cloudBase) && write('nfyj_cloud_revision', cloudRevision) && write('nfyj_cloud_pending', pending) && durableDraft;
+    }
+    return durableDraft;
+  }
+  function visibleContent(key, fallback) {
+    return publishedBundle && !getSession() ? publishedBundle[key] : read(CONTENT_KEYS[key], fallback);
+  }
   function setSyncStatus(status, message) {
     syncStatus = { status: status, message: message };
     if (window.dispatchEvent && typeof CustomEvent !== 'undefined') {
       window.dispatchEvent(new CustomEvent('admin-sync-status', { detail: syncStatus }));
     }
   }
-  async function cloudRequest(body) {
+  async function cloudRequest(body, publicOnly, knownRevision) {
     if (typeof fetch === 'undefined') throw new Error('当前环境不能连接管理服务器');
     var controller = new AbortController();
-    var timer = setTimeout(function () { controller.abort(); }, 12000);
-    var session = getSession();
+    var timer = setTimeout(function () { controller.abort(); }, 60000);
+    var session = publicOnly ? null : getSession();
     var headers = {};
     if (session) headers.Authorization = 'Bearer ' + session.bearer;
     if (body) headers['Content-Type'] = 'application/json';
     try {
-      var response = await fetch(getSyncEndpoint(), {
+      var endpoint = getSyncEndpoint();
+      if (!body && knownRevision !== undefined) endpoint += '?revision=' + encodeURIComponent(knownRevision);
+      var response = await fetch(endpoint, {
         method: body ? 'POST' : 'GET', headers: headers, cache: 'no-store', signal: controller.signal,
         body: body ? JSON.stringify(body) : undefined
       });
@@ -175,7 +246,7 @@
       }
       return data;
     } catch (error) {
-      if (error.code) throw error;
+      if (typeof error.code === 'string') throw error;
       throw Object.assign(new Error('暂时连不上管理服务器，请检查网络后重试。本机编辑已保留。'), { code: 'NETWORK_ERROR' });
     } finally { clearTimeout(timer); }
   }
@@ -197,27 +268,83 @@
       if (Object.prototype.hasOwnProperty.call(data, key)) write(CONTENT_KEYS[key], data[key]);
     });
     cloudRevision = data.revision;
+    cloudBase = copy(bundle());
+    publishedBundle = null;
     write('nfyj_cloud_revision', cloudRevision);
     triggerFrontEndRefresh();
   }
+  function mergeBundles(base, local, remote) {
+    var merged = {};
+    Object.keys(CONTENT_KEYS).forEach(function (key) {
+      var isArray = OBJECT_KEYS.indexOf(key) < 0;
+      function indexed(value) {
+        if (!isArray) return value || {};
+        var map = Object.create(null);
+        (value || []).forEach(function (item) { map[typeof item === 'object' ? item.id : item] = item; });
+        return map;
+      }
+      var before = indexed(base && base[key]);
+      var ours = indexed(local[key]);
+      var theirs = indexed(remote[key]);
+      var result = Object.create(null);
+      Array.from(new Set(Object.keys(theirs).concat(Object.keys(ours), Object.keys(before)))).forEach(function (id) {
+        var b = before[id], l = ours[id], r = theirs[id];
+        var value;
+        if ((!base && l === undefined) || JSON.stringify(l) === JSON.stringify(b)) value = r;
+        else if (JSON.stringify(r) === JSON.stringify(b) || JSON.stringify(l) === JSON.stringify(r)) value = l;
+        else throw Object.assign(new Error('同一条内容在不同设备被修改，本机草稿已保留。请导出备份后核对，避免覆盖老师的内容。'), { code: 'SYNC_CONFLICT' });
+        if (value !== undefined) result[id] = value;
+      });
+      merged[key] = isArray ? Object.values(result) : result;
+      if (key === 'auditLogs') merged[key] = merged[key].sort(function (a, b) { return b.time - a.time; }).slice(0, 200);
+    });
+    return merged;
+  }
+  async function rebasePending() {
+    var latest = await cloudRequest();
+    var merged = mergeBundles(cloudBase, bundle(), latest);
+    Object.keys(CONTENT_KEYS).forEach(function (key) { write(CONTENT_KEYS[key], merged[key]); });
+    cloudBase = copy(Object.fromEntries(Object.keys(CONTENT_KEYS).map(function (key) { return [key, latest[key] || (OBJECT_KEYS.indexOf(key) >= 0 ? {} : [])]; })));
+    cloudRevision = latest.revision;
+    publishedBundle = null;
+    await persistState();
+    triggerFrontEndRefresh();
+  }
   async function uploadPending() {
-    if (!pending) return true;
-    if (!getSession()) { setSyncStatus('pending', '本机有未同步编辑，登录后可上传云端'); return false; }
-    if (syncStatus.status === 'conflict') return false;
     if (uploadPromise) return uploadPromise;
     uploadPromise = (async function () {
       try {
+        await storageReady;
+        if (!pending) return true;
+        if (!getSession()) { await persistState(); setSyncStatus('pending', '本机有未上传草稿，登录后可继续上传'); return false; }
+        if (syncStatus.status === 'conflict') return false;
+        await persistState();
+        if (!cloudBase) await rebasePending();
+        var retries = 0;
         while (pending) {
           var sentGeneration = generation;
-          var data = await cloudRequest(Object.assign({ action: 'update_custom_bundle', revision: cloudRevision === null ? 0 : cloudRevision }, bundle()));
+          var sent = copy(bundle());
+          var data;
+          try {
+            data = await cloudRequest(Object.assign({ action: 'update_custom_bundle', revision: cloudRevision === null ? 0 : cloudRevision }, sent));
+          } catch (error) {
+            if (error.code !== 'SYNC_CONFLICT' || retries++ >= 3) throw error;
+            await rebasePending();
+            continue;
+          }
           cloudRevision = data.revision;
+          cloudBase = sent;
           write('nfyj_cloud_revision', cloudRevision);
           if (sentGeneration === generation) { pending = false; write('nfyj_cloud_pending', false); }
+          await persistState();
         }
+        publishedBundle = null;
+        triggerFrontEndRefresh();
         setSyncStatus('saved', '已保存到云端，其他设备可同步查看');
         return true;
       } catch (error) {
-        setSyncStatus(error.code === 'SYNC_CONFLICT' ? 'conflict' : 'error', error.message);
+        await persistState();
+        setSyncStatus(error.code === 'SYNC_CONFLICT' ? 'conflict' : 'error', error.message + (durableDraft ? '' : ' 本机存储不可用，请保持此页面打开并立即导出备份。'));
         return false;
       } finally { uploadPromise = null; }
     })();
@@ -227,22 +354,40 @@
     pending = true;
     generation++;
     write('nfyj_cloud_pending', true);
-    if (syncStatus.status !== 'conflict') setSyncStatus('pending', '已保存到本机，正在同步云端…');
+    if (syncStatus.status !== 'conflict') setSyncStatus('pending', '正在保存草稿并上传云端，请勿关闭页面…');
     var result = uploadPending();
     if (typeof callback === 'function') result.then(callback);
     return result;
   }
   function syncWithCloud(callback) {
+    var active = getSession();
+    var bearer = active ? active.bearer : '';
+    if (pullPromise && pullSession !== bearer) return pullPromise.then(function () { return syncWithCloud(callback); });
+    if (!pullPromise) pullSession = bearer;
     if (!pullPromise) pullPromise = (async function () {
       try {
-        if (pending && !(await uploadPending())) return null;
-        var data = await cloudRequest();
+        await storageReady;
+        if (pending && getSession() && !(await uploadPending())) return null;
+        var data = await cloudRequest(null, false, !pending && cloudBase && lastReadSession === bearer ? cloudRevision : undefined);
         if (Array.isArray(data.tokens)) write(LS.tokens, data.tokens);
         if (Array.isArray(data.lockouts)) write(LS.locked_clients, data.lockouts);
-        if (!pending && cloudRevision !== data.revision) applyCloud(data);
-        setSyncStatus('saved', '已与云端同步');
+        if (data.unchanged) {
+          if (!pending) setSyncStatus('saved', '已与云端同步');
+        } else if (pending && !getSession()) {
+          publishedBundle = data;
+          triggerFrontEndRefresh();
+          setSyncStatus('pending', '已显示云端发布内容；本机未上传草稿已保留，登录后可恢复上传');
+        } else if (!pending && (cloudRevision === null || data.revision >= cloudRevision)) {
+          applyCloud(data);
+          lastReadSession = bearer;
+          await persistState();
+          setSyncStatus('saved', '已与云端同步');
+        }
         return data;
       } catch (error) {
+        if (error.code === 'SESSION_EXPIRED') {
+          try { publishedBundle = await cloudRequest(null, true); triggerFrontEndRefresh(); } catch (_) {}
+        }
         setSyncStatus('error', error.message);
         return null;
       } finally { pullPromise = null; }
@@ -251,10 +396,13 @@
     return pullPromise;
   }
   async function reloadCloudContent() {
+    await storageReady;
+    if (uploadPromise) await uploadPromise;
     var data = await cloudRequest();
     pending = false;
     write('nfyj_cloud_pending', false);
     applyCloud(data);
+    await persistState();
     setSyncStatus('saved', '已重新加载云端内容');
     return data;
   }
@@ -631,6 +779,7 @@
     removeSession();
     write(LS.tokens, []);
     write(LS.locked_clients, []);
+    if (pending && cloudBase) publishedBundle = cloudBase;
   }
   async function logout() {
     try { await cloudRequest({ action: 'logout' }); } finally { clearSession(); }
@@ -640,9 +789,9 @@
 
   function getEntries() {
     var base = (window.KNOWLEDGE_BASE || []).slice();
-    var deleted = read(LS.deleted, []);
-    var edited  = read(LS.edited, {});
-    var custom  = read(LS.custom, []);
+    var deleted = visibleContent('kbDeleted', []);
+    var edited  = visibleContent('kbEdited', {});
+    var custom  = visibleContent('kbCustom', []);
 
     var merged = base
       .filter(function (e) { return deleted.indexOf(e.id) === -1; })
@@ -653,7 +802,7 @@
 
   function addEntry(entry, creatorInfo) {
     var custom = read(LS.custom, []);
-    if (!entry.id) entry.id = 'custom-' + Date.now();
+    if (!entry.id) entry.id = 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
     if (creatorInfo) {
       entry.creatorName = creatorInfo.name || '受邀管理员';
       entry.creatorTokenId = creatorInfo.tokenId || creatorInfo.token || '';
@@ -753,9 +902,9 @@
 
   function getHeritageCards(defaultCards) {
     var base = Array.isArray(defaultCards) ? defaultCards.slice() : [];
-    var deleted = read(LS.kepu_deleted, []);
-    var edited = read(LS.kepu_edited, {});
-    var custom = read(LS.kepu_custom, []);
+    var deleted = visibleContent('kepuDeleted', []);
+    var edited = visibleContent('kepuEdited', {});
+    var custom = visibleContent('kepuCustom', []);
 
     var merged = base
       .filter(function (c) { return deleted.indexOf(c.id) === -1; })
@@ -765,7 +914,7 @@
   }
 
   function addHeritageCard(card, creatorInfo) {
-    if (!card.id) card.id = 'kepu-' + Date.now();
+    if (!card.id) card.id = 'kepu-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
     if (creatorInfo) {
       card.creatorName = creatorInfo.name || '受邀管理员';
       card.creatorTokenId = creatorInfo.tokenId || creatorInfo.token || '';
@@ -824,11 +973,11 @@
   /* ---------- 方言模块管理 ---------- */
 
   function getCustomDialectTracks() {
-    return read(LS.dialect_custom, []);
+    return visibleContent('dialectCustom', []);
   }
 
   function addDialectTrack(track, creatorInfo) {
-    if (!track.id) track.id = 'dialect-' + Date.now();
+    if (!track.id) track.id = 'dialect-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
     if (creatorInfo) {
       track.creatorName = creatorInfo.name || '受邀管理员';
       track.creatorTokenId = creatorInfo.tokenId || creatorInfo.token || '';
@@ -981,7 +1130,7 @@
     getSession: getSession,
     clearSession: clearSession,
     logout: logout,
-    getSyncStatus: function () { return syncStatus; },
+    getSyncStatus: function () { return Object.assign({ pending: pending, revision: cloudRevision }, syncStatus); },
     reloadCloudContent: reloadCloudContent,
     getAuditLogs: getAuditLogs,
     clearAuditLogs: clearAuditLogs,
@@ -1032,6 +1181,9 @@
     unlockAllClients: unlockAllClients,
     syncWithCloud: syncWithCloud,
     syncCustomToCloud: syncCustomToCloud,
+    flushPending: uploadPending,
+    ready: storageReady,
+    isReady: function () { return storageLoaded; },
     triggerFrontEndRefresh: triggerFrontEndRefresh
   };
 
@@ -1043,6 +1195,9 @@
     syncWithCloud();
     window.addEventListener('focus', function () { syncWithCloud(); });
     window.addEventListener('online', function () { syncWithCloud(); });
+    window.addEventListener('beforeunload', function (event) {
+      if (pending) { event.preventDefault(); event.returnValue = ''; }
+    });
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible') syncWithCloud();
     });

@@ -20,7 +20,7 @@ try {
   const bypassResponse = await call(bypass, backend, { action: 'login', credential: 'incorrect', clientId: 'negative' });
   assert.throws(() => assert.equal(bypassResponse.status, 401), 'a password bypass must fail the rejection assertion');
 
-  const overwrite = await mutant('AND revision = ?', 'AND ? >= 0');
+  const overwrite = await mutant("SET value = ?, revision = revision + 1 WHERE key = 'content' AND revision = ?", "SET value = ?, revision = revision + 1 WHERE key = 'content' AND ? >= 0");
   const admin = (await backend.call({ action: 'login', credential: 'admin123', clientId: 'negative-admin' })).data;
   const current = (await backend.call()).data;
   const { ok, ...payload } = current;

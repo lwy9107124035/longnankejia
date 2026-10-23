@@ -16,6 +16,50 @@ async function content(backend) {
   return { ...bundle, auditLogs: [], action: 'update_custom_bundle' };
 }
 
+test('dozens of illustrated cards exceed the former row limit and survive a restart intact', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'heritage-batch-'));
+  const filename = path.join(dir, 'admin.sqlite');
+  const backend = createAdminBackend({ filename });
+  const admin = (await login(backend)).data;
+  const base = await content(backend);
+  const cards = Array.from({ length: 60 }, (_, i) => ({ id: 'batch-' + i, name: '批量科普' + i, detail: '第一段\n第二段😀', imageUrl: 'data:image/jpeg;base64,' + 'a'.repeat(60000) }));
+  assert.ok(Buffer.byteLength(JSON.stringify(cards)) > 2000000);
+  assert.equal((await backend.call({ ...base, kepuCustom: cards }, admin.bearer)).status, 200);
+  const rows = backend.sqlite.prepare("SELECT value FROM admin_state WHERE key GLOB 'content*'").all();
+  assert.ok(rows.length > 2);
+  assert.ok(rows.every(row => Buffer.byteLength(row.value) < 2000000));
+  backend.close();
+  const restarted = createAdminBackend({ filename });
+  t.after(() => { restarted.close(); fs.rmSync(dir, { recursive: true }); });
+  assert.deepEqual((await restarted.call()).data.kepuCustom, cards);
+});
+
+test('a failed chunk transaction leaves all previously published content intact', async t => {
+  const backend = setup(t); const admin = (await login(backend)).data;
+  const base = await content(backend);
+  await backend.call({ ...base, kepuCustom: [{ id: 'original', name: '原内容' }] }, admin.bearer);
+  const current = await content(backend);
+  backend.sqlite.exec("CREATE TRIGGER fail_chunk BEFORE INSERT ON admin_state WHEN NEW.key = 'content:chunk:1' BEGIN SELECT RAISE(ABORT, 'disk full'); END;");
+  const response = await backend.call({ ...current, kepuCustom: [{ id: 'new', detail: 'a'.repeat(600000) }] }, admin.bearer);
+  assert.equal(response.status, 503);
+  const after = (await backend.call()).data;
+  assert.equal(after.revision, current.revision);
+  assert.equal(after.kepuCustom[0].id, 'original');
+});
+
+test('unchanged versions use a small response, while a new version returns the complete content', async t => {
+  const backend = setup(t); const admin = (await login(backend)).data;
+  const current = await content(backend);
+  const same = await backend.fetchApi('/api/admin/sync?revision=' + current.revision);
+  const data = await same.json();
+  assert.equal(data.unchanged, true);
+  assert.equal('kepuCustom' in data, false);
+  await backend.call({ ...current, kepuCustom: [{ id: 'new', name: '新增' }] }, admin.bearer);
+  const changed = await (await backend.fetchApi('/api/admin/sync?revision=' + current.revision)).json();
+  assert.equal(changed.unchanged, undefined);
+  assert.equal(changed.kepuCustom[0].id, 'new');
+});
+
 test('fresh desktop and phone receive independent server sessions; public reads expose no credentials', async t => {
   const backend = setup(t);
   const a = await login(backend);
