@@ -143,4 +143,8 @@
 - 用户已明确要求“推送到 main 分支”，解除上一轮等待 codex 验收的限制。合并已验证的 codex `863fecf` 到 main，保留正式分支原发布记录；冲突只发生在本记录末尾，两边历史均保留，应用代码没有冲突。
 - 发布前正式接口只读快照 `.cache/security-main-before.json`：revision 67、自定义科普 26 条；现有公开内容通过新版本共享 schema 验证，不需要清理或改写内容。
 - 检查 `地址.html`：五个分支 URL 已是稳定入口，无需每次发布修改 URL；说明仍停留在旧版本并错误地只标 antigravity 为当前主力，本次更新说明、顺序和快捷入口。今后继续保留稳定分支地址，部署成功后该地址提供最新已部署版本。
-- 当前步骤：提交合并与地址页更新，只推送 main；沿用正式 D1，保留现有密码、邀请码、服务端密钥；等待 CI 和正式站只读核验。
+- 正式发布提交 `4d7506d4d262172e6057e98760c9b7c2bfbfb68d` 已推送 main；[CI 39940146769](https://github.com/lwy9107124035/longnankejia/actions/runs/39940146769) 成功，59 项管理/接口检查全部通过。正式部署 `https://5873aade.longnankejia.pages.dev/`，固定入口 `https://longnankejia.pages.dev/`。
+- `.cache/verify-security-main-release.mjs before/after` 全部通过，证据 `.cache/security-main-release-before.json` 和 `security-main-release-after.json`：首页及 9 份关键 JS 与验收源码一致，script-src 禁止 inline/eval，版本轻量查询正常，API 返回 JSON/no-store；正式内容 revision 67、科普 26 条、内容完整指纹与管理员密码派生记录指纹均未变化，密码 revision 仍为 1。没有输出或保存明文密码。
+- 发布核验中遇到两种暂态问题并完成处理：本机 Wrangler 的 Node 直连请求 fetch failed，改为使用现有授权经 curl 只读查询取得密码指纹；新依赖 fflate 首次在固定入口返回 SPA 兜底，独立部署文件正常，稍后固定入口带参数与不带参数请求均与本地完全一致，完整发布核验重跑通过。没有因此改写业务数据或重新发布未验收代码。
+- 正式部署沿用原 main D1，日志确认保留正式站服务端密钥，不迁移、不清理、不复制预览内容，不重设密码或邀请码。main 与 codex 应用源码完全相同；将本轮合并和入口说明以快进方式同步回 codex，保证后续切换分支不会恢复旧入口说明。记录提交使用 skip ci，避免为文档和本地导航重复部署。
+- `地址.html` 后续维护原则：保留稳定分支入口，避免写易过期的版本号和主力分支断言；URL、分支用途变化时同步更新说明。代码发布通过原固定地址自动生效，需要部署成功；文件不是每次发布都需要重写的程序副本。

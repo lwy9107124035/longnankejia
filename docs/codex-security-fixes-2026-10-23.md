@@ -1,6 +1,6 @@
 # codex 安全与同步整改验收
 
-对应审查：[2026-10-23 原始问题报告](codex-security-review-2026-10-23.md)。本轮仅在 codex 实施，正式 main 等用户测试确认后再发布。测试使用隔离 SQLite、合成账号及本地 Chromium，没有用攻击样本操作线上数据库。
+对应审查：[2026-10-23 原始问题报告](codex-security-review-2026-10-23.md)。修复先在 codex 实施并验收，随后经用户授权发布 main，发布记录见文末。测试使用隔离 SQLite、合成账号及本地 Chromium，没有用攻击样本操作线上数据库。
 
 | 问题 | 实施内容 | 回归证据 |
 |---|---|---|
@@ -61,3 +61,10 @@ codex 发布核验（2026-10-23）：
 - [预览入口](https://codex.longnankejia-dev.pages.dev/)，本次部署 `https://512f574d.longnankejia-dev.pages.dev/`。首页和 6 份关键 JS 与已验证本地源码一致；线上脚本 CSP 收紧及 API 的 JSON/no-store 均已核对。
 - 部署前后两站公开内容逐项比较完全相同：codex revision 10/科普 0，main revision 67/科普 26。只读证据 `.cache/codex-fix-online-after.json`；脚本 `.cache/verify-codex-security-release.mjs`。
 - 远端 main 保持 `bce4c6b1bccb0325c0b086edc73273e8d76c0a24`，没有改动正式分支、正式内容、现有密码、邀请码或密钥。预览数据库继续独立，未复制正式内容。
+
+main 发布核验（2026-10-23，用户验收后授权）：
+
+- 正式修复提交 `4d7506d4d262172e6057e98760c9b7c2bfbfb68d`，合并 codex 的全部已验收修复，应用源码没有额外修改。[CI 39940146769](https://github.com/lwy9107124035/longnankejia/actions/runs/39940146769) 成功，59 项管理/接口检查通过。
+- [正式入口](https://longnankejia.pages.dev/)，部署 `https://5873aade.longnankejia.pages.dev/`。首页和 9 份关键 JS、脚本 CSP、接口缓存及轻量版本查询均已线上核对。
+- 正式库仍为 revision 67、科普 26 条，部署前后公开内容完整指纹和密码派生记录指纹完全相同。保留正式库及服务端密钥，不复制预览库，不重设密码或邀请码。证据 `.cache/security-main-release-before.json` / `security-main-release-after.json`。
+- 本地 `地址.html` 已更新为 main 正式使用、codex 测试验收的清晰入口。各分支 URL 保持固定，部署成功后同一个 URL 提供最新版本，无需每次重写导航文件。
