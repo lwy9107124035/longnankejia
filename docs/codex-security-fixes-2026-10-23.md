@@ -54,3 +54,10 @@ wrangler pages functions build functions --outdir .cache/codex-functions-build -
 - 浏览器安全专测：13 项通过、0 失败。独立手机/电脑登录专测：18 项通过、0 失败。
 - 3 项负向变异检查与静态检查通过，Cloudflare Pages Functions 构建成功。
 - 测试中发现并修复的失败：服务端新增归属字段使旧断言不适用；更严格格式校验要求更新无标题夹具；真实内置 ID 列表比源码字面匹配多出动态生成条目，改为执行数据脚本建立完整列表；方言初始化竞态已修复并补测试；手机测试等待表单就绪后再输入；服务器补充归属字段不再让同步误判冲突，延迟上传及其他设备后续编辑场景均保留。
+
+codex 发布核验（2026-10-23）：
+
+- 应用修复提交 `a4da1579fdfd03b6106c2203d29cb6955020eb63`，仅推送 codex。[CI 39937924225](https://github.com/lwy9107124035/longnankejia/actions/runs/39937924225) 成功，其中 59 项管理/接口测试通过。
+- [预览入口](https://codex.longnankejia-dev.pages.dev/)，本次部署 `https://512f574d.longnankejia-dev.pages.dev/`。首页和 6 份关键 JS 与已验证本地源码一致；线上脚本 CSP 收紧及 API 的 JSON/no-store 均已核对。
+- 部署前后两站公开内容逐项比较完全相同：codex revision 10/科普 0，main revision 67/科普 26。只读证据 `.cache/codex-fix-online-after.json`；脚本 `.cache/verify-codex-security-release.mjs`。
+- 远端 main 保持 `bce4c6b1bccb0325c0b086edc73273e8d76c0a24`，没有改动正式分支、正式内容、现有密码、邀请码或密钥。预览数据库继续独立，未复制正式内容。

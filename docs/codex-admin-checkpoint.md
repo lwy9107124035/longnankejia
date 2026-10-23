@@ -117,7 +117,7 @@
 - 最终报告 `docs/codex-security-review-2026-10-23.md`：14 个对抗探针归并 12 项确认问题，4 项 P1、7 项 P2、1 项 P3，逐项含源码行号、条件、复现、影响、建议及验收标准。待环境核对的分布式限流、上游超时、真实 iOS/微信等没有计为确认漏洞。
 - 本轮本地只修改审查报告/记录和测试工具，没有业务实现变更，没有提交或推送。后续优先修复 F01–F04，再做其他修复及回归；用户尚未要求本轮实施修复。
 
-## 2026-10-23 全部 12 项整改（代码完成，待预览部署）
+## 2026-10-23 全部 12 项整改（已推送 codex，预览部署完成）
 - 用户授权：只在 codex 修复全部审查问题，main 不动。当前分支 codex。
 - 已实现：共享结构验证（前后端）、DOMPurify 3.4.17 与 fflate 0.8.3（npm sha512 校验后本地 vendor），收紧 CSP；服务器记录内容归属、审计、回滚前后版本、审核通知及已读状态；限制请求流读取；独立页面草稿与恢复；重载 generation 守卫、会话内存优先；DOCX ZIP/XML 正文解析。
 - 修改路径：functions/_lib/admin-content.js、read-limited.js、api/admin/sync.js、js/content-schema.js/store.js/ui.js/admin.js/dialect.js/diancang.js/app.js、index.html、_headers。无真实账号、密码、密钥或线上数据操作。
@@ -125,3 +125,7 @@
 - 回归：新增 19 项安全/启动测试；原 80 项仍通过。真实 CSP 完整浏览器 319/319、浏览器安全 13/13、独立手机/电脑管理 18/18；静态、3 项负向变异和 Wrangler Functions 构建通过。曾发现初始化竞态与测试等待不足，已修复并重跑。
 - 细节与边界：docs/codex-security-fixes-2026-10-23.md。旧审查命令转为防回归断言；测试 fixture 提取至 tests/helpers/store-harness.mjs。
 - 最终合并 Node 99/99 已通过，最后浏览器同步/安全专测通过，Functions 编译再次成功；待检查 staged diff 后提交并只推送 codex，观察 CI 部署，不改变 main。本机 Node/urllib 在线读取出现 fetch failed/403，改用 curl GET 成功取得只读快照（.cache/codex-fix-online-before.json）：codex revision 10/自定义科普 0、main revision 67/自定义科普 26。HEAD 不经过 Functions 会返回静态 HTML，在线核验必须用 GET JSON。
+- 修复提交 `a4da1579fdfd03b6106c2203d29cb6955020eb63` 已只推送 codex。[CI 39937924225](https://github.com/lwy9107124035/longnankejia/actions/runs/39937924225) 成功，CI 管理/接口 59/59；部署 `https://512f574d.longnankejia-dev.pages.dev/`，固定预览 `https://codex.longnankejia-dev.pages.dev/`。
+- `.cache/verify-codex-security-release.mjs` 在线只读核验通过，结果 `.cache/codex-fix-online-after.json`：首页及 6 份关键 JS 与本地已测试源码一致，script-src 不含 unsafe-inline/unsafe-eval，API 返回 JSON/no-store。首次对 `/index.html` 检查遇 Cloudflare 308 规范跳转，改用实际首页 `/` 后通过，并非应用故障。
+- 对两站公开接口 JSON 全量规范化比较，部署前后完全相同：codex revision 10/科普 0，main revision 67/科普 26。没有向线上执行攻击或增删改测试，没有重设密码、邀请码或密钥；两库仍独立。远端 main 保持 `bce4c6b1bccb0325c0b086edc73273e8d76c0a24`。
+- 本轮已完成，等待用户验收 codex 后明确授权 main；旧数据恢复和真实 iOS/微信验证等边界见整改文档。
