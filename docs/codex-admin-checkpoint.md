@@ -106,3 +106,22 @@
 - 首次 Wrangler 文件执行虽已写入成功，但输出的进度行导致临时校验脚本解析 JSON 失败；修复解析后先重新读取，确认已对齐，没有重复改密。
 - 使用用户提供的密码调用 codex 真实登录接口成功，角色为超级管理员，验证会话已退出。前后内容摘要完全相同：正式站 revision 67、自定义科普 26 条；codex revision 8、自定义科普 0 条。没有修改 API 密钥、main 分支或正式站密码。
 - 非敏感核验记录：`.cache/codex-password-alignment-verification.json`。本次仅在线修正预览密码，不需要重新部署应用。
+
+## 2026-10-23 codex 安全与质量审查（完成）
+
+- 用户要求对 codex 详细审查、排查漏洞；当前只做审查及隔离复现，不修改产品实现，不向线上写入测试数据。已切换本地 codex `7405e03`，与正式 main `bce4c6b` 的应用代码相同，仅发布记录不同。
+- 基线 Node 管理、接口、知识和模型 80/80 通过，负向变异 3 项及静态检查通过；完整浏览器回归 318/318 通过，输出保存在 `.cache/codex-audit-full-browser-output.txt`。这些基线没有覆盖下述对抗场景，不能当成安全验收结论。
+- 复用真实 SQLite 管理接口和现有 Store VM 测试夹具，新增 `tests/audit_codex_20261023.mjs`。9 个探针已复现：无效记录入库、重复 ID 删除连带、审计及归属伪造、回滚遗漏内置修改/删除、日志泄漏有效邀请码、跨设备审核通知缺失、重新加载竞态丢草稿、sessionStorage 仅写失败导致新会话丢失、匿名超大请求整包读取后才限长。结果在 `.cache/codex-audit-api.json`，该探针退出码 1 表示发现缺陷，不能解释为普通测试通过。
+- 原浏览器脚本新增仅手动运行的 `--only=security-audit`，使用正式 CSP 配置在本地复现：协管员卡片图标脚本借超管会话改密成功、正文 HTML 事件执行、null 记录导致渲染异常、正常压缩 DOCX 读取不到正文、同源双标签页离线草稿互相覆盖。结果 `.cache/codex-audit-browser.json`；“7 passed”包含 2 项冷启动和 5 个复现探针，不是安全通过，确认缺陷时脚本退出码为 1。Word 样本通过 `tests/helpers/create-audit-word-fixture.py` 自动生成。线上注入和改密均未执行，测试使用隔离后端的合成口令。
+- 正式/预览只读快照 `.cache/codex-audit-online-before.json` 与 `codex-audit-online-after.json` 内容摘要相同：正式 revision 67、科普 26 条，预览 revision 10、科普 0 条。API 顶层未直接暴露密码、会话或令牌字段；线上 CSP 确实允许 unsafe-inline/unsafe-eval。漏洞均在本地真实接口/浏览器复现，没有对线上执行攻击或写入。
+- 最终报告 `docs/codex-security-review-2026-10-23.md`：14 个对抗探针归并 12 项确认问题，4 项 P1、7 项 P2、1 项 P3，逐项含源码行号、条件、复现、影响、建议及验收标准。待环境核对的分布式限流、上游超时、真实 iOS/微信等没有计为确认漏洞。
+- 本轮本地只修改审查报告/记录和测试工具，没有业务实现变更，没有提交或推送。后续优先修复 F01–F04，再做其他修复及回归；用户尚未要求本轮实施修复。
+
+## 2026-10-23 全部 12 项整改（代码完成，待预览部署）
+- 用户授权：只在 codex 修复全部审查问题，main 不动。当前分支 codex。
+- 已实现：共享结构验证（前后端）、DOMPurify 3.4.17 与 fflate 0.8.3（npm sha512 校验后本地 vendor），收紧 CSP；服务器记录内容归属、审计、回滚前后版本、审核通知及已读状态；限制请求流读取；独立页面草稿与恢复；重载 generation 守卫、会话内存优先；DOCX ZIP/XML 正文解析。
+- 修改路径：functions/_lib/admin-content.js、read-limited.js、api/admin/sync.js、js/content-schema.js/store.js/ui.js/admin.js/dialect.js/diancang.js/app.js、index.html、_headers。无真实账号、密码、密钥或线上数据操作。
+- 初次 50 项相关 Node 回归：两处失败是新增服务端归属字段及更严格必填校验导致旧测试数据不适用；已更新断言/有效夹具，50 项已通过。
+- 回归：新增 19 项安全/启动测试；原 80 项仍通过。真实 CSP 完整浏览器 319/319、浏览器安全 13/13、独立手机/电脑管理 18/18；静态、3 项负向变异和 Wrangler Functions 构建通过。曾发现初始化竞态与测试等待不足，已修复并重跑。
+- 细节与边界：docs/codex-security-fixes-2026-10-23.md。旧审查命令转为防回归断言；测试 fixture 提取至 tests/helpers/store-harness.mjs。
+- 最终合并 Node 99/99 已通过，最后浏览器同步/安全专测通过，Functions 编译再次成功；待检查 staged diff 后提交并只推送 codex，观察 CI 部署，不改变 main。本机 Node/urllib 在线读取出现 fetch failed/403，改用 curl GET 成功取得只读快照（.cache/codex-fix-online-before.json）：codex revision 10/自定义科普 0、main revision 67/自定义科普 26。HEAD 不经过 Functions 会返回静态 HTML，在线核验必须用 GET JSON。

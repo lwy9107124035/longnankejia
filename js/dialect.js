@@ -98,6 +98,7 @@
 
     frameEl.hidden = false;
     var targetUrl = (t.item.audioUrl || t.item.videoUrl || '');
+    if (!globalThis.HeritageContent.safeUrl(targetUrl, false)) { frameEl.textContent = '媒体链接格式不正确，请联系管理员修正。'; return; }
 
     if (isAud) {
       frameEl.innerHTML =
@@ -117,6 +118,7 @@
   }
 
   function render() {
+    if (!listEl) return;
     bindDialectEvents();
     if (window.UI && window.UI.updateAllPillScrollers) {
       setTimeout(window.UI.updateAllPillScrollers, 60);

@@ -18,7 +18,7 @@ function setup(custom){
   return {ok:true,json:async()=>response};
  }};
  vm.createContext(sandbox);
- for(const file of ['knowledge-base.js','store.js','answer-engine.js'])vm.runInContext(fs.readFileSync(new URL('../js/'+file,import.meta.url),'utf8'),sandbox);
+ for(const file of ['content-schema.js','knowledge-base.js','store.js','answer-engine.js'])vm.runInContext(fs.readFileSync(new URL('../js/'+file,import.meta.url),'utf8'),sandbox);
  if(custom)window.Store.addEntry(custom);
  return {window,calls,audits,setResponse:v=>{response=v;},setAudit:v=>{auditOverride=v;},fail:()=>{reject=true;},rules:()=>new window.AnswerEngine.RulesEngine(),api:()=>new window.AnswerEngine.ApiEngine()};
 }

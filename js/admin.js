@@ -154,7 +154,7 @@
       '    <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
       '  </div>' +
       '</div>' +
-      '<div class="admin-cloud-bar"><span id="adminCloudStatus" role="status"></span><button class="admin-btn-sm" id="backupDraftBtn">导出本机备份</button><button class="admin-btn-sm" id="reloadCloudBtn" hidden>重新加载云端内容</button></div>' +
+      '<div class="admin-cloud-bar"><span id="adminCloudStatus" role="status"></span><button class="admin-btn-sm" id="backupDraftBtn">导出本机备份</button><button class="admin-btn-sm" id="recoverDraftBtn">找回其他页面草稿</button><button class="admin-btn-sm" id="reloadCloudBtn" hidden>重新加载云端内容</button></div>' +
       notifBanner +
       '<div class="admin-tabs">' +
       '  <button class="admin-tab active" data-tab="kb">📚 知识库</button>' +
@@ -174,6 +174,15 @@
     $('#backupDraftBtn').addEventListener('click', function () {
       downloadJson(window.Store.exportFullBundle(), 'longnan-local-backup.json');
     });
+    $('#recoverDraftBtn').addEventListener('click', function () { adminAction(async function () {
+      var drafts = await window.Store.getRecoveryDrafts();
+      if (!drafts.length) { alert('没有其他页面遗留的未上传草稿。'); return; }
+      var selected = prompt('选择要找回的草稿编号（当前草稿会单独保留）：\n' + drafts.map(function (d, i) { return (i + 1) + '. ' + new Date(d.time).toLocaleString() + '，含 ' + d.count + ' 条自定义资料'; }).join('\n'));
+      if (selected === null) return;
+      var draft = drafts[Number(selected) - 1];
+      if (!draft) throw new Error('请输入列表中的草稿编号');
+      await window.Store.restoreRecoveryDraft(draft.id); renderTab();
+    }); });
     $('#reloadCloudBtn').addEventListener('click', function () {
       if (confirm('请先导出本机备份。重新加载会用云端版本替换本机尚未同步的编辑，确定继续吗？')) adminAction(async function () {
         await window.Store.reloadCloudContent(); renderTab();
@@ -191,11 +200,11 @@
 
     var ackBtn = $('#ackNotifBtn');
     if (ackBtn) {
-      ackBtn.addEventListener('click', function () {
-        window.Store.clearTokenNotifications(currentUser.tokenId || currentUser.token);
+      ackBtn.addEventListener('click', function () { adminAction(async function () {
+        await window.Store.clearTokenNotifications(currentUser.tokenId);
         var bar = $('#tokenNoticeBar');
         if (bar) bar.style.display = 'none';
-      });
+      }); });
     }
 
     var tabs = panel.querySelectorAll('.admin-tab');
@@ -757,7 +766,7 @@
 
       var previewMediaHtml = '';
       if (c.imageUrl || c.image) {
-        previewMediaHtml += '<img src="' + esc(c.imageUrl || c.image) + '" style="max-height:110px;border-radius:4px;display:block;margin-bottom:6px;border:1px solid rgba(0,0,0,0.1)" alt="预览配图" onerror="this.style.display=\'none\'">';
+        previewMediaHtml += '<img src="' + esc(c.imageUrl || c.image) + '" style="max-height:110px;border-radius:4px;display:block;margin-bottom:6px;border:1px solid rgba(0,0,0,0.1)" alt="预览配图">';
       }
       if (c.videoUrl || c.video) {
         previewMediaHtml += '<div style="font-size:11px;color:var(--primary);margin-bottom:6px">🎬 视频：' + esc(c.videoUrl || c.video) + '</div>';
@@ -962,7 +971,7 @@
       '  <div class="admin-upload-zone" id="kpUploadZone">' +
       '    <input type="file" id="kpImageFile" accept="image/*" style="display:none">' +
       '    <div class="admin-upload-preview-wrap" id="kpPreviewWrap" style="' + (initialImg ? 'display:flex' : 'display:none') + '">' +
-      '      <img id="kpImgThumb" class="admin-upload-thumb" src="' + esc(initialImg) + '" alt="配图预览" onerror="this.style.display=\'none\'">' +
+      '      <img id="kpImgThumb" class="admin-upload-thumb" src="' + esc(initialImg) + '" alt="配图预览">' +
       '      <div class="admin-upload-info">' +
       '        <div id="kpImgInfoText" class="admin-upload-name">' + esc(initialImg ? (initialImg.indexOf('data:') === 0 ? '已嵌入本地优化图片' : initialImg) : '已选图片') + '</div>' +
       '        <div class="admin-upload-btns">' +
@@ -1384,6 +1393,11 @@
 
     $('#batchCommitBtn').addEventListener('click', async function () {
       if (!parsedDrafts.length) return;
+      try {
+        parsedDrafts.forEach(function (draft, i) {
+          globalThis.HeritageContent.record(Object.assign({ id: 'draft-' + i }, draft), 'kb', '导入草稿 ' + (i + 1), false);
+        });
+      } catch (error) { alert(error.message + '，请修正草稿后重试。'); return; }
       var count = parsedDrafts.length;
       $('#batchCommitBtn').disabled = true;
       parsedDrafts.forEach(function (draft) {
@@ -1406,6 +1420,7 @@
   function processUploadedFile(file) {
     var name = file.name || '';
     var ext = name.slice(name.lastIndexOf('.')).toLowerCase();
+    if (file.size > 16 * 1024 * 1024) { alert('文件超过 16 MB，请拆分后导入。原草稿已保留。'); return; }
 
     if (ext === '.json') {
       var reader = new FileReader();
@@ -1413,7 +1428,9 @@
         try {
           var parsed = JSON.parse(reader.result);
           if (Array.isArray(parsed)) {
-            parsedDrafts = parsed.map(function (item, idx) {
+            if (!parsed.length) throw new Error('文件没有条目');
+            if (parsed.some(function (item) { return !item || typeof item !== 'object' || Array.isArray(item); })) throw new Error('无效条目');
+            var nextDrafts = parsed.map(function (item, idx) {
               return {
                 title: String(item.title || ('解析条目 ' + (idx + 1))),
                 keywords: Array.isArray(item.keywords) ? item.keywords : [item.title || '非遗'],
@@ -1421,6 +1438,8 @@
                 sources: Array.isArray(item.sources) ? item.sources : [{ title: name }]
               };
             });
+            nextDrafts.forEach(function (draft, i) { globalThis.HeritageContent.record(Object.assign({ id: 'draft-' + i }, draft), 'kb', '导入条目 ' + (i + 1), false); });
+            parsedDrafts = nextDrafts;
             renderDraftsList();
           } else {
             alert('JSON 文件格式不是条目数组');
@@ -1458,7 +1477,7 @@
       var trimmed = line.trim();
       var isHeader = /^#{1,4}\s+/.test(trimmed) || /^[一二三四五六七八九十]+[、.]\s*/.test(trimmed) || /^(【.+?】)/.test(trimmed) || /^问[：:]/.test(trimmed);
       if (isHeader && (curTitle || curBody.length > 0)) {
-        if (curBody.join('\n').trim().length > 10) {
+        if (curBody.join('\n').trim().length > 0) {
           chunks.push({
             title: curTitle || '非遗知识条目',
             text: curBody.join('\n').trim()
@@ -1468,12 +1487,12 @@
         curBody = [];
       } else if (isHeader) {
         curTitle = trimmed.replace(/^#{1,4}\s+/, '').replace(/^问[：:]\s*/, '').replace(/[【】]/g, '').slice(0, 32);
-      } else if (trimmed) {
-        curBody.push(trimmed);
+      } else {
+        curBody.push(line);
       }
     });
 
-    if (curBody.join('\n').trim().length > 10) {
+    if (curBody.join('\n').trim().length > 0) {
       chunks.push({
         title: curTitle || '非遗知识条目',
         text: curBody.join('\n').trim()
@@ -1485,7 +1504,7 @@
       var rawChunks = text.split(/\n\s*\n+/);
       rawChunks.forEach(function (c, idx) {
         var ct = c.trim();
-        if (ct.length > 20) {
+        if (ct.length > 0) {
           var firstLine = ct.split('\n')[0].slice(0, 24);
           chunks.push({
             title: firstLine || ('条目 ' + (idx + 1)),
@@ -1495,6 +1514,7 @@
       });
     }
 
+    if (!chunks.length) { alert('未提取到可导入的文字，原草稿已保留'); return; }
     parsedDrafts = chunks.map(function (c) {
       return {
         title: c.title.trim(),
@@ -1510,25 +1530,46 @@
   function parseDocxToDrafts(arrayBuffer, fileName) {
     try {
       var bytes = new Uint8Array(arrayBuffer);
-      var str = '';
-      // 简单抽样解码抽取 XML 文本段落
-      var decoder = new TextDecoder('utf-8', { fatal: false });
-      var decoded = decoder.decode(bytes);
-      var texts = [];
-      var regex = /<w:t(?:\s+[^>]*)?>([\s\S]*?)<\/w:t>/g;
-      var match;
-      while ((match = regex.exec(decoded)) !== null) {
-        if (match[1]) texts.push(match[1]);
-      }
-      if (texts.length) {
-        var fullText = texts.join('');
-        parseTextToDrafts(fullText, fileName);
-      } else {
-        alert('Word 文档解析未提取到文字，建议转换为 TXT 或 Markdown 上传');
-      }
-    } catch (e) {
-      alert('Word 文档解析失败，建议转为 TXT 格式上传');
-    }
+      if (bytes.length > 16 * 1024 * 1024) throw new Error('Word 文件超过 16 MB，请分成较小文档后上传');
+      var parts = [], size = 0, found = false, completed = false, parseError = null;
+      var unzip = new window.fflate.Unzip(function (file) {
+        if (file.name !== 'word/document.xml') return;
+        if (found) throw new Error('Word 文件包含重复正文部件');
+        found = true;
+        if (file.originalSize > 8 * 1024 * 1024) throw new Error('Word 正文解压后超过 8 MB，请拆分文档');
+        file.ondata = function (error, data, final) {
+          if (error) { parseError = error; return; }
+          size += data.length;
+          if (size > 8 * 1024 * 1024) { file.terminate(); throw new Error('Word 正文解压后超过 8 MB，请拆分文档'); }
+          parts.push(data); completed = final;
+        };
+        file.start();
+      });
+      unzip.register(window.fflate.UnzipInflate);
+      for (var offset = 0; offset < bytes.length; offset += 1024) unzip.push(bytes.subarray(offset, offset + 1024), offset + 1024 >= bytes.length);
+      if (parseError) throw parseError;
+      if (!found || !completed) throw new Error('Word 文件不完整或没有正文部件');
+      var xmlBytes = new Uint8Array(size), cursor = 0;
+      parts.forEach(function (part) { xmlBytes.set(part, cursor); cursor += part.length; });
+      var xmlText = new TextDecoder('utf-8', { fatal: true }).decode(xmlBytes);
+      if (/<!DOCTYPE|<!ENTITY/i.test(xmlText)) throw new Error('Word 文件包含不支持的 XML 声明');
+      var doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+      if (doc.getElementsByTagName('parsererror').length) throw new Error('Word 正文格式损坏');
+      var ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+      var paragraphs = Array.from(doc.getElementsByTagNameNS('*', 'p')).filter(function (p) { return p.namespaceURI === ns || p.namespaceURI === 'http://purl.oclc.org/ooxml/wordprocessingml/main'; }).map(function (paragraph) {
+        var text = '';
+        function visit(node) {
+          if ((node.namespaceURI === ns || node.namespaceURI === 'http://purl.oclc.org/ooxml/wordprocessingml/main') && node.localName === 't') { text += node.textContent; return; }
+          if ((node.namespaceURI === ns || node.namespaceURI === 'http://purl.oclc.org/ooxml/wordprocessingml/main') && ['br', 'cr'].includes(node.localName)) { text += '\n'; return; }
+          if ((node.namespaceURI === ns || node.namespaceURI === 'http://purl.oclc.org/ooxml/wordprocessingml/main') && node.localName === 'tab') { text += '\t'; return; }
+          Array.from(node.childNodes).forEach(visit);
+        }
+        visit(paragraph); return text;
+      });
+      var fullText = paragraphs.join('\n\n');
+      if (!fullText.trim()) throw new Error('Word 文档没有可导入的文字，原草稿已保留');
+      parseTextToDrafts(fullText, fileName);
+    } catch (error) { alert('Word 文档解析失败：' + error.message + '。原草稿已保留。'); }
   }
 
   function renderDraftsList() {
@@ -1820,11 +1861,13 @@
           var id = btn.getAttribute('data-rollback-token');
           var name = btn.getAttribute('data-name');
           var count = btn.getAttribute('data-count');
-          if (confirm('确定撤销受邀人员「' + name + '」录入的全部修改？\n将清除其录入的全部 ' + count + ' 项数据（知识库、科普卡片、方言语音）。此操作不可撤销。')) {
-            var res = window.Store.rollbackTokenChanges(id);
-            refreshFrontEnd();
-            alert('已成功撤销该令牌录入的修改，共回滚清除 ' + res.totalRemoved + ' 项数据！');
-            renderTab();
+          if (confirm('确定撤销受邀人员「' + name + '」录入的全部修改？\n将清除其录入的全部 ' + count + ' 项录入及可追溯的编辑/删除；他人的后续修改会保留。历史版本上线前的编辑无法自动还原。')) {
+            adminAction(async function () {
+              var res = await window.Store.rollbackTokenChanges(id);
+              refreshFrontEnd();
+              alert('已撤回 ' + res.totalRemoved + ' 项修改。' + (res.skipped ? '另有 ' + res.skipped + ' 项包含他人的后续修改，已保留，请人工核对。' : ''));
+              renderTab();
+            });
           }
         });
       });
@@ -1895,15 +1938,17 @@
           var itemTitle = rBtn.getAttribute('data-reject-title');
           var reason = prompt('确定剔除修改项「' + itemTitle + '」？\n请输入驳回原因（此消息将发送给该管理员）：', '内容考据不严谨，需核对后录入');
           if (reason !== null && reason.trim()) {
-            var res = window.Store.rejectTokenItem(tokenId, itemId, itemType, reason.trim());
+            adminAction(async function () {
+            var res = await window.Store.rejectTokenItem(tokenId, itemId, itemType, reason.trim());
             if (res.ok) {
               refreshFrontEnd();
-              alert('已剔除「' + itemTitle + '」，并将驳回通知发送给该管理员！');
+              alert(res.totalRemoved ? '已撤回「' + itemTitle + '」，并发送审核反馈。' : '该项包含后续修改，已保留当前版本，请人工核对。');
               renderTab();
               showInspectBox(tokenId);
             } else {
               alert('剔除失败：' + (res.error || '未找到该项'));
             }
+            });
           }
         });
       });
@@ -1915,8 +1960,7 @@
 
     $('#clearAuditBtn').addEventListener('click', function () {
       if (confirm('确定清空所有操作审计日志？')) {
-        window.Store.clearAuditLogs();
-        renderTab();
+        adminAction(async function () { await window.Store.clearAuditLogs(); renderTab(); });
       }
     });
 

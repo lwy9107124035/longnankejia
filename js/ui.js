@@ -12,7 +12,14 @@
   }
   function formatHeritageDetail(value) {
     var text = String(value || '').replace(/\r\n?/g, '\n');
-    if (/<\/?(?:p|br|div|h[1-6]|ul|ol|li|strong|em|b|i|span|a|table|blockquote)\b[^>]*>/i.test(text)) return text;
+    if (/<\/?(?:p|br|div|h[1-6]|ul|ol|li|strong|em|b|i|span|a|table|blockquote)\b[^>]*>/i.test(text) && window.DOMPurify && window.DOMPurify.isSupported) {
+      return window.DOMPurify.sanitize(text, {
+        ALLOWED_TAGS: ['p', 'br', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'strong', 'em', 'b', 'i', 'span', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'blockquote'],
+        ALLOWED_ATTR: ['href', 'title', 'colspan', 'rowspan'],
+        ALLOW_DATA_ATTR: false,
+        ALLOWED_URI_REGEXP: /^(?:https?:\/\/|mailto:|#|\/[^/])/i
+      });
+    }
     return text.split(/\n\s*\n/).map(function (paragraph) {
       return '<p>' + esc(paragraph).replace(/\n/g, '<br>') + '</p>';
     }).join('');
@@ -735,9 +742,9 @@
         btn.style.setProperty('--card-bg', card.bg || '#E4EFEA');
         btn.innerHTML =
           (isCust ? '<span class="h-badge-custom">🌟 馆藏新增</span>' : '') +
-          '<div class="h-icon">' + (card.icon || '🏮') + '</div>' +
-          '<div class="h-name">' + (card.name || '未命名') + '</div>' +
-          '<div class="h-tag">' + (card.tag || '客家非遗') + '</div>';
+          '<div class="h-icon">' + esc(card.icon || '🏮') + '</div>' +
+          '<div class="h-name">' + esc(card.name || '未命名') + '</div>' +
+          '<div class="h-tag">' + esc(card.tag || '客家非遗') + '</div>';
         btn.addEventListener('click', function () {
           if (onCardOpen) onCardOpen(card);
         });
@@ -928,6 +935,8 @@
       if (!mediaEl) return;
       var img = card.imageUrl || card.image || '';
       var vid = card.videoUrl || card.video || '';
+      if (!globalThis.HeritageContent.safeUrl(img, true)) img = '';
+      if (!globalThis.HeritageContent.safeUrl(vid, false)) vid = '';
       if (!img && !vid) {
         mediaEl.innerHTML = '';
         mediaEl.hidden = true;
@@ -935,7 +944,7 @@
       }
       var html = '';
       if (img) {
-        html += '<img class="detail-media-img" src="' + esc(img) + '" alt="' + esc(card.name) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        html += '<img class="detail-media-img" src="' + esc(img) + '" alt="' + esc(card.name) + '" loading="lazy">';
       }
       if (vid) {
         if (/\.(mp4|webm|ogg)($|\?)/i.test(vid)) {
@@ -945,6 +954,8 @@
         }
       }
       mediaEl.innerHTML = html;
+      var image = mediaEl.querySelector('img');
+      if (image) image.addEventListener('error', function () { image.hidden = true; });
       mediaEl.hidden = false;
 
       var pBtn = document.getElementById('detailPlayVidBtn');
