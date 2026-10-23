@@ -98,3 +98,11 @@
 - 线上逐字核对 store/admin/ui/CSS/index 五份源码与本地一致。`.cache/check-content-sync-live.mjs` 以真实 codex D1 验证 60 条、超过 2 MB 的内容完整保存和游客读回，以及未变化版本的小响应；随后只清除本轮随机前缀测试记录、注销测试会话。codex revision 6→8，恢复后全部公开内容摘要与测试前一致，自定义科普仍 0 条。
 - `.cache/content-sync-release-before.json` 与 `content-sync-release-after.json` 证明正式站始终 revision 67、自定义科普 26 条，全部公开内容 SHA-256 不变。远程 main 仍为 `e8ba30b008d0c9ff4e97b89be3ef6b88bf2c7bae`；没有向 main 推送代码、迁移或修改正式数据库，也未改动原密码和密钥。Wrangler 4.137.0 编译成功。
 - 预览库与正式库继续独立，没有把老师正式数据复制到预览库。下一步等待用户在 codex 验收后明确授权 main；旧设备未上传内容需保留原浏览器数据，待正式站升级后从原设备恢复上传，无法凭服务器推测从未上传的内容。
+
+## 第六轮：codex 登录密码与正式站对齐
+
+- 用户反馈自己设置的管理员密码在预览站被拒。通过不回显的内存输入核验：该密码匹配正式库的密码派生值（revision 1），不匹配预览库仍保留的旧值（revision 0）。原因是两库独立，之前只同步了代码，没有同步正式站后来修改的密码。
+- 仅把正式库当前的 salt/hash 原样复制到 codex 的 password 行，预览密码 revision 0→1，随后读取确认两库派生值相同，清理测试站旧超级管理员会话及当前锁定；正式数据库只读。未把用户明文密码写入源码、文件或命令输出。
+- 首次 Wrangler 文件执行虽已写入成功，但输出的进度行导致临时校验脚本解析 JSON 失败；修复解析后先重新读取，确认已对齐，没有重复改密。
+- 使用用户提供的密码调用 codex 真实登录接口成功，角色为超级管理员，验证会话已退出。前后内容摘要完全相同：正式站 revision 67、自定义科普 26 条；codex revision 8、自定义科普 0 条。没有修改 API 密钥、main 分支或正式站密码。
+- 非敏感核验记录：`.cache/codex-password-alignment-verification.json`。本次仅在线修正预览密码，不需要重新部署应用。
