@@ -94,4 +94,7 @@
 - 科普保存、知识批量入库和导入等待服务器确认；图片提示函数名错误已修复，处理图片时禁用保存，压缩后再上传。游客/后台导入卡片分类改为按内置 ID 集合判定。普通正文回车换行、空行分段，原 HTML 兼容。
 - 本地验证：Node 管理、接口、知识与模型共 80/80；浏览器 `--only=kepu-crud,content-sync,admin` 共 43/43，包含 60 条真实可解码图片约 6.8 MB 上传、刷新、全新手机游客、旧草稿合并、离线 API 下刷新恢复、独立删除及管理员会话。服务端另验证 60 条数据跨冷重启完整和分块失败事务回滚。3 个负向变异被捕获；静态检查和语法检查通过。
 - 大响应原样经 CDP 返回曾导致测试工具超时，测试改为只返回断言所需计数/布尔值，并关闭大上传正文的 CDP 追踪，实际保存与另一设备读取仍使用真实接口。手机截图 `.cache/test-shots/content-sync-phone-paragraphs.png` 已查看。
-- 本轮将在 codex 提交并发布预览，main 不合并、不推送；正式数据库及原密码、密钥保持原样。待记录 CI 和线上核验结果。
+- 本轮修复提交 `f56f7b6bcd29be0aa237419382c266b052449c2e` 已推送 codex；[CI 39918183132](https://github.com/lwy9107124035/longnankejia/actions/runs/39918183132) 成功，40 项管理与接口检查通过。部署 `https://39a51371.longnankejia-dev.pages.dev/`，预览固定入口 `https://codex.longnankejia-dev.pages.dev/`。
+- 线上逐字核对 store/admin/ui/CSS/index 五份源码与本地一致。`.cache/check-content-sync-live.mjs` 以真实 codex D1 验证 60 条、超过 2 MB 的内容完整保存和游客读回，以及未变化版本的小响应；随后只清除本轮随机前缀测试记录、注销测试会话。codex revision 6→8，恢复后全部公开内容摘要与测试前一致，自定义科普仍 0 条。
+- `.cache/content-sync-release-before.json` 与 `content-sync-release-after.json` 证明正式站始终 revision 67、自定义科普 26 条，全部公开内容 SHA-256 不变。远程 main 仍为 `e8ba30b008d0c9ff4e97b89be3ef6b88bf2c7bae`；没有向 main 推送代码、迁移或修改正式数据库，也未改动原密码和密钥。Wrangler 4.137.0 编译成功。
+- 预览库与正式库继续独立，没有把老师正式数据复制到预览库。下一步等待用户在 codex 验收后明确授权 main；旧设备未上传内容需保留原浏览器数据，待正式站升级后从原设备恢复上传，无法凭服务器推测从未上传的内容。
