@@ -111,4 +111,6 @@
 
 - 用户明确要求“推送到 main 分支”，此前等待预览验收的限制已解除。发布前远程 main 为 `e8ba30b`，codex 为 `7405e03`；将 main 快进到 codex，应用代码与已验证预览完全相同。
 - 发布前正式站只读核验：内容 revision 67、自定义科普 26 条，密码 revision 1；内容摘要及密码派生记录的指纹保存在 `.cache/main-content-sync-before.json`，不保存明文密码。
-- 本次只发布已在 codex 验证的应用修复，继续绑定原正式 D1；不复制预览库、不迁移或清理正式内容、不重设密码，不覆盖原 API 密钥。部署后待核验源码、版本轻量检查及前后内容/密码指纹。
+- 正式发布提交 `7c4f0cd9efebb63b6da261415f80285b397f1ef3` 已推送 main；[CI 39920128872](https://github.com/lwy9107124035/longnankejia/actions/runs/39920128872) 成功，40 项检查全部通过，日志确认保留原正式站服务端密钥。部署地址 `https://99030e39.longnankejia.pages.dev/`，固定正式入口 `https://longnankejia.pages.dev/` 已更新。
+- `.cache/check-main-content-sync-release.mjs after` 核验通过：store/admin/ui/CSS/index 五份源码与已验收版本逐字一致，版本未变化时的轻量 API 响应有效；发布前后正式内容摘要和密码派生记录指纹完全相同，内容 revision 67、自定义科普 26 条、密码 revision 1。证据在 `.cache/main-content-sync-after.json`。
+- 本次继续绑定原正式 D1，没有复制预览库、迁移或清理正式内容，没有重设密码或覆盖 API 密钥。codex 仍使用独立预览库，正式网址和原二维码均可继续使用；原设备草稿可在正式站登录后恢复同步，若同条冲突则先导出备份核对。
