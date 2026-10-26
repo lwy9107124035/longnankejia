@@ -617,7 +617,7 @@ def check_launchers():
         fail("地址.html 缺失——四个分支的入口页，双击就用")
     else:
         a = read(addr)
-        for need in ("四个分支", "正式入口", "验收分支", "豆包的工作分支", "v2 预览（当前版本）"):
+        for need in ("各分支网页地址", "正式版", "验收分支", "豆包的工作分支", "codex 测试版"):
             if need not in a:
                 fail("地址.html 丢了「%s」——这页是给人双击看的，标题和分支说明要在" % need)
         for need in ("https://longnankejia.pages.dev/",
@@ -629,8 +629,8 @@ def check_launchers():
                 fail("地址.html 里 %s 不是一条可点的链接" % need)
             if '<div class="url">%s</div>' % need not in a:
                 fail("地址.html 里 %s 没有作为可见文字写出来" % need)
-        # v2 页面必须明确映射到 codex 分支的固定预览地址。
-        for need in ("v2-base", "v2 这一轮改动在 codex 分支", "codex.longnankejia-dev.pages.dev"):
+        # 固定分支入口不依赖易过期的版本标签。
+        for need in ("正式使用选 main", "测试新功能选 codex", "codex.longnankejia-dev.pages.dev"):
             if need not in a:
                 fail("地址.html 丢了「%s」——应标出 v2 对应 codex 分支和线上入口" % need)
         for bad in re.findall(r"https?://v\d\.[\w.-]*pages\.dev", a):

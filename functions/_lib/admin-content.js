@@ -4,7 +4,8 @@ export const DEFAULTS = { ...globalThis.HeritageContent.defaults, auditLogs: [] 
 export function validateContent(body) { return globalThis.HeritageContent.validateBundle(body); }
 const clone = value => JSON.parse(JSON.stringify(value));
 const stable = globalThis.HeritageContent.canonical;
-const equal = (a, b) => stable(a) === stable(b);
+const equal = (a, b) => a === b || (a && b && typeof a === 'object' && typeof b === 'object'
+  && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => a[key] === b[key])) || stable(a) === stable(b);
 async function fingerprint(value) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stable(value)));
   return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
@@ -21,24 +22,34 @@ function undoData(previous, value) {
 const groups = ['kb', 'kepu', 'dialect'];
 
 function cells(content) {
-  const result = new Map();
-  for (const group of groups) {
-    for (const entry of content[group + 'Custom'] || []) if (entry?.id) result.set(group + 'Custom/' + entry.id, entry);
-    for (const [id, entry] of Object.entries(content[group + 'Edited'] || {})) result.set(group + 'Edited/' + id, entry);
-    for (const id of content[group + 'Deleted'] || []) result.set(group + 'Deleted/' + id, true);
-  }
-  return result;
+  return new Map([...globalThis.HeritageContent.contentCells(content)].filter(([key]) => key.includes('/')));
 }
 function setCell(content, key, value) {
-  const slash = key.indexOf('/'), field = key.slice(0, slash), id = key.slice(slash + 1);
-  if (field.endsWith('Custom')) {
-    content[field] = content[field].filter(entry => entry.id !== id);
-    if (value !== null) content[field].push(clone(value));
-  } else if (field.endsWith('Deleted')) {
-    content[field] = content[field].filter(entry => entry !== id);
-    if (value !== null) content[field].push(id);
-  } else if (value === null) delete content[field][id];
-  else content[field][id] = clone(value);
+  globalThis.HeritageContent.setContentCell(content, key, clone(value));
+}
+export async function applyChanges(current, changes, user, tokens) {
+  if (!Array.isArray(changes) || !changes.length || changes.length > 10000) throw new Error('请选择需要保存的内容');
+  const next = safeContent(current, tokens), before = globalThis.HeritageContent.contentCells(next);
+  const conflicts = [], accepted = [], seen = new Set();
+  let changed = false;
+  for (const change of changes) {
+    if (!change || typeof change.key !== 'string' || seen.has(change.key) || !/^[a-f0-9]{64}$/.test(change.baseHash) || !Object.hasOwn(change, 'value')) throw new Error('保存内容格式不正确');
+    seen.add(change.key);
+    if (!change.key.includes('/') && user.role !== 'super_admin') throw new Error('仅管理员可修改设置');
+    // Validate the cell key and candidate even when its precondition will conflict.
+    const candidate = clone(DEFAULTS);
+    globalThis.HeritageContent.setContentCell(candidate, change.key, change.value);
+    validateContent(candidate);
+    const actual = before.get(change.key) ?? null;
+    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(change.value) && await globalThis.HeritageContent.cellHash(actual) !== change.baseHash) {
+      conflicts.push(change.key); continue;
+    }
+    globalThis.HeritageContent.setContentCell(next, change.key, change.value);
+    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(change.value)) changed = true;
+    accepted.push(change.key);
+  }
+  validateContent(next);
+  return { next: changed ? await updatedContent(current, next, user, tokens) : current, conflicts, accepted, changed };
 }
 function label(value, key) { return value?.title || value?.name || value?.item?.name || key.split('/')[1]; }
 export function redact(value, tokens) {
@@ -47,7 +58,12 @@ export function redact(value, tokens) {
   return text;
 }
 export function safeContent(content, tokens) {
-  const result = Object.fromEntries(Object.keys(DEFAULTS).filter(key => key !== 'auditLogs').map(key => [key, clone(content[key] ?? DEFAULTS[key])]));
+  // Images and text are immutable strings. Copy containers and record metadata without re-encoding the whole library.
+  const copyRecord = record => record && typeof record === 'object' && !Array.isArray(record) ? { ...record } : record;
+  const result = Object.fromEntries(Object.keys(DEFAULTS).filter(key => key !== 'auditLogs').map(key => {
+    const value = content[key] ?? DEFAULTS[key];
+    return [key, Array.isArray(value) ? value.map(copyRecord) : Object.fromEntries(Object.entries(value).map(([id, record]) => [id, copyRecord(record)]))];
+  }));
   const records = groups.flatMap(group => [...(Array.isArray(result[group + 'Custom']) ? result[group + 'Custom'] : []), ...Object.values(result[group + 'Edited'] || {})]);
   for (const record of records) {
     if (!record || typeof record !== 'object') continue;
@@ -72,8 +88,7 @@ export function audit(content, user, action, detail, tokens) {
   content.auditLogs = logs.slice(0, 200);
 }
 export async function updatedContent(current, submitted, user, tokens) {
-  const next = { ...safeContent(current, tokens), ...clone(submitted),
-    auditLogs: current.auditLogs || [], _history: clone(current._history || []), _notifications: clone(current._notifications || []) };
+  const next = { ...submitted, auditLogs: current.auditLogs || [], _history: (current._history || []).slice(), _notifications: (current._notifications || []).slice() };
   const before = cells(safeContent(current, tokens)), after = cells(next);
   let changes = 0;
   for (const key of new Set([...before.keys(), ...after.keys()])) {
@@ -87,9 +102,9 @@ export async function updatedContent(current, submitted, user, tokens) {
         else delete value[prop];
       }
       if (!previous) Object.assign(value, { creatorName: user.name, creatorTokenId: user.tokenId, createdAt: Date.now() });
-      setCell(next, key, value);
     }
     if (equal(previous, value)) continue;
+    setCell(next, key, value);
     changes++;
     // Store only the old changed fields and a digest, so changing a title never duplicates its image.
     next._history.push({ id: crypto.randomUUID(), key, tokenId: user.tokenId, actor: user.name, time: Date.now(),
@@ -118,7 +133,8 @@ export function contributions(content, tokens) {
   return [...rows.values()];
 }
 export async function rollback(content, token, user, tokens, item, reason) {
-  const next = { ...clone(content), ...safeContent(content, tokens), _history: clone(content._history || []), _notifications: clone(content._notifications || []) };
+  const next = { ...safeContent(content, tokens), auditLogs: (content.auditLogs || []).slice(),
+    _history: (content._history || []).map(op => ({ ...op })), _notifications: (content._notifications || []).map(n => ({ ...n })) };
   const selected = op => op.tokenId === token.id && (!item || (op.key === item.type + 'Custom/' + item.id || op.key === item.type + 'Edited/' + item.id || op.key === item.type + 'Deleted/' + item.id));
   const restored = new Set(), skipped = new Set();
   const history = next._history;

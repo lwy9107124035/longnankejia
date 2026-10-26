@@ -150,6 +150,10 @@
   var cloudBase = read('nfyj_cloud_base', null);
   var publishedBundle = null;
   var contentIssue = '';
+  var conflictKeys = [];
+  var editBases = {};
+  var lastSyncedAt = 0;
+  var cloudIncomplete = false;
   var draftDb = null;
   var durableDraft = true;
   // Keep pre-upgrade local edits until an authenticated upload or an explicit discard.
@@ -172,6 +176,10 @@
     Object.keys(CONTENT_KEYS).forEach(function (key) { memoryValues[CONTENT_KEYS[key]] = saved.bundle[key] || (OBJECT_KEYS.indexOf(key) >= 0 ? {} : []); });
     cloudRevision = saved.revision; cloudBase = saved.base; pending = saved.pending; draftOwner = saved.owner || '';
     recoverySource = saved.source || null;
+    conflictKeys = saved.conflicts || [];
+    editBases = saved.editBases || {};
+    lastSyncedAt = saved.lastSyncedAt || 0;
+    cloudIncomplete = !!saved.cloudIncomplete;
   }
   // Published cache is shared; each page owns a separate unacknowledged draft snapshot.
   var storageReady = useDraftDb ? new Promise(function (resolve) {
@@ -203,7 +211,7 @@
     await storageReady;
     if (pending && !draftOwner) draftOwner = principal();
     var saved = { bundle: copy(bundle()), revision: cloudRevision, base: copy(cloudBase), pending: pending, owner: draftOwner, time: Date.now(),
-      snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2), source: recoverySource };
+      snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2), source: recoverySource, conflicts: conflictKeys.slice(), editBases: copy(editBases), lastSyncedAt: lastSyncedAt, cloudIncomplete: cloudIncomplete };
     if (draftDb) {
       durableDraft = await new Promise(function (resolve) {
         try {
@@ -252,19 +260,47 @@
     var rows = [];
     for (var i = 0; i < localStorage.length; i++) {
       var key = localStorage.key(i);
-      if (key && key.indexOf('nfyj_draft:') === 0) rows.push({ id: key.slice(5), saved: read(key, null) });
+      if (key && /^nfyj_(?:draft|editor):/.test(key)) { try { rows.push({ id: key.slice(5), saved: JSON.parse(localStorage.getItem(key)) }); } catch (_) {} }
     }
     return rows;
   }
   async function getRecoveryDrafts() {
-    return (await draftSnapshots()).filter(function (row) { return row.saved && row.saved.pending && row.id !== draftId && row.id !== previousDraftId && (!row.saved.owner || row.saved.owner === principal() || principal() === 'super_admin'); }).map(function (row) {
-      return { id: row.id, time: row.saved.time || 0, owner: row.saved.owner, count: ['kbCustom', 'kepuCustom', 'dialectCustom'].reduce(function (n, key) { return n + row.saved.bundle[key].length; }, 0) };
+    return (await draftSnapshots()).filter(function (row) { return row.saved && (row.saved.editor || row.saved.pending && row.id !== draftId && row.id !== previousDraftId) && (!row.saved.owner || row.saved.owner === principal() || principal() === 'super_admin'); }).map(function (row) {
+      return { id: row.id, time: row.saved.time || 0, owner: row.saved.owner, editor: !!row.saved.editor, title: row.saved.editor && row.saved.editor.value.name,
+        count: row.saved.editor ? 1 : ['kbCustom', 'kepuCustom', 'dialectCustom'].reduce(function (n, key) { return n + row.saved.bundle[key].length; }, 0) };
     });
+  }
+  async function saveEditorDraft(editor, id) {
+    await storageReady;
+    var saved = { editor: copy(editor), owner: principal(), time: Date.now(), snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2) };
+    id = id || 'editor:' + draftId;
+    if (!/^editor:/.test(id)) throw new Error('草稿标识无效');
+    if (draftDb) return new Promise(function (resolve) {
+      var tx = draftDb.transaction('state', 'readwrite'); tx.objectStore('state').put(saved, id);
+      tx.oncomplete = function () { resolve(true); }; tx.onerror = tx.onabort = function () { resolve(false); };
+    });
+    try { localStorage.setItem('nfyj_' + id, JSON.stringify(saved)); return true; } catch (_) { return false; }
+  }
+  async function clearEditorDraft(source, id) {
+    await storageReady;
+    var ownId = id || 'editor:' + draftId;
+    if (draftDb) return new Promise(function (resolve, reject) {
+      var tx = draftDb.transaction('state', 'readwrite'), store = tx.objectStore('state');
+      store.delete(ownId);
+      if (source && source.id !== ownId) {
+        var request = store.get(source.id);
+        request.onsuccess = function () { if (request.result && request.result.snapshotId === source.snapshotId) store.delete(source.id); };
+      }
+      tx.oncomplete = resolve; tx.onerror = tx.onabort = function () { reject(new Error('清除表单草稿失败')); };
+    });
+    localStorage.removeItem('nfyj_' + ownId);
+    if (source) { var raw = localStorage.getItem('nfyj_' + source.id), saved = raw && JSON.parse(raw); if (saved && saved.snapshotId === source.snapshotId) localStorage.removeItem('nfyj_' + source.id); }
   }
   async function restoreRecoveryDraft(id) {
     await persistState();
     var row = (await draftSnapshots()).find(function (row) { return row.id === id; });
-    if (!row || !row.saved.pending || (row.saved.owner && row.saved.owner !== principal() && principal() !== 'super_admin')) throw new Error('未找到当前账号可恢复的草稿');
+    if (!row || !(row.saved.pending || row.saved.editor) || (row.saved.owner && row.saved.owner !== principal() && principal() !== 'super_admin')) throw new Error('未找到当前账号可恢复的草稿');
+    if (row.saved.editor) return { editor: copy(row.saved.editor), source: { id: row.id, snapshotId: row.saved.snapshotId } };
     draftId = 'draft:' + Date.now() + ':' + Math.random().toString(36).slice(2);
     previousDraftId = '';
     restoreState(row.saved); generation++;
@@ -307,22 +343,38 @@
     try {
       var endpoint = getSyncEndpoint();
       if (!body && knownRevision !== undefined) endpoint += '?revision=' + encodeURIComponent(knownRevision);
-      var response = await fetch(endpoint, {
-        method: body ? 'POST' : 'GET', headers: headers, cache: 'no-store', signal: controller.signal,
-        body: body ? JSON.stringify(body) : undefined
-      });
+      var response;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(endpoint, {
+            method: body ? 'POST' : 'GET', headers: headers, cache: 'no-store', signal: controller.signal,
+            body: body ? JSON.stringify(body) : undefined
+          });
+        } catch (error) {
+          if (error.name !== 'TypeError' || attempt >= 2 || controller.signal.aborted || (body && body.action !== 'update_content')) throw error;
+          await new Promise(function (resolve) { setTimeout(resolve, 300 * (attempt + 1)); });
+          continue;
+        }
+        var jsonResponse = (response.headers.get('Content-Type') || '').includes('application/json');
+        if (jsonResponse && response.status < 500) break;
+        // Only content patches and reads are safe to retry after an ambiguous response.
+        if (attempt >= 2 || (body && body.action !== 'update_content')) break;
+        if (response.body && response.body.cancel) await response.body.cancel();
+        await new Promise(function (resolve) { setTimeout(resolve, 300 * (attempt + 1)); });
+      }
       if (!(response.headers.get('Content-Type') || '').includes('application/json')) {
-        throw Object.assign(new Error('此网址的管理接口尚未部署，请联系网站维护人员。'), { code: 'ENDPOINT_UNAVAILABLE' });
+        throw Object.assign(new Error('服务器暂未响应，请稍后重试。草稿已保留。'), { code: 'ENDPOINT_UNAVAILABLE' });
       }
       var data = await response.json();
       if (!response.ok || !data.ok) {
+        if (body && body.action === 'update_content' && data.code === 'UNKNOWN_ACTION') throw Object.assign(new Error('服务正在更新，请稍后重试。草稿已保留。'), { code: 'SERVER_UPDATING' });
         if (data.code === 'SESSION_EXPIRED') clearSession();
         throw Object.assign(new Error(data.error || '管理服务器请求失败'), data, { status: response.status });
       }
       return data;
     } catch (error) {
       if (typeof error.code === 'string') throw error;
-      throw Object.assign(new Error('暂时连不上管理服务器，请检查网络后重试。本机编辑已保留。'), { code: 'NETWORK_ERROR' });
+      throw Object.assign(new Error('连接失败，草稿已保留，联网后会重试。'), { code: 'NETWORK_ERROR' });
     } finally { clearTimeout(timer); }
   }
   function bundle() {
@@ -341,104 +393,149 @@
   function applyCloud(data) {
     contentIssue = '';
     try { globalThis.HeritageContent.validateBundle(data); }
-    catch (error) { contentIssue = '云端历史数据存在格式问题，异常条目已隔离显示；请导出备份并修复：' + error.message; }
+    catch (error) { contentIssue = '部分历史数据格式异常，已保留原始备份：' + error.message; }
     if (Array.isArray(data.auditLogs)) write(LS.audit_logs, data.auditLogs);
     Object.keys(CONTENT_KEYS).forEach(function (key) {
       if (Object.prototype.hasOwnProperty.call(data, key)) write(CONTENT_KEYS[key], data[key]);
     });
     cloudRevision = data.revision;
+    cloudIncomplete = false;
     cloudBase = copy(bundle());
+    lastSyncedAt = Date.now();
     publishedBundle = null;
     write('nfyj_cloud_revision', cloudRevision);
     triggerFrontEndRefresh();
   }
-  function mergeBundles(base, local, remote) {
-    function comparable(value) {
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        value = Object.assign({}, value);
-        ['creatorName', 'creatorTokenId', 'createdAt'].forEach(function (key) { delete value[key]; });
-      }
-      return globalThis.HeritageContent.canonical(value);
-    }
-    var merged = {};
-    Object.keys(CONTENT_KEYS).forEach(function (key) {
-      var isArray = OBJECT_KEYS.indexOf(key) < 0;
-      function indexed(value) {
-        if (!isArray) return value || {};
-        var map = Object.create(null);
-        (value || []).forEach(function (item) { map[typeof item === 'object' ? item.id : item] = item; });
-        return map;
-      }
-      var before = indexed(base && base[key]);
-      var ours = indexed(local[key]);
-      var theirs = indexed(remote[key]);
-      var result = Object.create(null);
-      Array.from(new Set(Object.keys(theirs).concat(Object.keys(ours), Object.keys(before)))).forEach(function (id) {
-        var b = before[id], l = ours[id], r = theirs[id];
-        var value;
-        if ((!base && l === undefined) || comparable(l) === comparable(b)) value = r;
-        else if (comparable(r) === comparable(b) || comparable(l) === comparable(r)) value = l;
-        else throw Object.assign(new Error('同一条内容在不同设备被修改，本机草稿已保留。请导出备份后核对，避免覆盖老师的内容。'), { code: 'SYNC_CONFLICT' });
-        if (value !== undefined) result[id] = value;
-      });
-      merged[key] = isArray ? Object.values(result) : result;
+  function mergeBundles(base, local, remote, conflicts) {
+    var schema = globalThis.HeritageContent;
+    var before = schema.contentCells(base), ours = schema.contentCells(local), theirs = schema.contentCells(remote);
+    var merged = copy(schema.defaults);
+    Array.from(new Set(Array.from(before.keys()).concat(Array.from(ours.keys()), Array.from(theirs.keys())))).forEach(function (key) {
+      var b = before.get(key), l = ours.get(key), r = theirs.get(key), value;
+      if (conflictKeys.indexOf(key) >= 0 && schema.comparable(l) !== schema.comparable(r)) { conflicts.push(key); value = l; }
+      else if ((!base && l === undefined) || schema.comparable(l) === schema.comparable(b)) value = r;
+      else if (schema.comparable(r) === schema.comparable(b) || schema.comparable(l) === schema.comparable(r)) value = l;
+      else { conflicts.push(key); value = l; }
+      if (value !== undefined) schema.setContentCell(merged, key, value);
     });
     return merged;
   }
-  async function rebasePending() {
-    var latest = await cloudRequest();
-    var merged = mergeBundles(cloudBase, bundle(), latest);
+  function mergeCloudDraft(latest, acknowledged) {
+    var conflicts = [];
+    var base = cloudBase;
+    if (Object.keys(editBases).length || acknowledged && acknowledged.length) {
+      base = copy(cloudBase || globalThis.HeritageContent.defaults);
+      Object.keys(editBases).forEach(function (key) { globalThis.HeritageContent.setContentCell(base, key, editBases[key]); });
+      (acknowledged || []).forEach(function (change) { globalThis.HeritageContent.setContentCell(base, change.key, change.value); delete editBases[change.key]; });
+    }
+    var merged = mergeBundles(base, bundle(), latest, conflicts);
     Object.keys(CONTENT_KEYS).forEach(function (key) { write(CONTENT_KEYS[key], merged[key]); });
     cloudBase = copy(Object.fromEntries(Object.keys(CONTENT_KEYS).map(function (key) { return [key, latest[key] || (OBJECT_KEYS.indexOf(key) >= 0 ? {} : [])]; })));
     cloudRevision = latest.revision;
+    conflictKeys = Array.from(new Set(conflicts));
+    lastSyncedAt = Date.now();
     publishedBundle = null;
-    await persistState();
     triggerFrontEndRefresh();
+  }
+  function changedCells() {
+    var schema = globalThis.HeritageContent, before = schema.contentCells(cloudBase), after = schema.contentCells(bundle());
+    return Array.from(new Set(Array.from(before.keys()).concat(Array.from(after.keys())))).filter(function (key) {
+      return schema.comparable(before.get(key)) !== schema.comparable(after.get(key));
+    }).map(function (key) { return { key: key, before: Object.hasOwn(editBases, key) ? editBases[key] : before.get(key), value: after.get(key) === undefined ? null : after.get(key) }; });
+  }
+  function savedStatus() {
+    if (pending && conflictKeys.length) setSyncStatus('conflict', conflictKeys.length + ' 条草稿需核对，其余内容已同步。');
+    else if (pending) setSyncStatus('pending', '有草稿待上传。');
+    else setSyncStatus('saved', cloudIncomplete ? '已保存，正在更新列表…' : '已同步');
+  }
+  function getConflicts() {
+    var schema = globalThis.HeritageContent, local = schema.contentCells(bundle()), remote = schema.contentCells(cloudBase);
+    return conflictKeys.map(function (key) {
+      var ours = local.get(key), theirs = remote.get(key), item = ours || theirs || {};
+      return { key: key, title: item.name || item.title || item.item && item.item.name || key,
+        canCopy: key.indexOf('Custom/') >= 0 && !!ours, local: ours || null, remote: theirs || null };
+    });
+  }
+  async function resolveConflict(key, choice) {
+    if (conflictKeys.indexOf(key) < 0 || ['cloud', 'copy'].indexOf(choice) < 0) throw new Error('请选择待核对的草稿');
+    var schema = globalThis.HeritageContent, local = bundle(), ours = schema.contentCells(local).get(key), remote = schema.contentCells(cloudBase).get(key);
+    if (choice === 'copy' && (!key.includes('Custom/') || !ours)) throw new Error('此项请先导出备份，再使用云端版本');
+    if (choice === 'copy') {
+      var duplicate = copy(ours), field = key.slice(0, key.indexOf('/'));
+      duplicate.id = 'copy-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+      ['creatorName', 'creatorTokenId', 'createdAt'].forEach(function (prop) { delete duplicate[prop]; });
+      if (duplicate.name) duplicate.name += '（本机副本）';
+      if (duplicate.title) duplicate.title += '（本机副本）';
+      schema.setContentCell(local, field + '/' + duplicate.id, duplicate);
+    }
+    schema.setContentCell(local, key, remote === undefined ? null : remote);
+    Object.keys(CONTENT_KEYS).forEach(function (field) { write(CONTENT_KEYS[field], local[field]); });
+    conflictKeys = conflictKeys.filter(function (item) { return item !== key; });
+    delete editBases[key];
+    generation++; pending = changedCells().length > 0;
+    await persistState(); triggerFrontEndRefresh(); savedStatus();
+    if (pending) await uploadPending();
   }
   async function uploadPending() {
     if (uploadPromise) return uploadPromise;
     uploadPromise = (async function () {
+      var refreshAfterUpload = false;
       try {
         await storageReady;
         if (!pending) return true;
         if (draftOwner && principal() && draftOwner !== principal()) { await persistState(); setSyncStatus('error', '本机草稿属于另一账号，请使用原账号登录或导出备份后重新加载云端。'); return false; }
         if (!getSession()) { await persistState(); setSyncStatus('pending', '本机有未上传草稿，登录后可继续上传'); return false; }
-        if (syncStatus.status === 'conflict') return false;
         await persistState();
-        if (!cloudBase) await rebasePending();
         var retries = 0;
         while (pending) {
           var sentGeneration = generation;
-          var sent = copy(bundle());
-          globalThis.HeritageContent.validateBundle(sent);
-          var data;
-          try {
-            data = await cloudRequest(Object.assign({ action: 'update_custom_bundle', revision: cloudRevision === null ? 0 : cloudRevision }, sent));
-          } catch (error) {
-            if (error.code !== 'SYNC_CONFLICT' || retries++ >= 3) throw error;
-            await rebasePending();
-            continue;
+          globalThis.HeritageContent.validateBundle(bundle());
+          var changed = changedCells();
+          var sendable = copy(changed.filter(function (change) { return conflictKeys.indexOf(change.key) < 0; }));
+          if (!sendable.length) {
+            pending = changed.length > 0;
+            if (!pending) { conflictKeys = []; editBases = {}; draftOwner = ''; }
+            await persistState(); savedStatus(); return !pending;
           }
-          cloudRevision = data.revision;
-          cloudBase = data.content || sent;
+          var changes = await Promise.all(sendable.map(async function (change) {
+            return { key: change.key, baseHash: await globalThis.HeritageContent.cellHash(change.before), value: change.value };
+          }));
+          var data = await cloudRequest({ action: 'update_content', revision: cloudRevision, changes: changes });
+          var acknowledged = changes.filter(function (change) { return data.accepted.indexOf(change.key) >= 0; });
+          var latest = copy(cloudBase || globalThis.HeritageContent.defaults);
+          if (cloudRevision === null || data.revision >= cloudRevision) {
+            acknowledged.forEach(function (change) {
+              var receipt = data.receipts.find(function (row) { return row.key === change.key; });
+              var value = change.value && typeof change.value === 'object' ? Object.assign({}, change.value, receipt.provenance) : change.value;
+              globalThis.HeritageContent.setContentCell(latest, change.key, value);
+            });
+            data.updates.forEach(function (change) { globalThis.HeritageContent.setContentCell(latest, change.key, change.value); });
+            if (data.baseRevision !== cloudRevision) { cloudIncomplete = true; refreshAfterUpload = true; }
+          }
+          latest.revision = cloudIncomplete ? cloudRevision : Math.max(cloudRevision || 0, data.revision);
+          mergeCloudDraft(latest, acknowledged);
           lastReadSession = null;
           if (data.content && Array.isArray(data.content.auditLogs)) write(LS.audit_logs, data.content.auditLogs);
-          if (sentGeneration === generation && data.content) {
-            Object.keys(CONTENT_KEYS).forEach(function (key) { write(CONTENT_KEYS[key], data.content[key]); });
-          }
+          if (Array.isArray(data.auditLogs)) write(LS.audit_logs, data.auditLogs);
           write('nfyj_cloud_revision', cloudRevision);
-          if (sentGeneration === generation) { pending = false; draftOwner = ''; write('nfyj_cloud_pending', false); }
+          pending = changedCells().length > 0;
+          if (!pending) { draftOwner = ''; conflictKeys = []; write('nfyj_cloud_pending', false); }
           await persistState();
+          if (conflictKeys.length && sentGeneration === generation) break;
+          if (retries++ >= 5) break;
         }
         publishedBundle = null;
         triggerFrontEndRefresh();
-        setSyncStatus('saved', '已保存到云端，其他设备可同步查看');
-        return true;
+        savedStatus();
+        return !pending;
       } catch (error) {
         await persistState();
         setSyncStatus(error.code === 'SYNC_CONFLICT' ? 'conflict' : 'error', error.message + (durableDraft ? '' : ' 本机存储不可用，请保持此页面打开并立即导出备份。'));
         return false;
-      } finally { uploadPromise = null; }
+      } finally {
+        uploadPromise = null;
+        if (refreshAfterUpload && typeof window.addEventListener === 'function') setTimeout(function () { syncWithCloud(); }, 0);
+      }
     })();
     return uploadPromise;
   }
@@ -447,7 +544,7 @@
     pending = true;
     generation++;
     write('nfyj_cloud_pending', true);
-    if (syncStatus.status !== 'conflict') setSyncStatus('pending', '正在保存草稿并上传云端，请勿关闭页面…');
+    if (syncStatus.status !== 'conflict') setSyncStatus('pending', '正在保存…');
     var result = uploadPending();
     if (typeof callback === 'function') result.then(callback);
     return result;
@@ -460,25 +557,30 @@
     if (!pullPromise) pullPromise = (async function () {
       try {
         await storageReady;
-        if (pending && getSession() && !(await uploadPending())) return null;
-        var data = await cloudRequest(null, false, !pending && cloudBase && lastReadSession === bearer ? cloudRevision : undefined);
+        var uploaded = !pending || !getSession() || await uploadPending();
+        var data = await cloudRequest(null, false, !pending && !cloudIncomplete && cloudBase && lastReadSession === bearer ? cloudRevision : undefined);
         if (Array.isArray(data.tokens)) write(LS.tokens, data.tokens);
         if (Array.isArray(data.lockouts)) write(LS.locked_clients, data.lockouts);
         if (Array.isArray(data.notifications)) write(LS.notifications, data.notifications);
         if (Array.isArray(data.contributions)) contributionRows = data.contributions;
         if (data.unchanged) {
-          if (!pending) setSyncStatus('saved', '已与云端同步');
+          if (!pending) savedStatus();
         } else if (pending && !getSession()) {
           publishedBundle = data;
           triggerFrontEndRefresh();
           setSyncStatus('pending', '已显示云端发布内容；本机未上传草稿已保留，登录后可恢复上传');
+        } else if (pending && getSession() && (cloudRevision === null || data.revision >= cloudRevision)) {
+          cloudIncomplete = false;
+          mergeCloudDraft(data);
+          await persistState();
+          if (uploaded || conflictKeys.length) savedStatus();
         } else if (!pending && (cloudRevision === null || data.revision >= cloudRevision)) {
           applyCloud(data);
           lastReadSession = bearer;
           await persistState();
-          setSyncStatus('saved', '已与云端同步');
+          savedStatus();
         }
-        return data;
+        return uploaded || conflictKeys.length ? data : null;
       } catch (error) {
         if (error.code === 'SESSION_EXPIRED') {
           try { publishedBundle = await cloudRequest(null, true); triggerFrontEndRefresh(); } catch (_) {}
@@ -500,7 +602,8 @@
       await persistState();
       throw new Error('重新加载期间有新的编辑，已保留本机草稿。请核对并导出备份后重试。');
     }
-    pending = false; draftOwner = '';
+    if (pending) { previousDraftId = ''; draftId = 'draft:' + Date.now() + ':' + Math.random().toString(36).slice(2); }
+    pending = false; draftOwner = ''; conflictKeys = []; editBases = {}; recoverySource = null;
     write('nfyj_cloud_pending', false);
     applyCloud(data);
     await persistState();
@@ -667,7 +770,8 @@
     return entry;
   }
 
-  function updateEntry(id, patch, creatorInfo) {
+  function updateEntry(id, patch, creatorInfo, version) {
+    rememberEditVersion(version);
     var custom = read(LS.custom, []);
     if (!unambiguous(custom, id, 'kb')) return false;
     for (var i = 0; i < custom.length; i++) {
@@ -787,7 +891,8 @@
     return card;
   }
 
-  function updateHeritageCard(id, patch) {
+  function updateHeritageCard(id, patch, version) {
+    rememberEditVersion(version);
     var custom = read(LS.kepu_custom, []);
     if (!unambiguous(custom, id, 'kepu')) return false;
     for (var i = 0; i < custom.length; i++) {
@@ -831,6 +936,14 @@
 
   function getCustomDialectTracks() {
     return displayRecords(visibleContent('dialectCustom', []), 'dialect');
+  }
+  function getEditVersion(type, id) {
+    var custom = read(CONTENT_KEYS[type + 'Custom'], []), isCustom = custom.some(function (entry) { return entry && entry.id === id; });
+    var key = type + (isCustom ? 'Custom/' : 'Edited/') + id;
+    return { key: key, value: copy(globalThis.HeritageContent.contentCells(bundle()).get(key) || null) };
+  }
+  function rememberEditVersion(version) {
+    if (version && typeof version.key === 'string' && !Object.hasOwn(editBases, version.key)) editBases[version.key] = copy(version.value);
   }
 
   function addDialectTrack(track, creatorInfo) {
@@ -961,10 +1074,17 @@
     getSession: getSession,
     clearSession: clearSession,
     logout: logout,
-    getSyncStatus: function () { return Object.assign({ pending: pending, revision: cloudRevision }, syncStatus); },
+    getSyncStatus: function () { return Object.assign({ pending: pending, revision: cloudRevision, cloudLoaded: !!cloudBase && !cloudIncomplete, cloudCustomCount: cloudBase ? (cloudBase.kepuCustom || []).length : null,
+      pendingCount: pending ? changedCells().length : 0, conflictCount: conflictKeys.length, lastSyncedAt: lastSyncedAt }, syncStatus); },
+    isContentSaved: function (key) { return changedCells().every(function (change) { return change.key !== key; }); },
+    getConflicts: getConflicts,
+    resolveConflict: resolveConflict,
+    getEditVersion: getEditVersion,
     reloadCloudContent: reloadCloudContent,
     getRecoveryDrafts: getRecoveryDrafts,
     restoreRecoveryDraft: restoreRecoveryDraft,
+    saveEditorDraft: saveEditorDraft,
+    clearEditorDraft: clearEditorDraft,
     getAuditLogs: getAuditLogs,
     clearAuditLogs: clearAuditLogs,
 

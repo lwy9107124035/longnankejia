@@ -1,5 +1,5 @@
 /**
- * 龙南客家非遗数智管理工作台 (Admin Console Pro)
+ * 龙南客家非遗内容管理 (Admin Console Pro)
  * ------------------------------------------------------------
  * 1. 邀请制权限与令牌鉴权体系 (超级管理员主口令 + 专属邀请令牌)
  * 2. 知识库可视化管理 (分类筛选、搜索、卡片编辑、实时提问测试)
@@ -19,6 +19,8 @@
   var editingKepuId = null;
   var editingDialectId = null;
   var parsedDrafts = []; // 文档解析出的待入库草稿列表
+  var renderedRevision = null;
+  var editorVersion = null;
 
   function $(sel) { return document.querySelector(sel); }
   function esc(s) {
@@ -41,8 +43,22 @@
     var status = window.Store.getSyncStatus();
     var label = $('#adminCloudStatus');
     if (label) { label.textContent = status.message; label.dataset.status = status.status; }
+    var count = $('#adminCloudCount');
+    if (count) count.textContent = (status.cloudLoaded ? '云端科普 ' + status.cloudCustomCount + ' 条' : '正在读取云端资料') + (status.pendingCount ? ' · 待上传 ' + status.pendingCount + ' 项' : '');
     var reload = $('#reloadCloudBtn');
     if (reload) reload.hidden = status.status !== 'conflict';
+    var review = $('#reviewConflictsBtn');
+    if (review) review.hidden = !status.conflictCount;
+  }
+  function refreshAdminIfIdle() {
+    if (!authenticated || !$('#adminBody') || $('#adminMask').hidden) return;
+    if (['import', 'ai', 'token', 'sys'].indexOf(currentTab) >= 0) return;
+    if (['#kbForm', '#kepuForm', '#dialectForm'].some(function (selector) { var form = $(selector); return form && form.style.display !== 'none'; })) return;
+    var status = window.Store.getSyncStatus();
+    if (status.revision === renderedRevision) return;
+    var search = $('#adminBody input[type="text"]'), query = search && search.value;
+    renderTab();
+    if (query) { search = $('#adminBody input[type="text"]'); if (search) { search.value = query; search.dispatchEvent(new Event('input')); } }
   }
   function adminAction(action) {
     return Promise.resolve().then(action).catch(function (error) { alert(error.message); });
@@ -70,7 +86,7 @@
     $('#adminPanel').classList.remove('admin-workspace');
     $('#adminPanel').innerHTML =
       '<div class="admin-login"><div class="admin-login-icon">🔐</div>' +
-      '<div class="admin-login-title">数智管理工作台</div>' +
+      '<div class="admin-login-title">内容管理</div>' +
       '<div class="admin-login-hint">请输入管理员密码或邀请令牌</div>' +
       '<form class="admin-login-form" id="adminLoginForm">' +
       '<div class="admin-pw-wrap"><input type="password" id="adminPwInput" placeholder="请输入密码或邀请码" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false">' +
@@ -145,23 +161,23 @@
     panel.innerHTML =
       '<div class="admin-header">' +
       '  <div class="admin-header-left">' +
-      '    <div class="admin-header-title">⚙️ 非遗数智管理工作台</div>' +
+      '    <div class="admin-header-title">⚙️ 非遗内容管理</div>' +
       '    ' + userBadge +
       '  </div>' +
       '  <div class="admin-header-right">' +
-      '    <button class="admin-btn-sync" id="adminHeaderSyncBtn" title="与云端双向同步数据（手机端与电脑端实时互通）" style="background:var(--primary-deep,#2F5D50);color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:12px;cursor:pointer;margin-right:6px">☁️ 立即同步云端</button>' +
+      '    <button class="admin-btn-sync" id="adminHeaderSyncBtn" title="同步其他设备的新内容" style="background:var(--primary-deep,#2F5D50);color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:12px;cursor:pointer;margin-right:6px">同步</button>' +
       '    <button class="admin-btn-logout" id="adminHeaderLogoutBtn" title="退出当前登录状态">🚪 退出登录</button>' +
       '    <button class="admin-close-btn" id="adminCloseBtn">✕ 关闭</button>' +
       '  </div>' +
       '</div>' +
-      '<div class="admin-cloud-bar"><span id="adminCloudStatus" role="status"></span><button class="admin-btn-sm" id="backupDraftBtn">导出本机备份</button><button class="admin-btn-sm" id="recoverDraftBtn">找回其他页面草稿</button><button class="admin-btn-sm" id="reloadCloudBtn" hidden>重新加载云端内容</button></div>' +
+      '<div class="admin-cloud-bar"><span id="adminCloudStatus" role="status"></span><span id="adminCloudCount"></span><button class="admin-btn-sm" id="backupDraftBtn">导出备份</button><button class="admin-btn-sm" id="recoverDraftBtn">找回草稿</button><button class="admin-btn-sm" id="reviewConflictsBtn" hidden>核对冲突</button><button class="admin-btn-sm" id="reloadCloudBtn" hidden>读取云端版本</button></div>' +
       notifBanner +
       '<div class="admin-tabs">' +
       '  <button class="admin-tab active" data-tab="kb">📚 知识库</button>' +
       '  <button class="admin-tab" data-tab="kepu">🏮 科普管理</button>' +
       '  <button class="admin-tab" data-tab="dialect">🗣 方言管理</button>' +
       '  <button class="admin-tab" data-tab="import">📂 文档导入</button>' +
-      '  <button class="admin-tab" data-tab="ai">🤖 AI工作流</button>' +
+      '  <button class="admin-tab" data-tab="ai">🤖 问答设置</button>' +
       (isSuper ? '  <button class="admin-tab" data-tab="token">🔑 邀请令牌</button>' : '') +
       '  <button class="admin-tab" data-tab="sys">🛠 系统备份</button>' +
       '</div>' +
@@ -171,20 +187,40 @@
     $('#adminHeaderLogoutBtn').addEventListener('click', doLogout);
 
     showSyncStatus();
+    window.Store.getRecoveryDrafts().then(function (drafts) {
+      var button = $('#recoverDraftBtn');
+      if (button) button.textContent = '找回草稿' + (drafts.length ? '（' + drafts.length + '）' : '');
+    }, function (error) { var button = $('#recoverDraftBtn'); if (button) button.title = error.message; });
     $('#backupDraftBtn').addEventListener('click', function () {
       downloadJson(window.Store.exportFullBundle(), 'longnan-local-backup.json');
     });
     $('#recoverDraftBtn').addEventListener('click', function () { adminAction(async function () {
       var drafts = await window.Store.getRecoveryDrafts();
       if (!drafts.length) { alert('没有其他页面遗留的未上传草稿。'); return; }
-      var selected = prompt('选择要找回的草稿编号（当前草稿会单独保留）：\n' + drafts.map(function (d, i) { return (i + 1) + '. ' + new Date(d.time).toLocaleString() + '，含 ' + d.count + ' 条自定义资料'; }).join('\n'));
+      var selected = prompt('输入草稿编号：\n' + drafts.map(function (d, i) { return (i + 1) + '. ' + new Date(d.time).toLocaleString() + ' · ' + (d.editor ? (d.title || '未命名表单') : d.count + ' 条资料'); }).join('\n'));
       if (selected === null) return;
       var draft = drafts[Number(selected) - 1];
       if (!draft) throw new Error('请输入列表中的草稿编号');
-      await window.Store.restoreRecoveryDraft(draft.id); renderTab();
+      var recovered = await window.Store.restoreRecoveryDraft(draft.id);
+      if (recovered && recovered.editor) {
+        currentTab = 'kepu';
+        panel.querySelectorAll('.admin-tab').forEach(function (tab) { tab.classList.toggle('active', tab.dataset.tab === 'kepu'); });
+        renderTab(); editingKepuId = recovered.editor.recordId || null; showKepuForm(recovered.editor.value, recovered);
+      } else renderTab();
+    }); });
+    $('#reviewConflictsBtn').addEventListener('click', function () { adminAction(async function () {
+      var conflicts = window.Store.getConflicts();
+      var selected = prompt('输入要核对的条目编号：\n' + conflicts.map(function (item, i) { return (i + 1) + '. ' + item.title; }).join('\n'));
+      if (selected === null) return;
+      var item = conflicts[Number(selected) - 1];
+      if (!item) throw new Error('请输入列表中的编号');
+      var choice = prompt('「' + item.title + '」\n输入 1 使用云端版本；' + (item.canCopy ? '输入 2 将本机内容另存为新条目。' : '本机内容可先导出备份。'));
+      if (choice === null) return;
+      if (choice !== '1' && !(choice === '2' && item.canCopy)) throw new Error('请选择有效的处理方式');
+      await window.Store.resolveConflict(item.key, choice === '1' ? 'cloud' : 'copy'); renderTab();
     }); });
     $('#reloadCloudBtn').addEventListener('click', function () {
-      if (confirm('请先导出本机备份。重新加载会用云端版本替换本机尚未同步的编辑，确定继续吗？')) adminAction(async function () {
+      if (confirm('读取云端版本？当前未上传内容会保留在“找回草稿”中。')) adminAction(async function () {
         await window.Store.reloadCloudContent(); renderTab();
       });
     });
@@ -223,7 +259,8 @@
         refreshFrontEnd();
         var formKb = $('#kbForm');
         var formKp = $('#kepuForm');
-        var isEditing = (formKb && formKb.style.display !== 'none') || (formKp && formKp.style.display !== 'none') || editingId !== null || editingKepuId !== null;
+        var formDialect = $('#dialectForm');
+        var isEditing = (formKb && formKb.style.display !== 'none') || (formKp && formKp.style.display !== 'none') || (formDialect && formDialect.style.display !== 'none') || editingId !== null || editingKepuId !== null;
         if (!isEditing) {
           renderTab();
         }
@@ -234,6 +271,7 @@
   function renderTab() {
     var body = $('#adminBody');
     if (!body) return;
+    renderedRevision = window.Store.getSyncStatus().revision;
     if (currentTab === 'kb') renderKB(body);
     else if (currentTab === 'kepu') renderKepu(body);
     else if (currentTab === 'dialect') renderDialect(body);
@@ -601,6 +639,7 @@
   }
 
   function showKBForm(entry) {
+    editorVersion = editingId ? window.Store.getEditVersion('kb', editingId) : null;
     var form = $('#kbForm');
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -618,8 +657,8 @@
       '  <label class="admin-label">阿蓝回答正文内容 *</label>' +
       '  <textarea id="kbAnswer" class="admin-textarea" rows="6" placeholder="阿蓝对该知识的权威回答内容…">' + esc(entry ? entry.answer : '') + '</textarea>' +
       '  <div class="admin-form-actions">' +
-      '    <button class="admin-btn admin-btn-primary" id="kbSaveBtn">保 存</button>' +
-      '    <button class="admin-btn" id="kbCancelBtn">取 消</button>' +
+      '    <button class="admin-btn admin-btn-primary" id="kbSaveBtn">保存</button>' +
+      '    <button class="admin-btn" id="kbCancelBtn">取消</button>' +
       '  </div>' +
       '</div>';
 
@@ -638,7 +677,7 @@
       };
 
       if (editingId) {
-        window.Store.updateEntry(editingId, data, currentUser);
+        window.Store.updateEntry(editingId, data, currentUser, editorVersion);
       } else {
         window.Store.addEntry(data, currentUser);
       }
@@ -664,11 +703,12 @@
     var builtinCards = rawCards.filter(function (c) { return customCards.indexOf(c) === -1; });
 
     var sortedCards = customCards.concat(builtinCards);
+    var cloud = window.Store.getSyncStatus();
 
     body.innerHTML =
       '<div class="admin-stats-bar">' +
-      '  <div class="admin-stat-card"><div class="admin-stat-val">' + rawCards.length + '</div><div class="admin-stat-label">科普总卡片</div></div>' +
-      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + customCards.length + '</div><div class="admin-stat-label">自定义卡片</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + (cloud.cloudLoaded ? rawCards.length : '—') + '</div><div class="admin-stat-label">科普总卡片</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + (cloud.cloudLoaded ? customCards.length : '—') + '</div><div class="admin-stat-label">自定义卡片</div></div>' +
       '  <div class="admin-stat-card"><div class="admin-stat-val">' + builtinCards.length + '</div><div class="admin-stat-label">内置卡片</div></div>' +
       '</div>' +
       '<div class="admin-kb-toolbar">' +
@@ -684,7 +724,7 @@
       '    <option value="custom">来源：仅自定义 (' + customCards.length + ')</option>' +
       '    <option value="builtin">来源：仅内置 (' + builtinCards.length + ')</option>' +
       '  </select>' +
-      '  <div class="admin-toolbar-tip" style="margin-left:auto;font-size:11px;color:var(--muted)">前台【🏮 科普】面板内容，即时联动渲染</div>' +
+      '  <div class="admin-toolbar-tip" style="margin-left:auto;font-size:11px;color:var(--muted)">保存后显示在科普页</div>' +
       '</div>' +
       '<div class="admin-kb-form" id="kepuForm" style="display:none"></div>' +
       '<div class="admin-kepu-grid" id="kepuList"></div>';
@@ -774,7 +814,7 @@
 
       return '<div class="admin-kepu-card" style="border-left: 4px solid ' + (c.accent || '#2F5D50') + '">' +
         '<div class="admin-kepu-head">' +
-        '  <span class="admin-kepu-icon">' + (c.icon || '🏮') + '</span>' +
+      '  <span class="admin-kepu-icon">' + esc(c.icon || '🏮') + '</span>' +
         '  <span class="admin-kepu-name">' + esc(c.name) + '</span>' + badge + catBadge + mediaBadges +
         '</div>' +
         '<div class="admin-kepu-tag">' + esc(c.tag || '') + '</div>' +
@@ -923,11 +963,14 @@
     reader.readAsDataURL(file);
   }
 
-  function showKepuForm(card) {
+  function showKepuForm(card, recovery) {
     var form = $('#kepuForm') || $('#kpForm');
     if (!form) return;
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var version = recovery ? recovery.editor.version : editingKepuId ? window.Store.getEditVersion('kepu', editingKepuId) : null;
+    var formDraftId = 'editor:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+    var formFinished = false, formRecordId = editingKepuId;
 
     var initialImg = card ? (card.imageUrl || card.image || '') : '';
     var initialVid = card ? (card.videoUrl || card.video || '') : '';
@@ -935,7 +978,7 @@
 
     form.innerHTML =
       '<div class="admin-form-box">' +
-      '  <div class="admin-form-title">' + (card ? (editingKepuId ? '编辑科普卡片' : '基于模板新增科普卡片') : '新增科普卡片') + '</div>' +
+      '  <div class="admin-form-title">' + (recovery ? '继续填写科普卡片' : card ? (editingKepuId ? '编辑科普卡片' : '基于模板新增科普卡片') : '新增科普卡片') + '</div>' +
       '  <div class="admin-form-row">' +
       '    <div style="flex:1">' +
       '      <label class="admin-label">卡片名称 *</label>' +
@@ -973,7 +1016,7 @@
       '    <div class="admin-upload-preview-wrap" id="kpPreviewWrap" style="' + (initialImg ? 'display:flex' : 'display:none') + '">' +
       '      <img id="kpImgThumb" class="admin-upload-thumb" src="' + esc(initialImg) + '" alt="配图预览">' +
       '      <div class="admin-upload-info">' +
-      '        <div id="kpImgInfoText" class="admin-upload-name">' + esc(initialImg ? (initialImg.indexOf('data:') === 0 ? '已嵌入本地优化图片' : initialImg) : '已选图片') + '</div>' +
+      '        <div id="kpImgInfoText" class="admin-upload-name">' + esc(initialImg ? (initialImg.indexOf('data:') === 0 ? '已选图片' : initialImg) : '已选图片') + '</div>' +
       '        <div class="admin-upload-btns">' +
       '          <button type="button" class="admin-btn-sm" id="kpRechooseBtn">📷 更换图片</button>' +
       '          <button type="button" class="admin-btn-sm admin-btn-del" id="kpRemoveImgBtn">🗑️ 移除</button>' +
@@ -984,7 +1027,7 @@
       '      <button type="button" class="admin-btn admin-btn-primary" id="kpChooseBtn" style="padding:7px 16px;font-size:12px">' +
       '        📷 点击选择本地图片 / 拍照上传' +
       '      </button>' +
-      '      <div class="admin-upload-hint">支持手机拍照/相册或电脑本地图片（支持拖拽或粘贴，自动智能压缩保真并秒级多端同步）</div>' +
+      '      <div class="admin-upload-hint">可拍照、选图、拖入或粘贴，图片会自动压缩。</div>' +
       '    </div>' +
       '    <div class="admin-manual-toggle">' +
       '      <a href="javascript:void(0)" id="kpToggleManual" class="admin-manual-link">🔗 手动输入图片链接或本地相对路径</a>' +
@@ -999,13 +1042,30 @@
       '  <label class="admin-label" style="margin-top:8px">科普详情正文</label>' +
       '  <div class="admin-hint">直接按回车换行，空一行分段，无需输入标签。兼容已有 HTML 段落。</div>' +
       '  <textarea id="kpDetail" class="admin-textarea" rows="8" placeholder="在此输入或粘贴正文，按回车即可换行…">' + esc(card ? card.detail : '') + '</textarea>' +
-      '  <label class="admin-label">点击向阿蓝提问的默认问题</label>' +
+      '  <div class="admin-hint" id="kpDraftStatus">输入内容会保存为本机草稿。点击保存后上传。</div>' +
+      '  <label class="admin-label">默认提问</label>' +
       '  <input type="text" id="kpAsk" class="admin-input" value="' + esc(card ? card.ask : '') + '" placeholder="例如：龙南大漆有什么特色？">' +
       '  <div class="admin-form-actions">' +
-      '    <button class="admin-btn admin-btn-primary" id="kpSaveBtn">保 存</button>' +
-      '    <button class="admin-btn" id="kpCancelBtn">取 消</button>' +
+      '    <button class="admin-btn admin-btn-primary" id="kpSaveBtn">保存</button>' +
+      '    <button class="admin-btn" id="kpCancelBtn">取消</button>' +
       '  </div>' +
       '</div>';
+
+    function editorData() {
+      var ids = { name: 'kpName', category: 'kpCategory', icon: 'kpIcon', tag: 'kpTag', accent: 'kpAccent', bg: 'kpBg', imageUrl: 'kpImage', videoUrl: 'kpVideo', detail: 'kpDetail', ask: 'kpAsk' };
+      var value = {};
+      Object.keys(ids).forEach(function (key) { value[key] = form.querySelector('#' + ids[key]).value; });
+      return { type: 'kepu', recordId: formRecordId, version: version, value: value };
+    }
+    async function preserveEditor() {
+      if (formFinished || !form.querySelector('#kpName')) return;
+      var editor = editorData();
+      if (!editor.value.name && !editor.value.detail && !editor.value.imageUrl) return;
+      var saved = await window.Store.saveEditorDraft(editor, formDraftId);
+      var hint = form.querySelector('#kpDraftStatus');
+      if (hint && !formFinished) hint.textContent = saved ? '本机草稿已保存，尚未上传。' : '无法保存本机草稿，请复制正文备份。';
+    }
+    form.oninput = function () { preserveEditor().catch(function () { var hint = $('#kpDraftStatus'); if (hint) hint.textContent = '草稿保存失败，请复制正文备份。'; }); };
 
     var fileInput = $('#kpImageFile');
     var imageInput = $('#kpImage');
@@ -1017,7 +1077,7 @@
     var imageTask = 0;
     function imageBusy(busy) {
       $('#kpSaveBtn').disabled = busy;
-      $('#kpSaveBtn').textContent = busy ? '正在处理图片…' : '保 存';
+      $('#kpSaveBtn').textContent = busy ? '正在处理图片…' : '保存';
     }
 
     function applyImageData(dataUrl, label) {
@@ -1027,6 +1087,7 @@
       infoText.textContent = label || '已选图片';
       previewWrap.style.display = 'flex';
       promptBox.style.display = 'none';
+      preserveEditor();
     }
 
     function handleFile(file) {
@@ -1061,6 +1122,7 @@
       imgThumb.src = '';
       previewWrap.style.display = 'none';
       promptBox.style.display = 'block';
+      preserveEditor();
     });
 
     $('#kpToggleManual').addEventListener('click', function () {
@@ -1116,17 +1178,24 @@
       saveBtn.textContent = '正在上传…';
 
       var data = { name: name, category: category, icon: icon, tag: tag, accent: accent, bg: bg, detail: detail, ask: ask, imageUrl: imageUrl, videoUrl: videoUrl };
-      if (editingKepuId) {
-        window.Store.updateHeritageCard(editingKepuId, data);
-      } else {
-        editingKepuId = window.Store.addHeritageCard(data, currentUser).id;
-      }
+      try {
+        if (editingKepuId && (window.Heritage ? window.Heritage.list() : window.Store.getHeritageCards([])).some(function (item) { return item.id === editingKepuId; })) {
+          if (!window.Store.updateHeritageCard(editingKepuId, data, version)) throw new Error('保存失败，请先核对该条目');
+        } else {
+          if (editingKepuId) data.id = editingKepuId;
+          editingKepuId = window.Store.addHeritageCard(data, currentUser).id;
+        }
+        formRecordId = editingKepuId;
+        await preserveEditor();
+      } catch (error) { saveBtn.disabled = false; saveBtn.textContent = '保存'; showAdminToast(error.message); return; }
       refreshFrontEnd();
       var saved = await window.Store.flushPending();
       saveBtn.disabled = false;
-      saveBtn.textContent = '保 存';
-      if (!saved) { showAdminToast('尚未上传成功：' + window.Store.getSyncStatus().message); return; }
-      showAdminToast('已保存到云端，其他设备可同步查看');
+      saveBtn.textContent = '保存';
+      if (!saved && !window.Store.isContentSaved((version && version.key.indexOf('Edited/') >= 0 ? 'kepuEdited/' : 'kepuCustom/') + editingKepuId)) { showAdminToast(window.Store.getSyncStatus().message); return; }
+      formFinished = true;
+      await window.Store.clearEditorDraft(recovery && recovery.source, formDraftId);
+      showAdminToast('已保存');
       form.style.display = 'none';
       editingKepuId = null;
       renderTab();
@@ -1314,8 +1383,8 @@
       '  <label class="admin-label">音视频嵌入链接 / 播放地址 *</label>' +
       '  <input type="url" id="dlUrl" class="admin-input" placeholder="https://... 视频或音频地址">' +
       '  <div class="admin-form-actions">' +
-      '    <button class="admin-btn admin-btn-primary" id="dlSaveBtn">保 存</button>' +
-      '    <button class="admin-btn" id="dlCancelBtn">取 消</button>' +
+      '    <button class="admin-btn admin-btn-primary" id="dlSaveBtn">保存</button>' +
+      '    <button class="admin-btn" id="dlCancelBtn">取消</button>' +
       '  </div>' +
       '</div>';
 
@@ -1356,7 +1425,7 @@
   function renderImport(body) {
     body.innerHTML =
       '<div class="admin-import-panel">' +
-      '  <div class="admin-form-title">📂 智能文档解析与批量入库</div>' +
+      '  <div class="admin-form-title">导入文档</div>' +
       '  <div class="admin-hint">支持拖拽或选择 Word (.docx)、Markdown (.md)、文本文档 (.txt) 或 JSON 文件。系统自动提取结构化问答条目。</div>' +
       '  <div class="admin-dropzone" id="fileDropzone">' +
       '    <div class="admin-dropzone-icon">📄</div>' +
@@ -1366,7 +1435,7 @@
       '  </div>' +
       '  <div class="admin-drafts-header" id="draftsHeader" style="display:none">' +
       '    <span class="admin-drafts-title" id="draftsCountTitle">解析出的条目草稿 (0)</span>' +
-      '    <button class="admin-btn admin-btn-primary" id="batchCommitBtn">🚀 一键批量入库</button>' +
+      '    <button class="admin-btn admin-btn-primary" id="batchCommitBtn">导入所选条目</button>' +
       '  </div>' +
       '  <div class="admin-drafts-list" id="draftsList"></div>' +
       '</div>';
@@ -1629,8 +1698,8 @@
 
     body.innerHTML =
       '<div class="admin-form-box">' +
-      '  <div class="admin-form-title">🤖 智能体工作流与模型编排</div>' +
-      '  <label class="admin-label">底座大语言模型 (LLM)</label>' +
+      '  <div class="admin-form-title">问答设置</div>' +
+      '  <label class="admin-label">模型</label>' +
       '  <select id="apiModel" class="admin-input">' +
       '    <option value="Qwen/Qwen3-30B-A3B-Instruct-2507"' + (curModel === 'Qwen/Qwen3-30B-A3B-Instruct-2507' ? ' selected' : '') + '>通义千问 Qwen3-30B (垂直非遗推理推荐)</option>' +
       '    <option value="Qwen/Qwen2.5-7B-Instruct"' + (curModel === 'Qwen/Qwen2.5-7B-Instruct' ? ' selected' : '') + '>通义千问 Qwen2.5-7B (轻量高响应)</option>' +
@@ -1679,7 +1748,7 @@
     body.innerHTML =
       '<div class="admin-form-box">' +
       '  <div class="admin-form-title">🔑 管理员邀请令牌签发与治理</div>' +
-      '  <div class="admin-hint">为龙南文旅、文化馆专员签发专属受邀令牌。超级管理员可随时监控活跃状态、暂停/恢复授权、彻底销毁，或一键撤销某个令牌录入的所有数据。</div>' +
+      '  <div class="admin-hint">为录入人员生成邀请码，可暂停、撤销或查看其修改记录。</div>' +
       '  <div class="admin-form-row" style="margin-top:10px">' +
       '    <div style="flex:2">' +
       '      <label class="admin-label">使用人单位 / 备注 *</label>' +
@@ -1706,7 +1775,7 @@
       '    <div class="admin-audit-title">🛡️ 登录安全防御与客户端锁定监控 (' + lockedClients.length + ')</div>' +
       '    <div style="display:flex;gap:6px">' +
       '      <button class="admin-btn-sm" id="refreshLocksBtn">🔄 刷新监控</button>' +
-      '      <button class="admin-btn-sm admin-btn-del" id="unlockAllClientsBtn">🔓 全部一键解除</button>' +
+      '      <button class="admin-btn-sm admin-btn-del" id="unlockAllClientsBtn">🔓 全部解除</button>' +
       '    </div>' +
       '  </div>' +
       '  <div class="admin-hint" style="margin:6px 12px 10px;">当任何设备连续输错密码或令牌达到 5 次，系统将自动封锁其登录以防暴力破解。超级管理员可在此查看客户端 IP、终端类型、尝试次数并随时手动解封。</div>' +
@@ -1975,7 +2044,7 @@
         '<div class="admin-token-success-title">🎉 令牌签发成功！请将以下专属邀请令牌发给对方：</div>' +
         '<div class="admin-token-key-row">' +
         '  <input type="text" readonly value="' + created.token + '" class="admin-input token-highlight" id="newTokBox">' +
-        '  <button class="admin-btn admin-btn-primary" id="copyNewTokBtn">一键复制</button>' +
+        '  <button class="admin-btn admin-btn-primary" id="copyNewTokBtn">复制</button>' +
         '</div>';
       $('#copyNewTokBtn').addEventListener('click', function () {
         var box = $('#newTokBox');
@@ -2038,11 +2107,11 @@
       '</div>' : '') +
 
       '<div class="admin-form-box" style="margin-top:12px">' +
-      '  <div class="admin-form-title">📦 全站数智资产包一键备份与恢复</div>' +
-      '  <div class="admin-hint">将知识库、科普卡片、方言语料及AI工作流设置一并打包导出。发给技术人员可秒级合并发布至正式站。</div>' +
+      '  <div class="admin-form-title">备份与恢复</div>' +
+      '  <div class="admin-hint">导出知识、科普、方言和问答设置，供备份或恢复。</div>' +
       '  <div class="admin-form-row" style="margin-top:8px">' +
-      '    <button class="admin-btn admin-btn-primary" id="exportBundleBtn">📥 导出全站资产包 (JSON)</button>' +
-      '    <button class="admin-btn" id="importBundleBtn">📤 导入全站资产包</button>' +
+      '    <button class="admin-btn admin-btn-primary" id="exportBundleBtn">📥 导出备份 (JSON)</button>' +
+      '    <button class="admin-btn" id="importBundleBtn">📤 导入备份</button>' +
       '    <input type="file" id="bundleFileInput" accept=".json" style="display:none">' +
       '  </div>' +
       '  <div class="admin-form-row" style="margin-top:8px">' +
@@ -2093,7 +2162,7 @@
       reader.onload = async function () {
         if (window.Store.importFullBundle(reader.result)) {
           var saved = await window.Store.flushPending();
-          alert(saved ? '全站资产包已恢复并上传云端。' : '已导入本机，尚未上传成功：' + window.Store.getSyncStatus().message);
+          alert(saved ? '备份已恢复并上传。' : '已导入本机，尚未上传成功：' + window.Store.getSyncStatus().message);
           refreshFrontEnd();
           renderTab();
         } else {
@@ -2261,6 +2330,7 @@
     window.addEventListener('admin-sync-status', function () {
       if (authenticated && !window.Store.getSession()) showLogin('登录已失效，请重新登录。');
       showSyncStatus();
+      refreshAdminIfIdle();
     });
 
     var entry = document.getElementById('adminEntry');
@@ -2281,10 +2351,7 @@
     close: close,
     refreshCurrentView: function () {
       refreshFrontEnd();
-      var mask = document.getElementById('adminMask');
-      if (authenticated && mask && !mask.hidden) {
-        renderTab();
-      }
+      refreshAdminIfIdle();
     }
   };
 })();
