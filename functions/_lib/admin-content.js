@@ -4,7 +4,8 @@ export const DEFAULTS = { ...globalThis.HeritageContent.defaults, auditLogs: [] 
 export function validateContent(body) { return globalThis.HeritageContent.validateBundle(body); }
 const clone = value => JSON.parse(JSON.stringify(value));
 const stable = globalThis.HeritageContent.canonical;
-const equal = (a, b) => stable(a) === stable(b);
+const equal = (a, b) => a === b || (a && b && typeof a === 'object' && typeof b === 'object'
+  && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => a[key] === b[key])) || stable(a) === stable(b);
 async function fingerprint(value) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stable(value)));
   return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
@@ -101,9 +102,9 @@ export async function updatedContent(current, submitted, user, tokens) {
         else delete value[prop];
       }
       if (!previous) Object.assign(value, { creatorName: user.name, creatorTokenId: user.tokenId, createdAt: Date.now() });
-      setCell(next, key, value);
     }
     if (equal(previous, value)) continue;
+    setCell(next, key, value);
     changes++;
     // Store only the old changed fields and a digest, so changing a title never duplicates its image.
     next._history.push({ id: crypto.randomUUID(), key, tokenId: user.tokenId, actor: user.name, time: Date.now(),
