@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAdminBackend } from './helpers/admin-harness.mjs';
 import { setupEnvironment } from './helpers/store-harness.mjs';
+import { safeContent, applyChanges } from '../functions/_lib/admin-content.js';
 
 async function login(device, credential = 'admin123') {
   const result = await device.store.verifyLogin(credential);
@@ -178,4 +179,18 @@ test('the patch API validates every change, forbids editor config changes, and c
   result = await backend.call({ action: 'update_content', changes: [add] }, user.bearer); assert.equal(result.status, 200);
   result = await backend.call({ action: 'update_content', changes: [{ ...add, value: null }] }, user.bearer);
   assert.equal(result.data.conflicts.length, 1); assert.equal((await backend.call()).data.kepuCustom.length, 1);
+});
+
+test('server updates keep the previous snapshot immutable while sharing unchanged large image strings', async () => {
+  const schema = globalThis.HeritageContent;
+  const imageUrl = 'data:image/jpeg;base64,' + 'A'.repeat(700000);
+  const current = { ...structuredClone(schema.defaults), kepuCustom: [{ id: 'large-old', name: '原始资料', imageUrl }],
+    auditLogs: [], _history: [{ id: 'old-op', key: 'kepuCustom/old-delete', before: { id: 'old-delete', name: '旧记录', imageUrl } }] };
+  const before = structuredClone(current), user = { name: '老师', tokenId: 'invite-id', role: 'editor' };
+  const result = await applyChanges(current, [{ key: 'kepuCustom/large-old', baseHash: await schema.cellHash(current.kepuCustom[0]), value: { ...current.kepuCustom[0], name: '更新标题' } }], user, []);
+  assert.deepEqual(current, before);
+  assert.equal(result.next.kepuCustom[0].name, '更新标题');
+  assert.equal(safeContent(current, []).kepuCustom[0].imageUrl, imageUrl);
+  assert.equal(result.next._history[1].before.name, '原始资料');
+  assert.equal(Object.hasOwn(result.next._history[1].before, 'imageUrl'), false);
 });

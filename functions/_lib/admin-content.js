@@ -57,7 +57,12 @@ export function redact(value, tokens) {
   return text;
 }
 export function safeContent(content, tokens) {
-  const result = Object.fromEntries(Object.keys(DEFAULTS).filter(key => key !== 'auditLogs').map(key => [key, clone(content[key] ?? DEFAULTS[key])]));
+  // Images and text are immutable strings. Copy containers and record metadata without re-encoding the whole library.
+  const copyRecord = record => record && typeof record === 'object' && !Array.isArray(record) ? { ...record } : record;
+  const result = Object.fromEntries(Object.keys(DEFAULTS).filter(key => key !== 'auditLogs').map(key => {
+    const value = content[key] ?? DEFAULTS[key];
+    return [key, Array.isArray(value) ? value.map(copyRecord) : Object.fromEntries(Object.entries(value).map(([id, record]) => [id, copyRecord(record)]))];
+  }));
   const records = groups.flatMap(group => [...(Array.isArray(result[group + 'Custom']) ? result[group + 'Custom'] : []), ...Object.values(result[group + 'Edited'] || {})]);
   for (const record of records) {
     if (!record || typeof record !== 'object') continue;
@@ -82,8 +87,7 @@ export function audit(content, user, action, detail, tokens) {
   content.auditLogs = logs.slice(0, 200);
 }
 export async function updatedContent(current, submitted, user, tokens) {
-  const next = { ...safeContent(current, tokens), ...clone(submitted),
-    auditLogs: current.auditLogs || [], _history: clone(current._history || []), _notifications: clone(current._notifications || []) };
+  const next = { ...submitted, auditLogs: current.auditLogs || [], _history: (current._history || []).slice(), _notifications: (current._notifications || []).slice() };
   const before = cells(safeContent(current, tokens)), after = cells(next);
   let changes = 0;
   for (const key of new Set([...before.keys(), ...after.keys()])) {
@@ -128,7 +132,8 @@ export function contributions(content, tokens) {
   return [...rows.values()];
 }
 export async function rollback(content, token, user, tokens, item, reason) {
-  const next = { ...clone(content), ...safeContent(content, tokens), _history: clone(content._history || []), _notifications: clone(content._notifications || []) };
+  const next = { ...safeContent(content, tokens), auditLogs: (content.auditLogs || []).slice(),
+    _history: (content._history || []).map(op => ({ ...op })), _notifications: (content._notifications || []).map(n => ({ ...n })) };
   const selected = op => op.tokenId === token.id && (!item || (op.key === item.type + 'Custom/' + item.id || op.key === item.type + 'Edited/' + item.id || op.key === item.type + 'Deleted/' + item.id));
   const restored = new Set(), skipped = new Set();
   const history = next._history;
