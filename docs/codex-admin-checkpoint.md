@@ -162,3 +162,6 @@
 - 真实预览验收中补充发现：原脚本 Buffer 分块逐段转字符串会在中文边界产生替代字符，导致一条摘要不匹配；脚本改用 UTF-8 流式解码。批量 102 张图片请求已提交，但大响应在连接读完前超时，属于“实际保存、界面误报失败”的另一条路径；改为保存只返回条目确认与服务端归属字段，不回传已上传大图，云端其他更新后台读取，列表未完整时明确提示正在更新。
 - 减少服务端重复序列化/复制全库及回滚大图，仅复制变动记录，旧快照不可变回归通过。此前一次非 JSON 503 未取得平台内存日志，不能断言根因就是 OOM；内存优化和小响应已分别验证。最新 Node 111/111、确认响应协议相关浏览器 52/52、Functions 编译通过。
 - 临时测试只在 codex：通过正常接口删除全部本轮维护前缀记录；为避免反复测试占满 16 MiB，仅以带 revision 条件的单条原子 UPDATE 清理这些测试记录的回滚历史，先保存完整快照，校验其他内容/审计不变。证据 `.cache/incident-preview-history-cleanup-21.json`、`-24.json`，预览 revision 25/科普 0。正式 main revision 174/科普 102，密码指纹与原记录一致，尚未发布本轮改动。
+- 最终应用提交 `49ca4b0fb439d6a7fad014cd6b117cdcee6ba2e4`，含减少历史复制的 `b37816f` / `fb26b96`。预览 [CI 40342106163](https://github.com/lwy9107124035/longnankejia/actions/runs/40342106163) 成功，71 项部署检查通过，部署 `https://fffb7634.longnankejia-dev.pages.dev/`。
+- `.cache/preview-collaboration-smoke.mjs` 真实 codex D1 验收成功：102 条有效 JPEG 图片、7,802,825 bytes 请求全部保存并读回；确认包 25,906 bytes；同一邀请码三独立会话并发 3 条各自成功；旧稿冲突和独立新增同请求返回 accepted=1/conflict=1，云端旧稿未被覆盖。共 106 条本轮测试记录已全部按前缀删除，三会话退出；公开内容摘要与前置快照完全相同。证据 `.cache/incident-preview-smoke-result.json` / `incident-preview-http-trace.jsonl`。
+- 最终清理仅移除本轮测试记录的 213 项回滚副本，其他审计/配置/内容不变，预览恢复 revision 33/科普 0，历史副本 0；保存完整回滚前快照和 `.cache/incident-preview-history-cleanup-32.json`。现开始将同一验收源码发布 main。
