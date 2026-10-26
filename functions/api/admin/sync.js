@@ -210,12 +210,15 @@ async function postData(db, env, request, body) {
         }
         const published = safeContent(result.next, tokens.value);
         const logs = user.role === 'super_admin' ? safeAudit(result.next, tokens.value) : [];
-        if (body.revision === current.revision) {
-          const values = globalThis.HeritageContent.contentCells(published);
-          return { ok: true, revision, accepted: result.accepted, conflicts: result.conflicts, auditLogs: logs,
-            updates: [...result.accepted, ...result.conflicts].map(key => ({ key, value: values.get(key) ?? null })) };
-        }
-        return { ok: true, revision, accepted: result.accepted, conflicts: result.conflicts, content: { ...published, auditLogs: logs } };
+        const values = globalThis.HeritageContent.contentCells(published);
+        return { ok: true, revision, baseRevision: current.revision, accepted: result.accepted, conflicts: result.conflicts, auditLogs: logs,
+          receipts: result.accepted.map(key => {
+            const value = values.get(key);
+            const provenance = value && typeof value === 'object' ? Object.fromEntries(['creatorName', 'creatorTokenId', 'createdAt']
+              .filter(prop => Object.hasOwn(value, prop)).map(prop => [prop, value[prop]])) : {};
+            return { key, provenance };
+          }),
+          updates: result.conflicts.map(key => ({ key, value: values.get(key) ?? null })) };
       }
       break;
     }

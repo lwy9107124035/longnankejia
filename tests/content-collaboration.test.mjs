@@ -125,15 +125,17 @@ test('an ambiguous response after commit can be retried without duplicating a ne
   assert.equal((await backend.call()).data.revision, 1, 'the retry must not commit the same operation twice');
 });
 
-test('a confirmed save returns only the changed cell when the client has the current cloud version', async t => {
+test('a confirmed save returns a small receipt and never echoes large images', async t => {
   const backend = setup(t), device = setupEnvironment(backend); await login(device);
   let responseBytes = 0;
-  device.store.addHeritageCard({ id: 'image-record', name: '已有大图', imageUrl: 'data:image/png;base64,' + 'A'.repeat(500000) }); await device.store.flushPending();
   device.sandbox.fetch = async (url, options) => {
     const result = await backend.fetchApi(url, options);
     if (options.method === 'POST') responseBytes = (await result.clone().text()).length;
     return result;
   };
+  device.store.addHeritageCard({ id: 'image-record', name: '已有大图', imageUrl: 'data:image/png;base64,' + 'A'.repeat(500000) });
+  assert.equal(await device.store.flushPending(), true);
+  assert.ok(responseBytes < 5000, 'saving an image must not echo that image in its acknowledgement');
   device.store.addHeritageCard({ id: 'small-record', name: '纯文字新增' });
   assert.equal(await device.store.flushPending(), true);
   assert.ok(responseBytes < 5000, 'saving one record must not download the unrelated library image');

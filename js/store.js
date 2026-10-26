@@ -153,6 +153,7 @@
   var conflictKeys = [];
   var editBases = {};
   var lastSyncedAt = 0;
+  var cloudIncomplete = false;
   var draftDb = null;
   var durableDraft = true;
   // Keep pre-upgrade local edits until an authenticated upload or an explicit discard.
@@ -178,6 +179,7 @@
     conflictKeys = saved.conflicts || [];
     editBases = saved.editBases || {};
     lastSyncedAt = saved.lastSyncedAt || 0;
+    cloudIncomplete = !!saved.cloudIncomplete;
   }
   // Published cache is shared; each page owns a separate unacknowledged draft snapshot.
   var storageReady = useDraftDb ? new Promise(function (resolve) {
@@ -209,7 +211,7 @@
     await storageReady;
     if (pending && !draftOwner) draftOwner = principal();
     var saved = { bundle: copy(bundle()), revision: cloudRevision, base: copy(cloudBase), pending: pending, owner: draftOwner, time: Date.now(),
-      snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2), source: recoverySource, conflicts: conflictKeys.slice(), editBases: copy(editBases), lastSyncedAt: lastSyncedAt };
+      snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2), source: recoverySource, conflicts: conflictKeys.slice(), editBases: copy(editBases), lastSyncedAt: lastSyncedAt, cloudIncomplete: cloudIncomplete };
     if (draftDb) {
       durableDraft = await new Promise(function (resolve) {
         try {
@@ -397,6 +399,7 @@
       if (Object.prototype.hasOwnProperty.call(data, key)) write(CONTENT_KEYS[key], data[key]);
     });
     cloudRevision = data.revision;
+    cloudIncomplete = false;
     cloudBase = copy(bundle());
     lastSyncedAt = Date.now();
     publishedBundle = null;
@@ -443,7 +446,7 @@
   function savedStatus() {
     if (pending && conflictKeys.length) setSyncStatus('conflict', conflictKeys.length + ' 条草稿需核对，其余内容已同步。');
     else if (pending) setSyncStatus('pending', '有草稿待上传。');
-    else setSyncStatus('saved', '已同步');
+    else setSyncStatus('saved', cloudIncomplete ? '已保存，正在更新列表…' : '已同步');
   }
   function getConflicts() {
     var schema = globalThis.HeritageContent, local = schema.contentCells(bundle()), remote = schema.contentCells(cloudBase);
@@ -476,6 +479,7 @@
   async function uploadPending() {
     if (uploadPromise) return uploadPromise;
     uploadPromise = (async function () {
+      var refreshAfterUpload = false;
       try {
         await storageReady;
         if (!pending) return true;
@@ -497,11 +501,19 @@
             return { key: change.key, baseHash: await globalThis.HeritageContent.cellHash(change.before), value: change.value };
           }));
           var data = await cloudRequest({ action: 'update_content', revision: cloudRevision, changes: changes });
-          var latest = data.content || copy(cloudBase || globalThis.HeritageContent.defaults);
-          if (data.updates) data.updates.forEach(function (change) { globalThis.HeritageContent.setContentCell(latest, change.key, change.value); });
-          latest.revision = data.revision;
-          if (cloudRevision !== null && data.revision < cloudRevision) latest = await cloudRequest();
-          mergeCloudDraft(latest, changes.filter(function (change) { return data.accepted.indexOf(change.key) >= 0; }));
+          var acknowledged = changes.filter(function (change) { return data.accepted.indexOf(change.key) >= 0; });
+          var latest = copy(cloudBase || globalThis.HeritageContent.defaults);
+          if (cloudRevision === null || data.revision >= cloudRevision) {
+            acknowledged.forEach(function (change) {
+              var receipt = data.receipts.find(function (row) { return row.key === change.key; });
+              var value = change.value && typeof change.value === 'object' ? Object.assign({}, change.value, receipt.provenance) : change.value;
+              globalThis.HeritageContent.setContentCell(latest, change.key, value);
+            });
+            data.updates.forEach(function (change) { globalThis.HeritageContent.setContentCell(latest, change.key, change.value); });
+            if (data.baseRevision !== cloudRevision) { cloudIncomplete = true; refreshAfterUpload = true; }
+          }
+          latest.revision = cloudIncomplete ? cloudRevision : Math.max(cloudRevision || 0, data.revision);
+          mergeCloudDraft(latest, acknowledged);
           lastReadSession = null;
           if (data.content && Array.isArray(data.content.auditLogs)) write(LS.audit_logs, data.content.auditLogs);
           if (Array.isArray(data.auditLogs)) write(LS.audit_logs, data.auditLogs);
@@ -520,7 +532,10 @@
         await persistState();
         setSyncStatus(error.code === 'SYNC_CONFLICT' ? 'conflict' : 'error', error.message + (durableDraft ? '' : ' 本机存储不可用，请保持此页面打开并立即导出备份。'));
         return false;
-      } finally { uploadPromise = null; }
+      } finally {
+        uploadPromise = null;
+        if (refreshAfterUpload && typeof window.addEventListener === 'function') setTimeout(function () { syncWithCloud(); }, 0);
+      }
     })();
     return uploadPromise;
   }
@@ -543,7 +558,7 @@
       try {
         await storageReady;
         var uploaded = !pending || !getSession() || await uploadPending();
-        var data = await cloudRequest(null, false, !pending && cloudBase && lastReadSession === bearer ? cloudRevision : undefined);
+        var data = await cloudRequest(null, false, !pending && !cloudIncomplete && cloudBase && lastReadSession === bearer ? cloudRevision : undefined);
         if (Array.isArray(data.tokens)) write(LS.tokens, data.tokens);
         if (Array.isArray(data.lockouts)) write(LS.locked_clients, data.lockouts);
         if (Array.isArray(data.notifications)) write(LS.notifications, data.notifications);
@@ -555,6 +570,7 @@
           triggerFrontEndRefresh();
           setSyncStatus('pending', '已显示云端发布内容；本机未上传草稿已保留，登录后可恢复上传');
         } else if (pending && getSession() && (cloudRevision === null || data.revision >= cloudRevision)) {
+          cloudIncomplete = false;
           mergeCloudDraft(data);
           await persistState();
           if (uploaded || conflictKeys.length) savedStatus();
@@ -1058,7 +1074,7 @@
     getSession: getSession,
     clearSession: clearSession,
     logout: logout,
-    getSyncStatus: function () { return Object.assign({ pending: pending, revision: cloudRevision, cloudLoaded: !!cloudBase, cloudCustomCount: cloudBase ? (cloudBase.kepuCustom || []).length : null,
+    getSyncStatus: function () { return Object.assign({ pending: pending, revision: cloudRevision, cloudLoaded: !!cloudBase && !cloudIncomplete, cloudCustomCount: cloudBase ? (cloudBase.kepuCustom || []).length : null,
       pendingCount: pending ? changedCells().length : 0, conflictCount: conflictKeys.length, lastSyncedAt: lastSyncedAt }, syncStatus); },
     isContentSaved: function (key) { return changedCells().every(function (change) { return change.key !== key; }); },
     getConflicts: getConflicts,
