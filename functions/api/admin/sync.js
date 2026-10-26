@@ -1,5 +1,5 @@
 // Credentials and shared state belong in D1, never in a Worker isolate.
-import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions } from '../../_lib/admin-content.js';
+import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
@@ -193,6 +193,32 @@ async function postData(db, env, request, body) {
     case 'logout':
       await db.prepare('DELETE FROM admin_sessions WHERE id = ?').bind(user.sessionId).run();
       return { ok: true };
+    case 'update_content': {
+      if (Array.isArray(body.changes) && body.changes.some(change => ['apiConfig', 'workflowConfig'].includes(change?.key))) requireSuper(user);
+      const tokens = await state(db, 'tokens', []);
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const current = await state(db, 'content', DEFAULTS);
+        let result;
+        try { result = await applyChanges(current.value, body.changes, user, tokens.value); }
+        catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
+        let revision = current.revision;
+        try {
+          if (result.changed) revision = await saveState(db, 'content', result.next, current.revision);
+        } catch (error) {
+          if (error.code === 'SYNC_CONFLICT' && attempt < 4) continue;
+          throw error;
+        }
+        const published = safeContent(result.next, tokens.value);
+        const logs = user.role === 'super_admin' ? safeAudit(result.next, tokens.value) : [];
+        if (body.revision === current.revision) {
+          const values = globalThis.HeritageContent.contentCells(published);
+          return { ok: true, revision, accepted: result.accepted, conflicts: result.conflicts, auditLogs: logs,
+            updates: [...result.accepted, ...result.conflicts].map(key => ({ key, value: values.get(key) ?? null })) };
+        }
+        return { ok: true, revision, accepted: result.accepted, conflicts: result.conflicts, content: { ...published, auditLogs: logs } };
+      }
+      break;
+    }
     case 'update_custom_bundle': {
       const current = await state(db, 'content', DEFAULTS);
       const submitted = contentPayload(body);

@@ -98,5 +98,43 @@
     });
     return result;
   }
-  root.HeritageContent = { defaults: fields, validateBundle: validateBundle, record: record, safeUrl: safeUrl, reserved: reserved, canonical: canonical };
+  function comparable(value) {
+    if (object(value)) {
+      value = Object.assign({}, value);
+      ['creatorName', 'creatorTokenId', 'createdAt'].forEach(function (key) { delete value[key]; });
+    }
+    return canonical(value === undefined ? null : value);
+  }
+  function contentCells(content) {
+    var result = new Map();
+    Object.keys(fields).forEach(function (field) {
+      var value = content && content[field];
+      if (field.endsWith('Custom')) (value || []).forEach(function (entry) { if (entry && entry.id) result.set(field + '/' + entry.id, entry); });
+      else if (field.endsWith('Deleted')) (value || []).forEach(function (id) { result.set(field + '/' + id, true); });
+      else if (field.endsWith('Edited')) Object.keys(value || {}).forEach(function (id) { result.set(field + '/' + id, value[id]); });
+      else result.set(field, value || {});
+    });
+    return result;
+  }
+  function setContentCell(content, key, value) {
+    var slash = key.indexOf('/'), field = slash < 0 ? key : key.slice(0, slash), entryId = key.slice(slash + 1);
+    if (!Object.hasOwn(fields, field) || (slash < 0 ? !['apiConfig', 'workflowConfig'].includes(field) : !id(entryId))) fail('保存条目');
+    if (field.endsWith('Custom')) {
+      content[field] = (content[field] || []).filter(function (entry) { return entry.id !== entryId; });
+      if (value !== null) { if (!object(value) || value.id !== entryId) fail(key); content[field].push(value); }
+    } else if (field.endsWith('Deleted')) {
+      if (value !== null && value !== true) fail(key);
+      content[field] = (content[field] || []).filter(function (id) { return id !== entryId; });
+      if (value !== null) content[field].push(entryId);
+    } else if (field.endsWith('Edited')) {
+      if (value === null) delete content[field][entryId];
+      else { if (!object(value) || value.id !== entryId) fail(key); content[field][entryId] = value; }
+    } else { if (slash >= 0 || !object(value)) fail(key); content[field] = value; }
+  }
+  async function cellHash(value) {
+    var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(comparable(value)));
+    return Array.from(new Uint8Array(digest), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+  root.HeritageContent = { defaults: fields, validateBundle: validateBundle, record: record, safeUrl: safeUrl, reserved: reserved, canonical: canonical,
+    comparable: comparable, contentCells: contentCells, setContentCell: setContentCell, cellHash: cellHash };
 })(globalThis);

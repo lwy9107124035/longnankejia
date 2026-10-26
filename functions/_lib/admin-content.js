@@ -21,24 +21,34 @@ function undoData(previous, value) {
 const groups = ['kb', 'kepu', 'dialect'];
 
 function cells(content) {
-  const result = new Map();
-  for (const group of groups) {
-    for (const entry of content[group + 'Custom'] || []) if (entry?.id) result.set(group + 'Custom/' + entry.id, entry);
-    for (const [id, entry] of Object.entries(content[group + 'Edited'] || {})) result.set(group + 'Edited/' + id, entry);
-    for (const id of content[group + 'Deleted'] || []) result.set(group + 'Deleted/' + id, true);
-  }
-  return result;
+  return new Map([...globalThis.HeritageContent.contentCells(content)].filter(([key]) => key.includes('/')));
 }
 function setCell(content, key, value) {
-  const slash = key.indexOf('/'), field = key.slice(0, slash), id = key.slice(slash + 1);
-  if (field.endsWith('Custom')) {
-    content[field] = content[field].filter(entry => entry.id !== id);
-    if (value !== null) content[field].push(clone(value));
-  } else if (field.endsWith('Deleted')) {
-    content[field] = content[field].filter(entry => entry !== id);
-    if (value !== null) content[field].push(id);
-  } else if (value === null) delete content[field][id];
-  else content[field][id] = clone(value);
+  globalThis.HeritageContent.setContentCell(content, key, clone(value));
+}
+export async function applyChanges(current, changes, user, tokens) {
+  if (!Array.isArray(changes) || !changes.length || changes.length > 10000) throw new Error('请选择需要保存的内容');
+  const next = safeContent(current, tokens), before = globalThis.HeritageContent.contentCells(next);
+  const conflicts = [], accepted = [], seen = new Set();
+  let changed = false;
+  for (const change of changes) {
+    if (!change || typeof change.key !== 'string' || seen.has(change.key) || !/^[a-f0-9]{64}$/.test(change.baseHash) || !Object.hasOwn(change, 'value')) throw new Error('保存内容格式不正确');
+    seen.add(change.key);
+    if (!change.key.includes('/') && user.role !== 'super_admin') throw new Error('仅管理员可修改设置');
+    // Validate the cell key and candidate even when its precondition will conflict.
+    const candidate = clone(DEFAULTS);
+    globalThis.HeritageContent.setContentCell(candidate, change.key, change.value);
+    validateContent(candidate);
+    const actual = before.get(change.key) ?? null;
+    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(change.value) && await globalThis.HeritageContent.cellHash(actual) !== change.baseHash) {
+      conflicts.push(change.key); continue;
+    }
+    globalThis.HeritageContent.setContentCell(next, change.key, change.value);
+    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(change.value)) changed = true;
+    accepted.push(change.key);
+  }
+  validateContent(next);
+  return { next: changed ? await updatedContent(current, next, user, tokens) : current, conflicts, accepted, changed };
 }
 function label(value, key) { return value?.title || value?.name || value?.item?.name || key.split('/')[1]; }
 export function redact(value, tokens) {

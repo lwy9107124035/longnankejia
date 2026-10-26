@@ -11,7 +11,7 @@ export function setupEnvironment(backend, { local = new Map(), tab = new Map(), 
   });
   const window = { location: new URL('http://127.0.0.1:8931'), KNOWLEDGE_BASE: [{ id: 'base', title: '客家蓝染', answer: '传统工艺' }] };
   const sandbox = { window, localStorage: storage(local), sessionStorage: storage(tab), navigator: { userAgent: 'iPhone Safari' },
-    fetch: (...args) => backend.fetchApi(...args), AbortController, setTimeout, clearTimeout, console, Date, Math, JSON, Promise };
+    fetch: (...args) => backend.fetchApi(...args), AbortController, setTimeout, clearTimeout, console, Date, Math, JSON, Promise, crypto: globalThis.crypto, TextEncoder };
   vm.createContext(sandbox);
   for (const file of ['content-schema.js', 'store.js']) vm.runInContext(fs.readFileSync(new URL('../../js/' + file, import.meta.url), 'utf8'), sandbox);
   return { window, store: window.Store, sandbox, local, tab };

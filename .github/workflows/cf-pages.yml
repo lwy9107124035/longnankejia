@@ -27,7 +27,7 @@ jobs:
 
       - name: Verify administrator API and multi-device synchronization
         if: github.ref_name == 'codex' || github.ref_name == 'main'
-        run: node --test tests/admin-deployment.test.mjs tests/admin-sync.test.mjs tests/admin-security.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs
+        run: node --test tests/admin-deployment.test.mjs tests/admin-sync.test.mjs tests/admin-security.test.mjs tests/content-collaboration.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs
 
       - name: Bind persistent administrator storage
         if: github.ref_name == 'codex' || github.ref_name == 'main'

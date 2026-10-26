@@ -34,7 +34,7 @@
       '<div class="chat-empty">' +
       '  <div class="chat-empty-icon">💬</div>' +
       '  <div class="chat-empty-title">问问阿蓝吧</div>' +
-      '  <div class="chat-empty-hint">聚焦蓝染、竹编、织带、围屋等馆藏非遗技艺<br>阿蓝如实解答</div>' +
+      '  <div class="chat-empty-hint">了解蓝染、竹编、织带和围屋</div>' +
       '</div>';
 
     var botAvatarImg = '<img class="msg-avatar-img" src="assets/avatar/alan-face.png" alt="阿蓝">';
