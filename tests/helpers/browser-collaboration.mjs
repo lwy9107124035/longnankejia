@@ -51,6 +51,55 @@ export async function runCollaborationRegression({ page, Page, BASE, CDP_PORT, R
     await phone.evaluate("window.Admin.open();document.querySelector('[data-tab=\"kepu\"]').click();window.prompt=()=>String(" + (drafts.findIndex(d => d.title === '未点击保存的资料') + 1) + ");document.getElementById('recoverDraftBtn').click()");
     check('找回草稿按钮恢复原表单正文', await until(phone, "document.getElementById('kpDetail')?.value==='刷新后仍须保留的正文'"));
     await shot(phone, 'collaboration-phone-form-recovered');
+
+    await a.evaluate('window.Store.reloadCloudContent()', true);
+    const offline = "window.__recheckFetch=window.fetch;window.fetch=(url,options)=>String(url).includes('/api/admin/sync')?Promise.reject(new Error('offline recheck')):window.__recheckFetch(url,options);";
+    await a.evaluate(offline);
+    await a.evaluate("window.Store.addHeritageCard({id:'duplicate-original-one',name:'原页第一条'});window.Store.flushPending()", true);
+    const pointer = await a.evaluate("sessionStorage.getItem('nfyj_draft_pointer')");
+    const { targetId: duplicateId } = await browser.send('Target.createTarget', { url: 'about:blank', browserContextId: contexts[0] });
+    const duplicate = await Page.attach(duplicateId); tabs.push(duplicate);
+    await duplicate.send('Page.enable'); await duplicate.send('Runtime.enable');
+    await duplicate.send('Page.addScriptToEvaluateOnNewDocument', { source: offline + "sessionStorage.setItem('nfyj_draft_pointer'," + JSON.stringify(pointer) + ');' });
+    await duplicate.send('Page.navigate', { url: BASE + '/index.html' });
+    await until(duplicate, 'document.readyState==="complete"&&!!window.Store'); await duplicate.evaluate('window.Store.ready', true);
+    await a.evaluate("window.Store.addHeritageCard({id:'duplicate-original-newer',name:'原页新输入的独有资料'});window.Store.flushPending()", true);
+    await duplicate.evaluate("window.Store.addHeritageCard({id:'duplicate-new',name:'复制页输入'});window.Store.flushPending()", true);
+    await a.send('Page.addScriptToEvaluateOnNewDocument', { source: offline });
+    await reloadPage(a); await a.evaluate('window.Store.ready', true);
+    check('复制标签页不能删掉原页较新的 IndexedDB 草稿', await a.evaluate("window.Store.getHeritageCards([]).some(c=>c.id==='duplicate-original-newer')"));
+
+    const { browserContextId: migrationContext } = await browser.send('Target.createBrowserContext'); contexts.push(migrationContext);
+    const { targetId: migrationId } = await browser.send('Target.createTarget', { url: 'about:blank', browserContextId: migrationContext });
+    const migration = await Page.attach(migrationId); tabs.push(migration);
+    await migration.send('Page.enable'); await migration.send('Runtime.enable');
+    await migration.send('Page.navigate', { url: BASE + '/index.html' });
+    await until(migration, 'document.readyState==="complete"&&!!window.Store');
+    await migration.evaluate('window.Store.syncWithCloud()', true);
+    await migration.evaluate("(()=>{const current=JSON.parse(window.Store.exportFullBundle()).cloudDraft;for(const [field,key] of Object.entries({kbCustom:'nfyj_kb_custom',kbEdited:'nfyj_kb_edited',kbDeleted:'nfyj_kb_deleted',kepuCustom:'nfyj_kepu_custom',kepuEdited:'nfyj_kepu_edited',kepuDeleted:'nfyj_kepu_deleted',dialectCustom:'nfyj_dialect_custom',dialectDeleted:'nfyj_dialect_deleted',apiConfig:'nfyj_api_config',workflowConfig:'nfyj_workflow_config'}))localStorage.setItem(key,JSON.stringify(current[field]));localStorage.setItem('nfyj_cloud_base',JSON.stringify(current));localStorage.setItem('nfyj_kepu_custom',JSON.stringify(current.kepuCustom.concat([{id:'legacy-unsent',name:'旧版从未上传的资料'}])));localStorage.setItem('nfyj_cloud_revision',JSON.stringify(window.Store.getSyncStatus().revision));localStorage.setItem('nfyj_cloud_pending','true');sessionStorage.removeItem('nfyj_draft_pointer');})()");
+    await migration.send('Page.addScriptToEvaluateOnNewDocument', { source: offline });
+    await reloadPage(migration); await migration.evaluate('window.Store.ready', true);
+    check('已有 IndexedDB 发布缓存时，升级仍保留旧版 localStorage 未上传资料', await migration.evaluate("JSON.parse(window.Store.exportFullBundle()).cloudDraft.kepuCustom.some(c=>c.id==='legacy-unsent')"));
+    const { browserContextId: restrictedContext } = await browser.send('Target.createBrowserContext'); contexts.push(restrictedContext);
+    const { targetId: restrictedId } = await browser.send('Target.createTarget', { url: 'about:blank', browserContextId: restrictedContext });
+    const restricted = await Page.attach(restrictedId); tabs.push(restricted);
+    await restricted.send('Page.enable'); await restricted.send('Runtime.enable');
+    await restricted.send('Page.addScriptToEvaluateOnNewDocument', { source: offline + "Object.defineProperty(window,'indexedDB',{value:{open(){throw new Error('storage blocked')}}});" });
+    await restricted.send('Page.navigate', { url: BASE + '/index.html' });
+    await until(restricted, 'document.readyState==="complete"&&!!window.Store'); await restricted.evaluate('window.Store.ready', true);
+    await restricted.evaluate("window.Store.addHeritageCard({id:'restricted-draft',name:'数据库受限时的资料'});window.Store.flushPending()", true);
+    await reloadPage(restricted); await restricted.evaluate('window.Store.ready', true);
+    check('IndexedDB 打开失败时仍能在刷新后恢复降级存储草稿', await restricted.evaluate("window.Store.getHeritageCards([]).some(c=>c.id==='restricted-draft')"));
+
+    await phone.evaluate("document.getElementById('kpCancelBtn').click();document.querySelector('[data-tab=\"kb\"]').click();document.getElementById('kbAddBtn').click();document.getElementById('kbTitle').value='知识库断网保存';document.getElementById('kbAnswer').value='保存失败不能关闭表单';document.getElementById('kbAnswer').dispatchEvent(new Event('input',{bubbles:true}));");
+    await phone.evaluate(offline);
+    await phone.evaluate("document.getElementById('kbSaveBtn').click()");
+    check('知识库上传失败时保留表单并明确显示待上传', await until(phone, "!document.getElementById('kbSaveBtn').disabled&&document.getElementById('kbForm').style.display!=='none'&&window.Store.getSyncStatus().pending"));
+    await reloadPage(phone); await phone.evaluate('window.Store.ready', true);
+    const kbDrafts = await phone.evaluate('window.Store.getRecoveryDrafts()', true);
+    const kbIndex = kbDrafts.findIndex(d => d.title === '知识库断网保存');
+    await phone.evaluate("window.Admin.open();window.prompt=()=>String(" + (kbIndex + 1) + ");document.getElementById('recoverDraftBtn').click()");
+    check('知识库表单也能从找回草稿恢复标题和正文', kbIndex >= 0 && await until(phone, "document.getElementById('kbTitle')?.value==='知识库断网保存'&&document.getElementById('kbAnswer')?.value==='保存失败不能关闭表单'"));
     const snapshot = await api();
     fs.writeFileSync(path.join(ROOT, '.cache', 'incident-browser-collaboration.json'), JSON.stringify({ revision: snapshot.revision, count: snapshot.kepuCustom.length, sharedInvitationDevices: 3, recoveredForm: true }, null, 2));
   } finally {

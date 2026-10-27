@@ -167,25 +167,39 @@
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
   var draftId = 'draft:' + Date.now() + ':' + Math.random().toString(36).slice(2);
   var previousDraftId = '';
+  var previousSnapshotId = '';
   var draftOwner = '';
   var recoverySource = null;
   try { previousDraftId = sessionStorage.getItem('nfyj_draft_pointer') || ''; } catch (_) {}
   function principal() { var user = getSession(); return user ? (user.tokenId || 'super_admin') : ''; }
+  var legacyId = 'draft:legacy:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+  var legacyState = pending ? { bundle: copy(bundle()), revision: cloudRevision, base: copy(cloudBase), pending: true,
+    owner: principal(), time: Date.now(), snapshotId: legacyId } : null;
+  var legacyBackupSafe = !legacyState;
   function restoreState(saved) {
     if (!saved || !saved.bundle) return;
     Object.keys(CONTENT_KEYS).forEach(function (key) { memoryValues[CONTENT_KEYS[key]] = saved.bundle[key] || (OBJECT_KEYS.indexOf(key) >= 0 ? {} : []); });
     cloudRevision = saved.revision; cloudBase = saved.base; pending = saved.pending; draftOwner = saved.owner || '';
-    recoverySource = saved.source || null;
+    recoverySource = saved.source || (saved === legacyState ? { id: legacyId, snapshotId: saved.snapshotId } : null);
     conflictKeys = saved.conflicts || [];
     editBases = saved.editBases || {};
     lastSyncedAt = saved.lastSyncedAt || 0;
     cloudIncomplete = !!saved.cloudIncomplete;
   }
+  function restoreLocalSnapshot() {
+    var saved = previousDraftId ? read('nfyj_' + previousDraftId, null) : null;
+    previousSnapshotId = saved && saved.snapshotId || '';
+    restoreState(saved && saved.pending ? saved : legacyState || saved);
+  }
   // Published cache is shared; each page owns a separate unacknowledged draft snapshot.
   var storageReady = useDraftDb ? new Promise(function (resolve) {
     var request, finished = false;
-    var timer = setTimeout(function () { useDraftDb = false; finish(); }, 4000);
-    function finish() { finished = true; clearTimeout(timer); resolve(); }
+    var timer = setTimeout(function () { useDraftDb = false; if (draftDb) draftDb.close(); draftDb = null; finish(); }, 4000);
+    function finish() {
+      if (finished) return;
+      if (!draftDb && generation === 0) restoreLocalSnapshot();
+      finished = true; clearTimeout(timer); resolve();
+    }
     try { request = indexedDB.open('nfyj-admin-content', 1); }
     catch (_) { useDraftDb = false; finish(); return; }
     request.onupgradeneeded = function () { request.result.createObjectStore('state'); };
@@ -193,17 +207,23 @@
     request.onsuccess = function () {
       if (finished) { request.result.close(); return; }
       draftDb = request.result;
-      var tx = draftDb.transaction('state', 'readonly'), store = tx.objectStore('state');
+      var tx = draftDb.transaction('state', legacyState ? 'readwrite' : 'readonly'), store = tx.objectStore('state');
       var own = previousDraftId ? store.get(previousDraftId) : null;
       var cache = store.get('current');
+      if (legacyState) store.put(legacyState, legacyId);
       tx.oncomplete = function () {
-        if (generation === 0) restoreState((own && own.result) || cache.result);
+        if (finished) return;
+        legacyBackupSafe = true;
+        if (generation === 0) {
+          if (own && own.result) previousSnapshotId = own.result.snapshotId || '';
+          restoreState(own && own.result && own.result.pending ? own.result : legacyState || (own && own.result) || cache.result);
+        }
         triggerFrontEndRefresh(); finish();
       };
       tx.onerror = tx.onabort = function () { useDraftDb = false; draftDb = null; finish(); };
     };
   }) : Promise.resolve().then(function () {
-    if (previousDraftId) restoreState(read('nfyj_' + previousDraftId, null));
+    restoreLocalSnapshot();
   });
   var storageLoaded = false;
   storageReady.then(function () { storageLoaded = true; });
@@ -216,6 +236,7 @@
       durableDraft = await new Promise(function (resolve) {
         try {
           var tx = draftDb.transaction('state', 'readwrite'), store = tx.objectStore('state');
+          if (legacyState && !legacyBackupSafe) store.put(legacyState, legacyId);
           if (saved.pending) store.put(saved, draftId);
           else { store.put(saved, 'current'); store.delete(draftId); }
           if (!saved.pending && recoverySource && recoverySource.snapshotId) {
@@ -225,19 +246,26 @@
               if (source.result && source.result.snapshotId === acknowledged.snapshotId) store.delete(acknowledged.id);
             };
           }
-          if (previousDraftId && previousDraftId !== draftId) store.delete(previousDraftId);
-          tx.oncomplete = function () { resolve(true); };
+          if (previousDraftId && previousDraftId !== draftId && previousSnapshotId) {
+            var oldId = previousDraftId, oldSnapshot = previousSnapshotId, previous = store.get(oldId);
+            previous.onsuccess = function () { if (previous.result && previous.result.snapshotId === oldSnapshot) store.delete(oldId); };
+          }
+          tx.oncomplete = function () { legacyBackupSafe = true; resolve(true); };
           tx.onerror = tx.onabort = function () { resolve(false); };
         } catch (_) { resolve(false); }
       });
-      if (durableDraft) Object.values(CONTENT_KEYS).concat(['nfyj_cloud_base', 'nfyj_cloud_revision', 'nfyj_cloud_pending']).forEach(function (key) {
+      if (durableDraft && legacyBackupSafe) Object.values(CONTENT_KEYS).concat(['nfyj_cloud_base', 'nfyj_cloud_revision', 'nfyj_cloud_pending']).forEach(function (key) {
         try { localStorage.removeItem(key); } catch (_) {}
       });
     } else {
       // A per-page key also prevents snapshot replacement when IndexedDB is unavailable.
       try {
         localStorage.setItem('nfyj_' + draftId, JSON.stringify(saved));
-        if (previousDraftId && previousDraftId !== draftId) localStorage.removeItem('nfyj_' + previousDraftId);
+        if (legacyState && !legacyBackupSafe) { localStorage.setItem('nfyj_' + legacyId, JSON.stringify(legacyState)); legacyBackupSafe = true; }
+        if (previousDraftId && previousDraftId !== draftId && previousSnapshotId) {
+          var previousRaw = localStorage.getItem('nfyj_' + previousDraftId);
+          if (previousRaw && JSON.parse(previousRaw).snapshotId === previousSnapshotId) localStorage.removeItem('nfyj_' + previousDraftId);
+        }
         durableDraft = true;
         Object.values(CONTENT_KEYS).concat(['nfyj_cloud_base', 'nfyj_cloud_revision', 'nfyj_cloud_pending']).forEach(function (key) { localStorage.removeItem(key); });
       } catch (_) { durableDraft = false; }
@@ -245,6 +273,7 @@
     if (durableDraft) {
       if (!saved.pending) recoverySource = null;
       previousDraftId = draftId;
+      previousSnapshotId = saved.snapshotId;
       try { sessionStorage.setItem('nfyj_draft_pointer', draftId); } catch (_) {}
     }
     return durableDraft;
@@ -266,7 +295,7 @@
   }
   async function getRecoveryDrafts() {
     return (await draftSnapshots()).filter(function (row) { return row.saved && (row.saved.editor || row.saved.pending && row.id !== draftId && row.id !== previousDraftId) && (!row.saved.owner || row.saved.owner === principal() || principal() === 'super_admin'); }).map(function (row) {
-      return { id: row.id, time: row.saved.time || 0, owner: row.saved.owner, editor: !!row.saved.editor, title: row.saved.editor && row.saved.editor.value.name,
+      return { id: row.id, time: row.saved.time || 0, owner: row.saved.owner, editor: !!row.saved.editor, title: row.saved.editor && (row.saved.editor.value.name || row.saved.editor.value.title),
         count: row.saved.editor ? 1 : ['kbCustom', 'kepuCustom', 'dialectCustom'].reduce(function (n, key) { return n + row.saved.bundle[key].length; }, 0) };
     });
   }
@@ -297,12 +326,13 @@
     if (source) { var raw = localStorage.getItem('nfyj_' + source.id), saved = raw && JSON.parse(raw); if (saved && saved.snapshotId === source.snapshotId) localStorage.removeItem('nfyj_' + source.id); }
   }
   async function restoreRecoveryDraft(id) {
-    await persistState();
+    if (!(await persistState()) && pending) throw new Error('当前草稿备份失败，请先导出备份，再切换草稿。');
     var row = (await draftSnapshots()).find(function (row) { return row.id === id; });
     if (!row || !(row.saved.pending || row.saved.editor) || (row.saved.owner && row.saved.owner !== principal() && principal() !== 'super_admin')) throw new Error('未找到当前账号可恢复的草稿');
     if (row.saved.editor) return { editor: copy(row.saved.editor), source: { id: row.id, snapshotId: row.saved.snapshotId } };
     draftId = 'draft:' + Date.now() + ':' + Math.random().toString(36).slice(2);
     previousDraftId = '';
+    previousSnapshotId = '';
     restoreState(row.saved); generation++;
     recoverySource = { id: row.id, snapshotId: row.saved.snapshotId };
     if (principal() === 'super_admin') draftOwner = principal();
@@ -368,7 +398,8 @@
       var data = await response.json();
       if (!response.ok || !data.ok) {
         if (body && body.action === 'update_content' && data.code === 'UNKNOWN_ACTION') throw Object.assign(new Error('服务正在更新，请稍后重试。草稿已保留。'), { code: 'SERVER_UPDATING' });
-        if (data.code === 'SESSION_EXPIRED') clearSession();
+        var currentSession = getSession();
+        if (data.code === 'SESSION_EXPIRED' && session && currentSession && session.bearer === currentSession.bearer) clearSession();
         throw Object.assign(new Error(data.error || '管理服务器请求失败'), data, { status: response.status });
       }
       return data;
@@ -596,7 +627,7 @@
     var startedGeneration = generation;
     await storageReady;
     if (uploadPromise) await uploadPromise;
-    await persistState();
+    if (!(await persistState()) && pending) throw new Error('本机草稿备份失败，请先导出备份，再读取云端。');
     var data = await cloudRequest();
     if (generation !== startedGeneration) {
       await persistState();
@@ -735,7 +766,11 @@
     if (pending && cloudBase) publishedBundle = cloudBase;
   }
   async function logout() {
-    try { await cloudRequest({ action: 'logout' }); } finally { clearSession(); }
+    var departing = getSession();
+    try { await cloudRequest({ action: 'logout' }); } finally {
+      var current = getSession();
+      if (!current || departing && current.bearer === departing.bearer) clearSession();
+    }
   }
 
   /* ---------- 知识库 ---------- */
@@ -774,6 +809,10 @@
     rememberEditVersion(version);
     var custom = read(LS.custom, []);
     if (!unambiguous(custom, id, 'kb')) return false;
+    if (version && version.key === 'kbCustom/' + id && version.value && !custom.some(function (entry) { return entry.id === id; })) {
+      custom.push(Object.assign({}, version.value, patch, { id: id }));
+      write(LS.custom, custom); syncCustomToCloud(); return true;
+    }
     for (var i = 0; i < custom.length; i++) {
       if (custom[i].id === id) {
         custom[i] = Object.assign({}, custom[i], patch, { id: id });
@@ -895,6 +934,10 @@
     rememberEditVersion(version);
     var custom = read(LS.kepu_custom, []);
     if (!unambiguous(custom, id, 'kepu')) return false;
+    if (version && version.key === 'kepuCustom/' + id && version.value && !custom.some(function (entry) { return entry.id === id; })) {
+      custom.push(Object.assign({}, version.value, patch, { id: id }));
+      write(LS.kepu_custom, custom); syncCustomToCloud(); return true;
+    }
     for (var i = 0; i < custom.length; i++) {
       if (custom[i].id === id) {
         custom[i] = Object.assign({}, custom[i], patch, { id: id });

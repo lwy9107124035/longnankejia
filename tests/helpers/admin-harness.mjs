@@ -13,7 +13,7 @@ export function createAdminBackend({ password = 'admin123', filename = ':memory:
         bind(...values) { params = values; return this; },
         async first() { return sqlite.prepare(sql).get(...params) || null; },
         async all() { return { results: sqlite.prepare(sql).all(...params) }; },
-        async run() {
+        run() {
           if (params.some(value => typeof value === 'string' && Buffer.byteLength(value) > maxRowBytes)) throw new Error('D1 row limit exceeded');
           const result = sqlite.prepare(sql).run(...params); return { meta: { changes: Number(result.changes) } };
         }
@@ -23,7 +23,8 @@ export function createAdminBackend({ password = 'admin123', filename = ':memory:
       sqlite.exec('BEGIN');
       try {
         const results = [];
-        for (const statement of statements) results.push(await statement.run());
+        // D1 batches are atomic. Do not expose intermediate SQLite rows to another request through await gaps.
+        for (const statement of statements) results.push(statement.run());
         sqlite.exec('COMMIT');
         return results;
       } catch (error) { sqlite.exec('ROLLBACK'); throw error; }

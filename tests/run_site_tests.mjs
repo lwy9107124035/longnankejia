@@ -287,7 +287,7 @@ async function run() {
     if (ONLY.includes('kepu-crud')) await sectionKepuCrud();
     if (ONLY.includes('content-sync')) await sectionContentSync();
     if (ONLY.includes('security-audit') || ONLY.includes('security-regression')) await runSecurityRegression({ page, Page, BASE, CDP_PORT, ROOT, check, until, reloadPage, shot });
-    if (ONLY.includes('collaboration')) await runCollaborationRegression({ page, Page, BASE, CDP_PORT, ROOT, check, until, reloadPage, shot });
+    if (ONLY.includes('collaboration') || ONLY.includes('collaboration-recheck')) await runCollaborationRegression({ page, Page, BASE, CDP_PORT, ROOT, check, until, reloadPage, shot });
     if (ONLY.includes('admin')) await sectionAdminDevices();
     if (ONLY.includes('rhyme')) await sectionRhyme();
     if (ONLY.includes('dialogue')) await sectionConversation();

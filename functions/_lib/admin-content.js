@@ -94,6 +94,7 @@ export async function updatedContent(current, submitted, user, tokens) {
   for (const key of new Set([...before.keys(), ...after.keys()])) {
     const previous = before.get(key) ?? null;
     let value = after.get(key) ?? null;
+    const submittedValue = value;
     if (value && typeof value === 'object') {
       value = { ...value };
       // Creation provenance is assigned by the authenticated server, and never transferred by a client edit.
@@ -103,7 +104,10 @@ export async function updatedContent(current, submitted, user, tokens) {
       }
       if (!previous) Object.assign(value, { creatorName: user.name, creatorTokenId: user.tokenId, createdAt: Date.now() });
     }
-    if (equal(previous, value)) continue;
+    if (equal(previous, value)) {
+      if (!equal(submittedValue, value)) globalThis.HeritageContent.setContentCell(next, key, value);
+      continue;
+    }
     setCell(next, key, value);
     changes++;
     // Store only the old changed fields and a digest, so changing a title never duplicates its image.
