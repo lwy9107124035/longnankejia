@@ -84,12 +84,16 @@ export async function runCollaborationRegression({ page, Page, BASE, CDP_PORT, R
     const { targetId: restrictedId } = await browser.send('Target.createTarget', { url: 'about:blank', browserContextId: restrictedContext });
     const restricted = await Page.attach(restrictedId); tabs.push(restricted);
     await restricted.send('Page.enable'); await restricted.send('Runtime.enable');
-    await restricted.send('Page.addScriptToEvaluateOnNewDocument', { source: offline + "Object.defineProperty(window,'indexedDB',{value:{open(){throw new Error('storage blocked')}}});" });
+    const restriction = await restricted.send('Page.addScriptToEvaluateOnNewDocument', { source: offline + "Object.defineProperty(window,'indexedDB',{value:{open(){throw new Error('storage blocked')}}});" });
     await restricted.send('Page.navigate', { url: BASE + '/index.html' });
     await until(restricted, 'document.readyState==="complete"&&!!window.Store'); await restricted.evaluate('window.Store.ready', true);
     await restricted.evaluate("window.Store.addHeritageCard({id:'restricted-draft',name:'数据库受限时的资料'});window.Store.flushPending()", true);
     await reloadPage(restricted); await restricted.evaluate('window.Store.ready', true);
     check('IndexedDB 打开失败时仍能在刷新后恢复降级存储草稿', await restricted.evaluate("window.Store.getHeritageCards([]).some(c=>c.id==='restricted-draft')"));
+    await restricted.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: restriction.identifier });
+    await restricted.send('Page.addScriptToEvaluateOnNewDocument', { source: offline });
+    await reloadPage(restricted); await restricted.evaluate('window.Store.ready', true);
+    check('IndexedDB 恢复可用后仍会读取上次的降级草稿', await restricted.evaluate("window.Store.getHeritageCards([]).some(c=>c.id==='restricted-draft')"));
 
     await phone.evaluate("document.getElementById('kpCancelBtn').click();document.querySelector('[data-tab=\"kb\"]').click();document.getElementById('kbAddBtn').click();document.getElementById('kbTitle').value='知识库断网保存';document.getElementById('kbAnswer').value='保存失败不能关闭表单';document.getElementById('kbAnswer').dispatchEvent(new Event('input',{bubbles:true}));");
     await phone.evaluate(offline);
