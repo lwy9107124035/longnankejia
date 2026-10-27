@@ -149,7 +149,7 @@
 - 正式部署沿用原 main D1，日志确认保留正式站服务端密钥，不迁移、不清理、不复制预览内容，不重设密码或邀请码。main 与 codex 应用源码完全相同；将本轮合并和入口说明以快进方式同步回 codex，保证后续切换分支不会恢复旧入口说明。记录提交使用 skip ci，避免为文档和本地导航重复部署。
 - `地址.html` 后续维护原则：保留稳定分支入口，避免写易过期的版本号和主力分支断言；URL、分支用途变化时同步更新说明。代码发布通过原固定地址自动生效，需要部署成功；文件不是每次发布都需要重写的程序副本。
 
-## 2026-10-26 客户三人录入反馈（进行中）
+## 2026-10-26 客户三人录入反馈（正式发布完成）
 
 - 用户要求先处理本机 ERR_CONNECTION_CLOSED，随后自行换 IP 恢复，明确暂停网络问题排查；未修改系统网络配置。继续负责资料缺失、多设备显示不同、新建被旧冲突阻止、错误的未部署提示，并精简页面文案。
 - 正式公开 GET 已读成功：revision 174、自定义科普 102 条，包含矮守围，约 8.35 MB；全部通过 schema。快照 `.cache/incident-main-public.json`。不能将旧截图 26 条当成当前数据库条数，也不能保证这 102 条包含所有未成功上传的草稿。用户无法提供具体缺失名称，要求从源头修好。
@@ -165,3 +165,7 @@
 - 最终应用提交 `49ca4b0fb439d6a7fad014cd6b117cdcee6ba2e4`，含减少历史复制的 `b37816f` / `fb26b96`。预览 [CI 40342106163](https://github.com/lwy9107124035/longnankejia/actions/runs/40342106163) 成功，71 项部署检查通过，部署 `https://fffb7634.longnankejia-dev.pages.dev/`。
 - `.cache/preview-collaboration-smoke.mjs` 真实 codex D1 验收成功：102 条有效 JPEG 图片、7,802,825 bytes 请求全部保存并读回；确认包 25,906 bytes；同一邀请码三独立会话并发 3 条各自成功；旧稿冲突和独立新增同请求返回 accepted=1/conflict=1，云端旧稿未被覆盖。共 106 条本轮测试记录已全部按前缀删除，三会话退出；公开内容摘要与前置快照完全相同。证据 `.cache/incident-preview-smoke-result.json` / `incident-preview-http-trace.jsonl`。
 - 最终清理仅移除本轮测试记录的 213 项回滚副本，其他审计/配置/内容不变，预览恢复 revision 33/科普 0，历史副本 0；保存完整回滚前快照和 `.cache/incident-preview-history-cleanup-32.json`。现开始将同一验收源码发布 main。
+- 正式发布提交 `2fb1e2c8af64a1aedc20746b004d162806932cc2` 合并已验收 codex，应用源码没有额外变更。[CI 40342993603](https://github.com/lwy9107124035/longnankejia/actions/runs/40342993603) 成功，71 项部署检查全部通过。部署 `https://3b79a15c.longnankejia.pages.dev/`，固定正式入口 `https://longnankejia.pages.dev/`。
+- `.cache/verify-collaboration-main-release.mjs before/after` 通过：10 份关键文件与验收源码一致，脚本 CSP、API JSON/no-store、轻量版本查询正常。main revision 174/自定义科普 102，全部公开内容和管理员密码派生记录指纹与发布前完全相同（密码 revision 1）；CI 明确保留现有正式服务端密钥，不复制预览库，不重设凭据。
+- 正式站全新 Chrome profile 只读验收 `.cache/check-production-collaboration-visitor.mjs`：390px 手机模拟及 1280px 电脑下，未登录游客实际渲染 102 张自定义卡片，含矮守围，revision 174，页面未捕获异常 0。证据 `.cache/incident-production-visitor.json`；截图 `.cache/test-shots/production-collaboration-visitor-phone.png` 已查看。
+- 本轮完成：最终本地 Node 111/111、完整浏览器 319/319、变更专项 63/63 及最终确认响应协议相关 52/52；真实 codex D1 102 张带图/三会话并发/冲突隔离/清理验收通过；main 只读验证通过。发布记录以 skip ci 提交并快进同步 codex，保持两分支相同，稳定地址页无需换 URL。原设备旧稿可从“找回草稿”恢复，未提交且无副本的历史文字无法凭空重建。

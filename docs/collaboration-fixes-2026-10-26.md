@@ -28,8 +28,12 @@
 
 服务器没有收到过、且原设备也没有保留的内容无法凭空恢复。升级保留现有缓存和草稿，原浏览器中仍有的草稿可找回。不要清理原设备的站点数据。手机验证使用 Chromium 设备模拟，未声称完成真实 iOS/微信或任意规模压力测试。
 
-发布状态：本地实现与回归完成，接下来先部署 codex 并验证真实 D1，再将同一版本发布 main；最终结果记入项目检查点。
+发布状态：codex 真实 D1 验收通过后，同一版本已发布 main，详见文末发布记录。
 
 预览验收追加：已复现“服务器提交成功、大响应回传超时”，因此保存响应改为小确认包；测试脚本中文流式解码问题已修正。先前一次 503 未拿到平台资源日志，不将内存上限当成已证实根因。临时内容与其回滚历史只按本轮维护前缀清理，保留快照并核对其余内容和审计不变；未清理任何正式资料。
 
 真实预览 D1 验收：应用 `49ca4b0`，CI 40342106163 的 71 项检查通过。102 条带有效 JPEG 的批量请求约 7.8 MB，全部读回，确认包仅约 26 KB；同邀请码三会话并发、同条冲突与独立新增均通过。共 106 条维护记录已移除、会话退出，原有公开内容摘要相同；只清理维护记录的回滚副本，预览恢复科普 0 条，原审计和配置保留。证据 `.cache/incident-preview-smoke-result.json`、`incident-preview-history-cleanup-32.json`。
+
+正式发布：提交 `2fb1e2c8af64a1aedc20746b004d162806932cc2`，[CI 40342993603](https://github.com/lwy9107124035/longnankejia/actions/runs/40342993603) 的 71 项检查通过。[正式入口](https://longnankejia.pages.dev/) 已更新，部署 `https://3b79a15c.longnankejia.pages.dev/`。10 份线上关键文件与验收源码一致；正式内容仍为 revision 174/科普 102 条，完整内容和密码派生记录指纹均不变，保留原服务端密钥。
+
+正式新访客验证：全新浏览器无登录、无旧缓存，在 390px 手机模拟和 1280px 电脑视口均实际渲染 102 张自定义科普，包含矮守围，没有未捕获脚本异常。只读证据 `.cache/incident-production-visitor.json`、`collaboration-main-release-after.json`；截图 `test-shots/production-collaboration-visitor-phone.png`。
