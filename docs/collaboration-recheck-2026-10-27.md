@@ -21,6 +21,19 @@
 
 存储恢复交叉场景追加后，相关 Node 51/51、实际浏览器 42/42 再次通过。恢复副本即使留在另一种存储中也能找回，确认保存后仅清理相同快照，不删除其他页面的新版本。
 
-证据保存在 `.cache/recheck-20261027-*`；新增回归 `tests/collaboration-recheck.test.mjs`；真实存储/迁移/降级/表单用例在 `tests/helpers/browser-collaboration.mjs`。本报告会追加最终复验、预览和正式部署状态。
+证据保存在 `.cache/recheck-20261027-*`；新增回归 `tests/collaboration-recheck.test.mjs`；真实存储/迁移/降级/表单用例在 `tests/helpers/browser-collaboration.mjs`。
 
 仍需区分：浏览器主动清站点数据、原设备从未留存且未上传的文字无法恢复；真实 iOS/微信未在本机实测；平台网络、额度和硬件故障不属于本轮能穷尽的场景。同一邀请码支持多人并发，但归属和按人撤回实际按邀请码汇总，不能识别共用者的自然人身份；本轮不主动更换客户邀请码。
+
+## 最终发布与数据核对
+
+- 应用补修为 `e91840a` 和 `e11d91a`，均先部署 codex；预览 CI 40500630800、40502380217 成功。真实预览接口再次验证旧版元数据伪造不能改归属、三会话并发、冲突隔离；7 条临时内容与对应测试历史清理完成，原公开内容和审计不变，预览恢复 revision 42/科普 0。
+- 正式最终提交 `2adfb5ab6f3dc823928aa23d864e77d0a68e44b3`。[CI 40502623731](https://github.com/lwy9107124035/longnankejia/actions/runs/40502623731) 成功，80 项检查全部通过，部署 `https://c7428e58.longnankejia.pages.dev/`，[固定正式入口](https://longnankejia.pages.dev/)。main 应用源码与 codex 验收版本相同。
+- 发布前后公开内容完整指纹相同：revision 211、自定义科普 114；密码派生记录指纹相同、密码 revision 1；CI 保留原服务端密钥，不复制两站数据库、不重设密码或邀请码。10 份关键线上文件与本地一致，接口 JSON/no-store、脚本 CSP 与版本轻量查询通过。
+- 历史 ID 逐项核对：revision 67 的 26 条、revision 174 的 102 条，在当前 114 条中全部仍存在，缺失 ID 为 0，当前重复 ID 为 0。证据 `.cache/recheck-20261027-record-lineage.json`。这证明已保存历史快照的条目仍在，不能据此推断从未传到服务器的文字也已恢复。
+- 全新浏览器无登录，在 390px 手机模拟和 1280px 电脑视口，实际渲染 114 张自定义科普，含矮守围，未捕获异常 0。证据 `.cache/recheck-20261027-production-visitor.json`，截图 `.cache/test-shots/production-recheck-20261027-phone.png` 已核对。
+- 验证阶段分别记录：全量 Node 120/120、完整浏览器 319/319；后续守卫专项 57/57，最后存储补修 Node 51/51、浏览器 42/42；最终部署流水线再执行 80 项管理/安全/协同检查。没有把前序全量运行冒充最后每次改动后的全量重复运行，后续改动都复验其相关路径。
+
+结论：本轮确认的 R01–R08 已补修、复验并发布，在已覆盖场景内未留有未处理的确认缺陷。不能把这一结论扩展为任意未来设备、网络和数据规模下绝无故障；16 MiB 容量、真实 iOS/微信及无副本的历史数据边界仍如上所述。
+
+实现定位：`js/store.js` 的 `persistState`、`restoreLocalSnapshot`、`draftSnapshots`、`reloadCloudContent`、`cloudRequest`、`logout`、`updateEntry`、`updateHeritageCard`；`js/admin.js` 的 `trackEditorDraft`、`showKBForm`、`showKepuForm`；归属保护位于 `functions/_lib/admin-content.js` 的 `updatedContent`。没有为这些修补另建平行存储实现或复制管理接口。

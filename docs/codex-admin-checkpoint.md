@@ -170,7 +170,7 @@
 - 正式站全新 Chrome profile 只读验收 `.cache/check-production-collaboration-visitor.mjs`：390px 手机模拟及 1280px 电脑下，未登录游客实际渲染 102 张自定义卡片，含矮守围，revision 174，页面未捕获异常 0。证据 `.cache/incident-production-visitor.json`；截图 `.cache/test-shots/production-collaboration-visitor-phone.png` 已查看。
 - 本轮完成：最终本地 Node 111/111、完整浏览器 319/319、变更专项 63/63 及最终确认响应协议相关 52/52；真实 codex D1 102 张带图/三会话并发/冲突隔离/清理验收通过；main 只读验证通过。发布记录以 skip ci 提交并快进同步 codex，保持两分支相同，稳定地址页无需换 URL。原设备旧稿可从“找回草稿”恢复，未提交且无副本的历史文字无法凭空重建。
 
-## 2026-10-27 严格独立复审（进行中）
+## 2026-10-27 严格独立复审（已补修并正式发布）
 
 - 用户要求再次确认全部问题并严格详细审查。原 111 项 Node 回归绿，但新探针发现 R01–R08，细节见 `docs/collaboration-recheck-2026-10-27.md`。均在本地复现与补修，不向生产注入攻击或改写客户资料。
 - 已修复：复制页面清理原快照加版本条件；旧版本地待上传数据独立备份；IndexedDB 失败恢复降级草稿；编辑期间被删除的自定义条目保留为冲突；旧版整库接口仅改元数据的归属伪造；过期及退出响应不得清除后来的新会话；知识库保存等待确认并自动表单草稿；本机备份失败不允许用云端覆盖唯一内存草稿。
@@ -180,3 +180,7 @@
 - 最终本地复验：Node 120/120，最后守卫改动相关浏览器 57/57；此前完整浏览器 319/319、扩展专项 68/68。全部通过，Functions 重新构建成功。准备只推 codex 先验证真实旧接口归属保护、并发和冲突，再原样发布 main。
 - 首批补修 `e91840a` 已经 codex [CI 40500630800](https://github.com/lwy9107124035/longnankejia/actions/runs/40500630800) 验收，真实预览 3 条带图、三会话并发、旧接口元数据伪造拒绝、冲突隔离均通过；7 条临时记录和 15 条测试历史已清理，预览恢复 revision 42/科普 0，公开内容不变。合并 main `a24cd6e`，[CI 40501151991](https://github.com/lwy9107124035/longnankejia/actions/runs/40501151991) 的 80 项检查通过，正式只读内容和密码指纹不变，页面实际渲染 114 条。
 - 继续交叉复审发现 R03 另一条件：“IndexedDB 失败→恢复可用”后未读上次降级草稿，浏览器修复前断言失败。现初始化与找回草稿合并两类存储，按快照时间选副本，确认后跨存储清理仍按快照版本保护。相关 Node 51、浏览器 42 通过；待推送此最后补修并核对正式发布。
+- 最后补修 `e11d91a01562947b784890e2d62ea7f7261b31c1` 经 codex [CI 40502380217](https://github.com/lwy9107124035/longnankejia/actions/runs/40502380217) 成功；正式合并 `2adfb5ab6f3dc823928aa23d864e77d0a68e44b3`，[CI 40502623731](https://github.com/lwy9107124035/longnankejia/actions/runs/40502623731) 80/80 通过，部署 `https://c7428e58.longnankejia.pages.dev/`。
+- 最终只读核验 `.cache/recheck-20261027-main-release-after.json`：10 份关键文件一致，正式 revision 211/科普 114，完整公开内容及密码派生记录指纹与发布前相同。密钥保留，邀请码未变，不复制预览数据、不改生产资料。
+- `.cache/recheck-20261027-record-lineage.json` 逐项比对旧 26 条、旧 102 条的 ID，当前 114 条全部包含，缺失 ID 0、重复 ID 0。`.cache/recheck-20261027-production-visitor.json` 全新浏览器手机/电脑视图实际渲染 114，含矮守围，脚本异常 0；手机截图已查看。
+- 本轮 R01–R08 均闭合；详细证据和限制见 `docs/collaboration-recheck-2026-10-27.md`。文档记录 skip ci 推送 main，并快进 codex 保持一致。保留实际失败记录，不声称所有未来环境绝无缺陷；同邀请码多人归属按邀请码汇总、16 MiB 总容量和真实 iOS/微信边界已明确。
