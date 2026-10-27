@@ -191,6 +191,24 @@
     previousSnapshotId = saved && saved.snapshotId || '';
     restoreState(saved && saved.pending ? saved : legacyState || saved);
   }
+  function newerSnapshot(a, b) { return !a ? b : !b ? a : (b.time || 0) >= (a.time || 0) ? b : a; }
+  function localSnapshots() {
+    var rows = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && /^nfyj_(?:draft|editor):/.test(key)) { try { rows.push({ id: key.slice(5), saved: JSON.parse(localStorage.getItem(key)) }); } catch (_) {} }
+      }
+    } catch (_) { /* Blocked fallback storage must not hide IndexedDB backups. */ }
+    return rows;
+  }
+  function clearLocalSnapshot(id, snapshotId) {
+    if (!id || !snapshotId) return;
+    try {
+      var raw = localStorage.getItem('nfyj_' + id);
+      if (raw && JSON.parse(raw).snapshotId === snapshotId) localStorage.removeItem('nfyj_' + id);
+    } catch (_) { /* A blocked cleanup leaves the backup in place. */ }
+  }
   // Published cache is shared; each page owns a separate unacknowledged draft snapshot.
   var storageReady = useDraftDb ? new Promise(function (resolve) {
     var request, finished = false;
@@ -215,8 +233,9 @@
         if (finished) return;
         legacyBackupSafe = true;
         if (generation === 0) {
-          if (own && own.result) previousSnapshotId = own.result.snapshotId || '';
-          restoreState(own && own.result && own.result.pending ? own.result : legacyState || (own && own.result) || cache.result);
+          var saved = newerSnapshot(own && own.result, previousDraftId ? read('nfyj_' + previousDraftId, null) : null);
+          previousSnapshotId = saved && saved.snapshotId || '';
+          restoreState(saved && saved.pending ? saved : legacyState || saved || cache.result);
         }
         triggerFrontEndRefresh(); finish();
       };
@@ -232,6 +251,7 @@
     if (pending && !draftOwner) draftOwner = principal();
     var saved = { bundle: copy(bundle()), revision: cloudRevision, base: copy(cloudBase), pending: pending, owner: draftOwner, time: Date.now(),
       snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2), source: recoverySource, conflicts: conflictKeys.slice(), editBases: copy(editBases), lastSyncedAt: lastSyncedAt, cloudIncomplete: cloudIncomplete };
+    var predecessor = { id: previousDraftId, snapshotId: previousSnapshotId };
     if (draftDb) {
       durableDraft = await new Promise(function (resolve) {
         try {
@@ -271,6 +291,10 @@
       } catch (_) { durableDraft = false; }
     }
     if (durableDraft) {
+      if (draftDb) {
+        if (predecessor.id !== draftId) clearLocalSnapshot(predecessor.id, predecessor.snapshotId);
+        if (!saved.pending && saved.source) clearLocalSnapshot(saved.source.id, saved.source.snapshotId);
+      }
       if (!saved.pending) recoverySource = null;
       previousDraftId = draftId;
       previousSnapshotId = saved.snapshotId;
@@ -280,18 +304,15 @@
   }
   async function draftSnapshots() {
     await storageReady;
-    if (draftDb) return new Promise(function (resolve, reject) {
+    var rows = draftDb ? await new Promise(function (resolve, reject) {
       var tx = draftDb.transaction('state', 'readonly'), store = tx.objectStore('state');
       var keys = store.getAllKeys(), rows = store.getAll();
       tx.oncomplete = function () { resolve(keys.result.map(function (key, i) { return { id: key, saved: rows.result[i] }; })); };
       tx.onerror = function () { reject(new Error('读取草稿失败，请先导出当前页面备份')); };
-    });
-    var rows = [];
-    for (var i = 0; i < localStorage.length; i++) {
-      var key = localStorage.key(i);
-      if (key && /^nfyj_(?:draft|editor):/.test(key)) { try { rows.push({ id: key.slice(5), saved: JSON.parse(localStorage.getItem(key)) }); } catch (_) {} }
-    }
-    return rows;
+    }) : [];
+    var combined = new Map();
+    rows.concat(localSnapshots()).forEach(function (row) { combined.set(row.id, newerSnapshot(combined.get(row.id), row.saved)); });
+    return Array.from(combined, function (entry) { return { id: entry[0], saved: entry[1] }; });
   }
   async function getRecoveryDrafts() {
     return (await draftSnapshots()).filter(function (row) { return row.saved && (row.saved.editor || row.saved.pending && row.id !== draftId && row.id !== previousDraftId) && (!row.saved.owner || row.saved.owner === principal() || principal() === 'super_admin'); }).map(function (row) {
@@ -313,15 +334,20 @@
   async function clearEditorDraft(source, id) {
     await storageReady;
     var ownId = id || 'editor:' + draftId;
-    if (draftDb) return new Promise(function (resolve, reject) {
-      var tx = draftDb.transaction('state', 'readwrite'), store = tx.objectStore('state');
-      store.delete(ownId);
-      if (source && source.id !== ownId) {
-        var request = store.get(source.id);
-        request.onsuccess = function () { if (request.result && request.result.snapshotId === source.snapshotId) store.delete(source.id); };
-      }
-      tx.oncomplete = resolve; tx.onerror = tx.onabort = function () { reject(new Error('清除表单草稿失败')); };
-    });
+    if (draftDb) {
+      await new Promise(function (resolve, reject) {
+        var tx = draftDb.transaction('state', 'readwrite'), store = tx.objectStore('state');
+        store.delete(ownId);
+        if (source && source.id !== ownId) {
+          var request = store.get(source.id);
+          request.onsuccess = function () { if (request.result && request.result.snapshotId === source.snapshotId) store.delete(source.id); };
+        }
+        tx.oncomplete = resolve; tx.onerror = tx.onabort = function () { reject(new Error('清除表单草稿失败')); };
+      });
+      if (source) clearLocalSnapshot(source.id, source.snapshotId);
+      try { localStorage.removeItem('nfyj_' + ownId); } catch (_) {}
+      return;
+    }
     localStorage.removeItem('nfyj_' + ownId);
     if (source) { var raw = localStorage.getItem('nfyj_' + source.id), saved = raw && JSON.parse(raw); if (saved && saved.snapshotId === source.snapshotId) localStorage.removeItem('nfyj_' + source.id); }
   }
