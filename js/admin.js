@@ -20,7 +20,6 @@
   var editingDialectId = null;
   var parsedDrafts = []; // 文档解析出的待入库草稿列表
   var renderedRevision = null;
-  var editorVersion = null;
 
   function $(sel) { return document.querySelector(sel); }
   function esc(s) {
@@ -62,6 +61,21 @@
   }
   function adminAction(action) {
     return Promise.resolve().then(action).catch(function (error) { alert(error.message); });
+  }
+  function trackEditorDraft(form, readEditor, recovery) {
+    var id = 'editor:' + Date.now() + ':' + Math.random().toString(36).slice(2), content = form.firstElementChild, finished = false;
+    async function preserve() {
+      if (finished || form.firstElementChild !== content) return;
+      var editor = readEditor(), value = editor.value;
+      if (!value.name && !value.title && !value.detail && !value.answer && !value.imageUrl) return;
+      var saved = await window.Store.saveEditorDraft(editor, id);
+      var hint = content.querySelector('[data-editor-status]');
+      if (hint && !finished) hint.textContent = saved ? '本机草稿已保存，尚未上传。' : '无法保存本机草稿，请复制正文备份。';
+    }
+    form.oninput = function () { preserve().catch(function () {
+      var hint = content.querySelector('[data-editor-status]'); if (hint) hint.textContent = '草稿保存失败，请复制正文备份。';
+    }); };
+    return { preserve: preserve, finish: async function () { finished = true; await window.Store.clearEditorDraft(recovery && recovery.source, id); } };
   }
 
   function showAdminToast(msg) {
@@ -203,9 +217,11 @@
       if (!draft) throw new Error('请输入列表中的草稿编号');
       var recovered = await window.Store.restoreRecoveryDraft(draft.id);
       if (recovered && recovered.editor) {
-        currentTab = 'kepu';
-        panel.querySelectorAll('.admin-tab').forEach(function (tab) { tab.classList.toggle('active', tab.dataset.tab === 'kepu'); });
-        renderTab(); editingKepuId = recovered.editor.recordId || null; showKepuForm(recovered.editor.value, recovered);
+        currentTab = recovered.editor.type === 'kb' ? 'kb' : 'kepu';
+        panel.querySelectorAll('.admin-tab').forEach(function (tab) { tab.classList.toggle('active', tab.dataset.tab === currentTab); });
+        renderTab();
+        if (currentTab === 'kb') { editingId = recovered.editor.recordId || null; showKBForm(recovered.editor.value, recovered); }
+        else { editingKepuId = recovered.editor.recordId || null; showKepuForm(recovered.editor.value, recovered); }
       } else renderTab();
     }); });
     $('#reviewConflictsBtn').addEventListener('click', function () { adminAction(async function () {
@@ -638,8 +654,9 @@
     }
   }
 
-  function showKBForm(entry) {
-    editorVersion = editingId ? window.Store.getEditVersion('kb', editingId) : null;
+  function showKBForm(entry, recovery) {
+    var version = recovery ? recovery.editor.version : editingId ? window.Store.getEditVersion('kb', editingId) : null;
+    var formRecordId = editingId;
     var form = $('#kbForm');
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -651,18 +668,25 @@
       '  <label class="admin-label">条目标题 *</label>' +
       '  <input type="text" id="kbTitle" class="admin-input" value="' + esc(entry ? entry.title : '') + '" placeholder="例如：客家蓝染">' +
       '  <label class="admin-label">触发关键词（逗号或空格分隔） *</label>' +
-      '  <input type="text" id="kbKeywords" class="admin-input" value="' + esc(entry ? entry.keywords.join(', ') : '') + '" placeholder="蓝染, 染布, 靛蓝, 植物染">' +
+      '  <input type="text" id="kbKeywords" class="admin-input" value="' + esc(entry && entry.keywords ? entry.keywords.join(', ') : '') + '" placeholder="蓝染, 染布, 靛蓝, 植物染">' +
       '  <label class="admin-label">文献出处 / 参考资料</label>' +
       '  <input type="text" id="kbSourceTitle" class="admin-input" value="' + esc(sourcesTitle) + '" placeholder="例如：《赣南客家蓝染技艺》田野调查记录">' +
       '  <label class="admin-label">阿蓝回答正文内容 *</label>' +
       '  <textarea id="kbAnswer" class="admin-textarea" rows="6" placeholder="阿蓝对该知识的权威回答内容…">' + esc(entry ? entry.answer : '') + '</textarea>' +
+      '  <div class="admin-hint" data-editor-status>输入会保存为本机草稿，点击保存后上传。</div>' +
       '  <div class="admin-form-actions">' +
       '    <button class="admin-btn admin-btn-primary" id="kbSaveBtn">保存</button>' +
       '    <button class="admin-btn" id="kbCancelBtn">取消</button>' +
       '  </div>' +
       '</div>';
 
-    $('#kbSaveBtn').addEventListener('click', function () {
+    function entryData() {
+      var title = $('#kbTitle').value.trim(), keywords = $('#kbKeywords').value.split(/[,，\s]+/).filter(Boolean), source = $('#kbSourceTitle').value.trim();
+      return { title: title, answer: $('#kbAnswer').value.trim(), keywords: keywords.length ? keywords : [title], sources: source ? [{ title: source }] : [] };
+    }
+    var draft = trackEditorDraft(form, function () { return { type: 'kb', recordId: formRecordId, version: version, value: entryData() }; }, recovery);
+    $('#kbSaveBtn').addEventListener('click', async function () {
+      var button = $('#kbSaveBtn'); if (button.disabled) return;
       var title = $('#kbTitle').value.trim();
       var keywords = $('#kbKeywords').value.split(/[,，\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
       var answer = $('#kbAnswer').value.trim();
@@ -676,11 +700,17 @@
         sources: sourceTitle ? [{ title: sourceTitle }] : []
       };
 
-      if (editingId) {
-        window.Store.updateEntry(editingId, data, currentUser, editorVersion);
-      } else {
-        window.Store.addEntry(data, currentUser);
-      }
+      button.disabled = true; button.textContent = '正在保存…';
+      try {
+        if (editingId) { if (!window.Store.updateEntry(editingId, data, currentUser, version)) throw new Error('未找到该条目，请先核对'); }
+        else editingId = window.Store.addEntry(data, currentUser).id;
+        formRecordId = editingId; await draft.preserve();
+        var saved = await window.Store.flushPending();
+        if (!saved && !window.Store.isContentSaved((version && version.key.indexOf('Edited/') >= 0 ? 'kbEdited/' : 'kbCustom/') + editingId)) { showAdminToast(window.Store.getSyncStatus().message); return; }
+        await draft.finish();
+      } catch (error) { showAdminToast(error.message); return; }
+      finally { button.disabled = false; button.textContent = '保存'; }
+      showAdminToast('已保存');
       form.style.display = 'none';
       editingId = null;
       renderTab();
@@ -969,8 +999,7 @@
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
     var version = recovery ? recovery.editor.version : editingKepuId ? window.Store.getEditVersion('kepu', editingKepuId) : null;
-    var formDraftId = 'editor:' + Date.now() + ':' + Math.random().toString(36).slice(2);
-    var formFinished = false, formRecordId = editingKepuId;
+    var formRecordId = editingKepuId;
 
     var initialImg = card ? (card.imageUrl || card.image || '') : '';
     var initialVid = card ? (card.videoUrl || card.video || '') : '';
@@ -1042,7 +1071,7 @@
       '  <label class="admin-label" style="margin-top:8px">科普详情正文</label>' +
       '  <div class="admin-hint">直接按回车换行，空一行分段，无需输入标签。兼容已有 HTML 段落。</div>' +
       '  <textarea id="kpDetail" class="admin-textarea" rows="8" placeholder="在此输入或粘贴正文，按回车即可换行…">' + esc(card ? card.detail : '') + '</textarea>' +
-      '  <div class="admin-hint" id="kpDraftStatus">输入内容会保存为本机草稿。点击保存后上传。</div>' +
+      '  <div class="admin-hint" id="kpDraftStatus" data-editor-status>输入内容会保存为本机草稿。点击保存后上传。</div>' +
       '  <label class="admin-label">默认提问</label>' +
       '  <input type="text" id="kpAsk" class="admin-input" value="' + esc(card ? card.ask : '') + '" placeholder="例如：龙南大漆有什么特色？">' +
       '  <div class="admin-form-actions">' +
@@ -1057,15 +1086,8 @@
       Object.keys(ids).forEach(function (key) { value[key] = form.querySelector('#' + ids[key]).value; });
       return { type: 'kepu', recordId: formRecordId, version: version, value: value };
     }
-    async function preserveEditor() {
-      if (formFinished || !form.querySelector('#kpName')) return;
-      var editor = editorData();
-      if (!editor.value.name && !editor.value.detail && !editor.value.imageUrl) return;
-      var saved = await window.Store.saveEditorDraft(editor, formDraftId);
-      var hint = form.querySelector('#kpDraftStatus');
-      if (hint && !formFinished) hint.textContent = saved ? '本机草稿已保存，尚未上传。' : '无法保存本机草稿，请复制正文备份。';
-    }
-    form.oninput = function () { preserveEditor().catch(function () { var hint = $('#kpDraftStatus'); if (hint) hint.textContent = '草稿保存失败，请复制正文备份。'; }); };
+    var draft = trackEditorDraft(form, editorData, recovery), preserveEditor = draft.preserve;
+    var formContent = form.firstElementChild;
 
     var fileInput = $('#kpImageFile');
     var imageInput = $('#kpImage');
@@ -1095,12 +1117,12 @@
       var task = ++imageTask;
       imageBusy(true);
       compressAndReadImage(file, function (res) {
-        if (task !== imageTask) return;
+        if (task !== imageTask || !formContent.isConnected) return;
         imageBusy(false);
         applyImageData(res.dataUrl, res.fileName + ' (' + res.sizeKb + ' KB)');
         showAdminToast('图片已读取并优化 (' + res.sizeKb + ' KB)，点击保存后上传');
       }, function (err) {
-        if (task !== imageTask) return;
+        if (task !== imageTask || !formContent.isConnected) return;
         imageBusy(false);
         alert(err);
       });
@@ -1179,7 +1201,7 @@
 
       var data = { name: name, category: category, icon: icon, tag: tag, accent: accent, bg: bg, detail: detail, ask: ask, imageUrl: imageUrl, videoUrl: videoUrl };
       try {
-        if (editingKepuId && (window.Heritage ? window.Heritage.list() : window.Store.getHeritageCards([])).some(function (item) { return item.id === editingKepuId; })) {
+        if (editingKepuId && (version || (window.Heritage ? window.Heritage.list() : window.Store.getHeritageCards([])).some(function (item) { return item.id === editingKepuId; }))) {
           if (!window.Store.updateHeritageCard(editingKepuId, data, version)) throw new Error('保存失败，请先核对该条目');
         } else {
           if (editingKepuId) data.id = editingKepuId;
@@ -1193,8 +1215,7 @@
       saveBtn.disabled = false;
       saveBtn.textContent = '保存';
       if (!saved && !window.Store.isContentSaved((version && version.key.indexOf('Edited/') >= 0 ? 'kepuEdited/' : 'kepuCustom/') + editingKepuId)) { showAdminToast(window.Store.getSyncStatus().message); return; }
-      formFinished = true;
-      await window.Store.clearEditorDraft(recovery && recovery.source, formDraftId);
+      try { await draft.finish(); } catch (error) { showAdminToast('资料已保存，草稿清理失败：' + error.message); return; }
       showAdminToast('已保存');
       form.style.display = 'none';
       editingKepuId = null;
