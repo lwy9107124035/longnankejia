@@ -40,21 +40,23 @@ async function passwordHash(password, salt) {
 async function state(db, key, fallback) {
   if (key === 'content') {
     // Read the manifest and all parts in one SQL snapshot during concurrent writes.
-    const { results } = await db.prepare("SELECT key, value, revision FROM admin_state WHERE key = 'content' OR key GLOB 'content:chunk:*'").all();
+    const { results } = await db.prepare("SELECT key, value, revision, length(CAST(value AS BLOB)) AS bytes FROM admin_state WHERE key = 'content' OR key GLOB 'content:chunk:*'").all();
     const row = results.find(item => item.key === 'content');
-    if (!row) return { value: fallback, revision: 0 };
+    if (!row) return { value: fallback, revision: 0, bytes: encoder.encode(JSON.stringify(fallback)).length };
     let value = JSON.parse(row.value);
+    let byteLength = row.bytes;
     if (value.storage === 'chunks-v1') {
-      const parts = new Map(results.map(item => [item.key, item.value]));
+      const parts = new Map(results.map(item => [item.key, item]));
       let text = '';
+      byteLength = 0;
       for (let i = 0; i < value.count; i++) {
         const part = parts.get('content:chunk:' + i);
         if (part === undefined) throw new Error('Incomplete content snapshot');
-        text += part;
+        text += part.value; byteLength += part.bytes;
       }
       value = JSON.parse(text);
     }
-    return { value, revision: row.revision };
+    return { value, revision: row.revision, bytes: byteLength };
   }
   const row = await db.prepare('SELECT value, revision FROM admin_state WHERE key = ?').bind(key).first();
   return row ? { value: JSON.parse(row.value), revision: row.revision } : { value: fallback, revision: 0 };
@@ -171,7 +173,7 @@ async function getData(db, request) {
   const content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
   const tokens = await state(db, 'tokens', []);
   const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), revision: content.revision, ...(unchanged && { unchanged: true }) };
-  if (!unchanged) result.storage = { metadataBytes: encoder.encode(JSON.stringify(content.value)).length, metadataLimit: MAX_CONTENT_BYTES };
+  if (!unchanged) result.storage = { metadataBytes: content.bytes, metadataLimit: MAX_CONTENT_BYTES };
   if (user) {
     result.session = { role: user.role, name: user.name, tokenId: user.tokenId, expiresAt: user.expiresAt };
     if (!unchanged) {

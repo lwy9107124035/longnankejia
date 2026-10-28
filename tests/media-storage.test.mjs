@@ -87,6 +87,7 @@ test('legacy image history is archived outside metadata and restores byte-for-by
   const rows = backend.sqlite.prepare("SELECT key,value FROM admin_state WHERE key='content' OR key GLOB 'content:chunk:*'").all();
   const manifest = JSON.parse(rows.find(row => row.key === 'content').value);
   const data = JSON.parse(Array.from({ length: manifest.count }, (_, i) => rows.find(row => row.key === 'content:chunk:' + i).value).join(''));
+  assert.equal((await backend.call()).data.storage.metadataBytes, Buffer.byteLength(JSON.stringify(data)));
   assert.match(JSON.stringify(data._history), /\$image/);
   const operation = root.store.getRecoveryHistory().find(op => op.kind === '编辑内容');
   await root.store.restoreOperation(operation.id);
