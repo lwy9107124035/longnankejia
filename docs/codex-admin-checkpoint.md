@@ -219,3 +219,8 @@
 - 已创建本聊天维护巡检 `automation-2`，ACTIVE、每6小时；首次因缺destination参数被拒绝后修正为thread成功。定期只读巡检及备份，异常才通知，不自动生产批量变更或改密钥。该调度依赖本机及Codex运行，不能宣称服务器全天值守。
 - 原子迁移准备阶段首次因本机TLS35未开始读取；只读Cloudflare调用增加有界重试后，剩余图片已全部存入独立块。切换前实际逐张 GET 校验在第9张遇503，保留的图片响应明确为 `error code: 1102`，因此尚未执行content行切换，维护会话已关闭。额外定位图片响应中的逐字节回调耗时：本机300,000 bytes测得约16.65ms，对应普通循环约0.80ms；这是本机对比，不冒充线上CPU时长。改用无回调循环，新增750,000 bytes跨块精确读回测试，最终Node142/142、Functions构建通过。真实大图复验及迁移仍待完成。
 - 维护工具提前在2MiB元数据或85%限额（取先到者）预警，避免等16MiB才处理运行压力；专项9/9通过。D1只读info成功，文件28,352,512 bytes，未知账户套餐额度仍标未知，不开付费服务。
+- 最终图片性能修复 `a6b87f668db533e50ec0253875dd128db86da39b`：预览CI40640865919、正式CI40641147688均成功，正式102/102；主站部署 `https://b6c859ed.longnankejia.pages.dev/`。真实预览757,118 bytes图片逐字读回通过。最终Node142/142、相关Chrome58/58和Functions构建通过；没有将最初142项通过当成平台资源验收，实际大图已补实测。
+- `.cache/incident-20261028-atomic-result.json`：先校验80张独立图片，剩余60条按revision240条件原子切换到241；随后正常接口新增、读回、删除维护验证记录，恢复标准分块存储，正式最终revision243/118条，metadata449,911 bytes。无缺失ID、无并发改动覆盖、密码及邀请码指纹不变、维护会话已关闭。前20条正常API迁移加剩余60条共80条完成。
+- `.cache/incident-20261028-final-verification.json` 将原118条逐项规范图片后比较，正文、所有其他字段、归属及配置相同；3份线上前端源码与本地一致。`.cache/incident-20261028-production-visitor.json` 全新Chrome profile在手机/电脑视图均实际渲染118条，含矮守围，异常0；手机截图已查看。
+- 首次维护巡检已真实运行：`.cache/maintenance/latest.json` problems/warnings均空，容量2.68%，全部80张本站独立图片校验复用，完整公开快照保存在 `.cache/maintenance/backups/revision-243-cf07511f851c1a128c9aeac3b035b81d41e787a7774cb93ef639438a7e7fdf13.json`，snapshotComplete=true。私有完整备份独立保留，不能将公开备份当作含审计及密钥的整库备份。
+- 本轮事故处理完成，正式上传已恢复；维护组和6小时巡检已启用。完整报告 `docs/upload-incident-2026-10-28.md`，维护手册 `docs/maintenance-runbook.md`。客户旧26/102/114均仍在118条中；另几十条无已上传证据，需保留原设备草稿，不能编造恢复结果。仅真实iOS/微信及公开负载验收等未做的边界保留。文档记录以skip ci提交并同步main/codex，不再重复部署未改变的网站代码。
