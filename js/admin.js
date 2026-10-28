@@ -74,7 +74,7 @@
     async function preserve() {
       if (finished || form.firstElementChild !== content) return;
       var editor = readEditor(), value = editor.value;
-      if (!value.name && !value.title && !value.detail && !value.answer && !value.imageUrl) return;
+      if (!value.name && !value.title && !value.detail && !value.answer && !value.imageUrl && !(value.item && (value.item.name || value.item.audioUrl || value.item.videoUrl))) return;
       var saved = await window.Store.saveEditorDraft(editor, id);
       var hint = content.querySelector('[data-editor-status]');
       if (hint && !finished) hint.textContent = saved ? '本机草稿已保存，尚未上传。' : '无法保存本机草稿，请复制正文备份。';
@@ -224,11 +224,12 @@
       if (!draft) throw new Error('请输入列表中的草稿编号');
       var recovered = await window.Store.restoreRecoveryDraft(draft.id);
       if (recovered && recovered.editor) {
-        currentTab = recovered.editor.type === 'kb' ? 'kb' : 'kepu';
+        currentTab = recovered.editor.type === 'dialect' ? 'dialect' : recovered.editor.type === 'kb' ? 'kb' : 'kepu';
         panel.querySelectorAll('.admin-tab').forEach(function (tab) { tab.classList.toggle('active', tab.dataset.tab === currentTab); });
         renderTab();
         if (currentTab === 'kb') { editingId = recovered.editor.recordId || null; showKBForm(recovered.editor.value, recovered); }
-        else { editingKepuId = recovered.editor.recordId || null; showKepuForm(recovered.editor.value, recovered); }
+        else if (currentTab === 'kepu') { editingKepuId = recovered.editor.recordId || null; showKepuForm(recovered.editor.value, recovered); }
+        else showDialectForm(recovered.editor.value, recovered);
       } else renderTab();
     }); });
     $('#reviewConflictsBtn').addEventListener('click', function () { adminAction(async function () {
@@ -711,7 +712,9 @@
       try {
         if (editingId) { if (!window.Store.updateEntry(editingId, data, currentUser, version)) throw new Error('未找到该条目，请先核对'); }
         else editingId = window.Store.addEntry(data, currentUser).id;
-        formRecordId = editingId; await draft.preserve();
+        formRecordId = editingId;
+        if (!version) version = { key: 'kbCustom/' + editingId, value: null };
+        await draft.preserve();
         var saved = await window.Store.flushPending();
         if (!saved && !window.Store.isContentSaved((version && version.key.indexOf('Edited/') >= 0 ? 'kbEdited/' : 'kbCustom/') + editingId)) { showAdminToast(window.Store.getSyncStatus().message); return; }
         await draft.finish();
@@ -1215,6 +1218,7 @@
           editingKepuId = window.Store.addHeritageCard(data, currentUser).id;
         }
         formRecordId = editingKepuId;
+        if (!version) version = { key: 'kepuCustom/' + editingKepuId, value: null };
         await preserveEditor();
       } catch (error) { saveBtn.disabled = false; saveBtn.textContent = '保存'; showAdminToast(error.message); return; }
       refreshFrontEnd();
@@ -1372,8 +1376,12 @@
     refreshDialectView();
   }
 
-  function showDialectForm() {
+  function showDialectForm(track, recovery) {
     var form = $('#dialectForm');
+    var recordId = recovery && recovery.editor.recordId || null;
+    var version = recovery && recovery.editor.version || null;
+    var newId = track && track.id || 'dialect-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+    var item = track && track.item || {};
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -1381,52 +1389,51 @@
       '<div class="admin-form-box">' +
       '  <div class="admin-form-title">新增方言语料 / 展品原声讲解</div>' +
       '  <label class="admin-label">展品 / 方言语料名称 *</label>' +
-      '  <input type="text" id="dlName" class="admin-input" placeholder="例如：黄姜豆腐制作口述">' +
+      '  <input type="text" id="dlName" class="admin-input" value="' + esc(item.name || '') + '" placeholder="例如：黄姜豆腐制作口述">' +
       '  <div class="admin-form-row">' +
       '    <div style="flex:1">' +
       '      <label class="admin-label">媒体形态 *</label>' +
       '      <select id="dlMediaType" class="admin-input">' +
-      '        <option value="audio">🔊 纯音频录音 (田野采风原声)</option>' +
-      '        <option value="video">🎬 视频影像 (展品视听讲解)</option>' +
+      '        <option value="audio"' + (track && track.mediaType === 'audio' ? ' selected' : '') + '>🔊 纯音频录音 (田野采风原声)</option>' +
+      '        <option value="video"' + (track && track.mediaType === 'video' ? ' selected' : '') + '>🎬 视频影像 (展品视听讲解)</option>' +
       '      </select>' +
       '    </div>' +
       '    <div style="flex:1">' +
       '      <label class="admin-label">语料来源</label>' +
       '      <select id="dlOriginType" class="admin-input">' +
       '        <option value="custom">🎙️ 现代田野采风录入</option>' +
-      '        <option value="classic">📖 文献典籍补录</option>' +
+      '        <option value="classic"' + (track && track.originType === 'classic' ? ' selected' : '') + '>📖 文献典籍补录</option>' +
       '      </select>' +
       '    </div>' +
       '  </div>' +
       '  <div class="admin-form-row">' +
       '    <div style="flex:1">' +
       '      <label class="admin-label">所属篇章 / 栏目</label>' +
-      '      <input type="text" id="dlChapter" class="admin-input" value="客家风味" placeholder="例如：客家风味">' +
+      '      <input type="text" id="dlChapter" class="admin-input" value="' + esc(track && track.chapter || '客家风味') + '" placeholder="例如：客家风味">' +
       '    </div>' +
       '    <div style="width:100px">' +
       '      <label class="admin-label">页码编号</label>' +
-      '      <input type="number" id="dlPage" class="admin-input" value="1">' +
+      '      <input type="number" id="dlPage" class="admin-input" value="' + esc(item.page || 1) + '">' +
       '    </div>' +
       '  </div>' +
       '  <label class="admin-label">音视频嵌入链接 / 播放地址 *</label>' +
-      '  <input type="url" id="dlUrl" class="admin-input" placeholder="https://... 视频或音频地址">' +
+      '  <input type="url" id="dlUrl" class="admin-input" value="' + esc(item.videoUrl || item.audioUrl || '') + '" placeholder="https://... 视频或音频地址">' +
+      '  <p class="admin-hint" data-editor-status>本机草稿已保留，保存后上传。</p>' +
       '  <div class="admin-form-actions">' +
       '    <button class="admin-btn admin-btn-primary" id="dlSaveBtn">保存</button>' +
       '    <button class="admin-btn" id="dlCancelBtn">取消</button>' +
       '  </div>' +
       '</div>';
 
-    $('#dlSaveBtn').addEventListener('click', function () {
+    function readTrack() {
       var name = $('#dlName').value.trim();
       var mediaType = $('#dlMediaType').value || 'audio';
       var originType = $('#dlOriginType').value || 'custom';
       var chapter = $('#dlChapter').value.trim() || '客家方言';
       var page = Number($('#dlPage').value) || 1;
       var url = $('#dlUrl').value.trim();
-      if (!name || !url) { alert('名称和音视频链接不能为空'); return; }
-
-      window.Store.addDialectTrack({
-        id: 'dl-' + Date.now(),
+      return {
+        id: recordId || newId,
         chapter: chapter,
         mediaType: mediaType,
         originType: originType,
@@ -1438,10 +1445,25 @@
           audioUrl: (mediaType === 'audio' ? url : ''),
           mediaType: mediaType
         }
-      }, currentUser);
-      refreshFrontEnd();
-      form.style.display = 'none';
-      renderTab();
+      };
+    }
+    var draft = trackEditorDraft(form, function () { return { type: 'dialect', recordId: recordId, version: version, value: readTrack() }; }, recovery);
+    $('#dlSaveBtn').addEventListener('click', async function () {
+      var button = this, value = readTrack();
+      if (button.disabled) return;
+      if (!value.item.name || !(value.item.videoUrl || value.item.audioUrl)) { alert('名称和音视频链接不能为空'); return; }
+      button.disabled = true; button.textContent = '正在保存…';
+      try {
+        if (recordId) { if (!window.Store.updateDialectTrack(recordId, value, version)) throw new Error('未找到该条目，请先核对'); }
+        else recordId = window.Store.addDialectTrack(value, currentUser).id;
+        if (!version) version = { key: 'dialectCustom/' + recordId, value: null };
+        await draft.preserve();
+        var saved = await window.Store.flushPending();
+        if (!saved && !window.Store.isContentSaved('dialectCustom/' + recordId)) { showAdminToast(window.Store.getSyncStatus().message); return; }
+        await draft.finish(); refreshFrontEnd();
+        showAdminToast('已保存'); form.style.display = 'none'; renderTab();
+      } catch (error) { showAdminToast(error.message); }
+      finally { button.disabled = false; button.textContent = '保存'; }
     });
 
     $('#dlCancelBtn').addEventListener('click', function () {
@@ -1718,6 +1740,7 @@
 
   /* ==================== 5. AI 模型与工作流编排 ==================== */
   function renderAI(body) {
+    var canEdit = currentUser && currentUser.role === 'super_admin';
     var apiOvr = window.Store.getApiOverrides();
     var curModel = apiOvr.model || 'Qwen/Qwen3-30B-A3B-Instruct-2507';
     var curTemp = apiOvr.temperature !== undefined ? apiOvr.temperature : 0.2;
@@ -1754,16 +1777,33 @@
       this.previousElementSibling.textContent = '生成温度 (Temperature: ' + this.value + ')';
     });
 
-    $('#aiSaveBtn').addEventListener('click', function () {
+    if (!canEdit) {
+      body.querySelectorAll('input, select, textarea, button').forEach(function (element) { element.disabled = true; });
+      $('#aiSaveBtn').textContent = '仅管理员可修改';
+      return;
+    }
+    $('#aiSaveBtn').addEventListener('click', async function () {
+      var button = this;
+      if (button.disabled) return;
       var model = $('#apiModel').value;
       var temp = Number($('#apiTemp').value);
       var maxTokens = Number($('#apiMaxTokens').value);
       var sysPrompt = $('#wfPrompt').value.trim();
 
-      window.Store.setApiOverrides({ model: model, temperature: temp, maxTokens: maxTokens });
-      window.Store.setWorkflowConfig({ systemPrompt: sysPrompt });
-      if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
-      alert('AI 模型与工作流配置已生效！');
+      if (!Number.isFinite(temp) || temp < 0 || temp > 1 || !Number.isInteger(maxTokens) || maxTokens < 100 || maxTokens > 2000) {
+        showAdminToast('生成温度应为0～1，输出长度应为100～2000的整数'); return;
+      }
+
+      button.disabled = true;
+      try {
+        window.Store.setApiOverrides({ model: model, temperature: temp, maxTokens: maxTokens });
+        window.Store.setWorkflowConfig({ systemPrompt: sysPrompt });
+        var saved = await window.Store.flushPending();
+        if (!saved && !(window.Store.isContentSaved('apiConfig') && window.Store.isContentSaved('workflowConfig'))) { showAdminToast('尚未上传：' + window.Store.getSyncStatus().message); return; }
+        if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+        showAdminToast('配置已保存');
+      } catch (error) { showAdminToast(error.message); }
+      finally { button.disabled = false; }
     });
   }
 
@@ -2248,21 +2288,32 @@
     });
 
     if (isSuper && $('#resetKBBtn')) {
-      $('#resetKBBtn').addEventListener('click', function () {
+      $('#resetKBBtn').addEventListener('click', async function () {
         if (confirm('确定重置知识库？所有自定义内容将丢失。')) {
-          window.Store.resetKB();
-          if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
-          alert('知识库已重置');
+          var button = this; button.disabled = true;
+          try {
+            window.Store.resetKB();
+            if (!(await window.Store.flushPending())) { showAdminToast('重置尚未上传：' + window.Store.getSyncStatus().message); return; }
+            if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+            showAdminToast('知识库已重置');
+          } catch (error) { showAdminToast(error.message); }
+          finally { button.disabled = false; }
         }
       });
     }
 
     if (isSuper && $('#resetApiBtn')) {
-      $('#resetApiBtn').addEventListener('click', function () {
+      $('#resetApiBtn').addEventListener('click', async function () {
         if (confirm('确定重置 AI 设置？')) {
-          window.Store.resetApi();
-          if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
-          alert('AI 设置已重置');
+          var button = this; button.disabled = true;
+          try {
+            window.Store.resetApi();
+            var saved = await window.Store.flushPending();
+            if (!saved && !(window.Store.isContentSaved('apiConfig') && window.Store.isContentSaved('workflowConfig'))) { showAdminToast('重置尚未上传：' + window.Store.getSyncStatus().message); return; }
+            if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+            showAdminToast('AI 设置已重置');
+          } catch (error) { showAdminToast(error.message); }
+          finally { button.disabled = false; }
         }
       });
     }

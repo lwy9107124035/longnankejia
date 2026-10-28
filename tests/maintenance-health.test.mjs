@@ -5,7 +5,7 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import '../js/content-schema.js';
-import { checkHealth } from '../scripts/maintenance-health.mjs';
+import { checkHealth, readDatabaseCapacity } from '../scripts/maintenance-health.mjs';
 
 const schema = globalThis.HeritageContent;
 const baseline = { revision: 10, ids: ['existing-1'] };
@@ -166,4 +166,36 @@ test('large snapshots warn before reaching the historical 16 MiB storage limit',
   const report = await checkHealth({ origin: site.origin, baseline });
   assert.deepEqual(report.problems, []); assert.equal(report.warnings.length, 1);
   assert.equal(report.storage.warningBytes, 2 * 1024 * 1024); assert.ok(report.storage.usedPercent < 85);
+});
+
+test('physical D1 size uses read-only info and does not claim an account quota', async () => {
+  const capacity = await readDatabaseCapacity('synthetic-db', { run: async (command, args, options) => {
+    assert.ok([command, ...args].join(' ').includes('d1 info synthetic-db --json'));
+    assert.equal(options.windowsHide, true);
+    return { stdout: JSON.stringify({ name: 'synthetic-db', database_size: 17_000_000 }) };
+  } });
+  assert.equal(capacity.sizeBytes, 17_000_000); assert.equal(capacity.planLimitBytes, null);
+  await assert.rejects(readDatabaseCapacity('db & echo secret'), /Invalid D1 database name/);
+  await assert.rejects(readDatabaseCapacity('synthetic-db', { run: async () => ({ stdout: '{}' }) }), /invalid database or size/);
+});
+
+test('D1 capacity pre-warning preserves a complete content backup', async t => {
+  const site = await serve(t, () => jsonResponse(content()));
+  const snapshotDir = await fs.mkdtemp(path.join(os.tmpdir(), 'maintenance-d1-capacity-'));
+  t.after(() => fs.rm(snapshotDir, { recursive: true, force: true }));
+  const report = await checkHealth({ origin: site.origin, baseline, snapshotDir, databaseName: 'synthetic-db', readCapacity: async database => ({
+    database, sizeBytes: 351 * 1024 * 1024, warningBytes: 350 * 1024 * 1024, planLimitBytes: null
+  }) });
+  assert.deepEqual(report.problems, []); assert.equal(report.warnings.length, 1);
+  assert.equal(report.snapshotComplete, true); assert.equal(report.databaseStorage.planLimitBytes, null);
+});
+
+test('unavailable D1 authorization is explicit and does not block the public backup', async t => {
+  const site = await serve(t, () => jsonResponse(content()));
+  const snapshotDir = await fs.mkdtemp(path.join(os.tmpdir(), 'maintenance-d1-unavailable-'));
+  t.after(() => fs.rm(snapshotDir, { recursive: true, force: true }));
+  const report = await checkHealth({ origin: site.origin, baseline, snapshotDir, databaseName: 'synthetic-db', readCapacity: async () => { throw new Error('authorization unavailable'); } });
+  assert.deepEqual(report.problems, []); assert.match(report.warnings[0], /capacity check incomplete/);
+  assert.equal(report.databaseStorage, null); assert.equal(report.snapshotComplete, true);
+  await assert.rejects(readDatabaseCapacity('synthetic-db', { run: async () => { throw new Error('secret stderr'); } }), /^Error: D1 capacity unavailable;/);
 });

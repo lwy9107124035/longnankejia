@@ -934,12 +934,9 @@
   }
 
   function resetKB() {
-    try {
-      remove(LS.custom);
-      remove(LS.deleted);
-      remove(LS.edited);
-      syncCustomToCloud();
-    } catch (e) {}
+    remove(LS.custom); remove(LS.deleted); remove(LS.edited);
+    write(LS.custom, []); write(LS.deleted, []); write(LS.edited, {});
+    syncCustomToCloud();
   }
 
   function exportKB() {
@@ -1087,6 +1084,18 @@
     return track;
   }
 
+  function updateDialectTrack(id, patch, version) {
+    rememberEditVersion(version);
+    var list = read(LS.dialect_custom, []);
+    if (!unambiguous(list, id, 'dialect')) return false;
+    var index = list.findIndex(function (track) { return track.id === id; });
+    if (index < 0) {
+      if (!version || !version.value) return false;
+      list.push(Object.assign({}, version.value, patch, { id: id }));
+    } else list[index] = Object.assign({}, list[index], patch, { id: id });
+    write(LS.dialect_custom, list); syncCustomToCloud(); return true;
+  }
+
   function deleteDialectTrack(id, creatorInfo) {
     var list = read(LS.dialect_custom, []);
     if (!unambiguous(list, id, 'dialect')) return false;
@@ -1104,25 +1113,23 @@
 
   function setApiOverrides(patch) {
     var cur = read(LS.api, {});
-    write(LS.api, Object.assign(cur, patch));
+    write(LS.api, Object.assign({}, cur, patch));
     syncCustomToCloud();
   }
 
   function resetApi() {
-    try {
-      remove(LS.api);
-      remove(LS.workflow);
-      syncCustomToCloud();
-    } catch (e) {}
+    remove(LS.api); remove(LS.workflow);
+    write(LS.api, {}); write(LS.workflow, {});
+    syncCustomToCloud();
   }
 
   function getWorkflowConfig() {
-    return read(LS.workflow, {
+    return Object.assign({
       systemPrompt: '你是龙南客家非遗数字助手的虚拟讲解员「阿蓝」。说话要亲切热情、尊重文献事实。介绍客家文化时条理清晰，遇未提及事实如实说明。',
       strictMode: true,
       minScore: 1.0,
       enableThinking: false
-    });
+    }, read(LS.workflow, {}));
   }
 
   function setWorkflowConfig(patch) {
@@ -1255,6 +1262,7 @@
     // 方言语音
     getCustomDialectTracks: getCustomDialectTracks,
     addDialectTrack: addDialectTrack,
+    updateDialectTrack: updateDialectTrack,
     deleteDialectTrack: deleteDialectTrack,
 
     // AI 模型与工作流

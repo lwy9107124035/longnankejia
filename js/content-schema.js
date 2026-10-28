@@ -153,6 +153,7 @@
   }
   async function prepareMediaRecord(value) {
     if (!object(value) || mediaForms.has(value)) return;
+    if (!['image', 'imageUrl'].some(function (key) { return typeof value[key] === 'string'; }) && !(object(value.item) && typeof value.item.imageUrl === 'string')) return;
     var result = Object.assign({}, value);
     for (var key of ['image', 'imageUrl']) if (typeof value[key] === 'string') result[key] = await mediaIdentity(value[key]);
     if (object(value.item) && typeof value.item.imageUrl === 'string') result.item = Object.assign({}, value.item, { imageUrl: await mediaIdentity(value.item.imageUrl) });

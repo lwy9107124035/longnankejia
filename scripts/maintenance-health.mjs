@@ -4,12 +4,16 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const schema = globalThis.HeritageContent;
 const MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
 const MAX_MEDIA_BYTES = 24 * 1024 * 1024;
 const TIMEOUT_MS = 10_000;
 const METADATA_WARNING_BYTES = 2 * 1024 * 1024;
+const DATABASE_WARNING_BYTES = 350 * 1024 * 1024;
+const executeFile = promisify(execFile);
 const DEFAULT_ORIGIN = 'https://longnankejia.pages.dev';
 const MEDIA_TYPES = new Map([
   ['image/png', 'png'], ['image/jpeg', 'jpeg'], ['image/gif', 'gif'],
@@ -18,6 +22,25 @@ const MEDIA_TYPES = new Map([
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+export async function readDatabaseCapacity(database, { run = executeFile } = {}) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(database || '')) throw new TypeError('Invalid D1 database name');
+  const windows = process.platform === 'win32';
+  const command = windows ? 'cmd.exe' : 'wrangler';
+  const args = windows ? ['/d', '/s', '/c', `wrangler d1 info ${database} --json`] : ['d1', 'info', database, '--json'];
+  let stdout;
+  try {
+    ({ stdout } = await run(command, args, { timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true }));
+  } catch {
+    throw new Error('D1 capacity unavailable; check Wrangler installation and authorization');
+  }
+  let info;
+  try { info = JSON.parse(stdout); } catch { throw new Error('D1 capacity response is not JSON'); }
+  if (info.name !== database || !Number.isSafeInteger(info.database_size) || info.database_size < 0) {
+    throw new Error('D1 capacity response has an invalid database or size');
+  }
+  return { database, sizeBytes: info.database_size, warningBytes: DATABASE_WARNING_BYTES, planLimitBytes: null };
 }
 
 function parseBaseline(value) {
@@ -116,7 +139,9 @@ export async function checkHealth({
   baseline,
   fetchImpl = globalThis.fetch,
   now = () => new Date().toISOString(),
-  snapshotDir
+  snapshotDir,
+  databaseName,
+  readCapacity = readDatabaseCapacity
 } = {}) {
   const startedAt = now();
   const result = {
@@ -137,6 +162,7 @@ export async function checkHealth({
     mediaArchived: 0,
     mediaReused: 0,
     storage: null,
+    databaseStorage: null,
     warnings: [],
     problems: []
   };
@@ -217,6 +243,16 @@ export async function checkHealth({
   }
 
   if (result.problems.length) return result;
+  if (databaseName) {
+    try {
+      result.databaseStorage = await readCapacity(databaseName);
+      if (result.databaseStorage.sizeBytes >= result.databaseStorage.warningBytes) {
+        result.warnings.push('D1 database has reached the 350 MiB maintenance budget; review growth and the account quota');
+      }
+    } catch (error) {
+      result.warnings.push(`D1 capacity check incomplete: ${error.message}`);
+    }
+  }
   const fetchedMedia = new Map();
   try {
     for (const url of publicMediaUrls(payload)) {
@@ -259,10 +295,10 @@ function cliOptions(args) {
   const options = {};
   for (let i = 0; i < args.length; i += 1) {
     const key = args[i];
-    if (!['--baseline', '--origin', '--report', '--snapshot-dir'].includes(key) || !args[i + 1] || args[i + 1].startsWith('--')) {
+    if (!['--baseline', '--origin', '--report', '--snapshot-dir', '--d1-database'].includes(key) || !args[i + 1] || args[i + 1].startsWith('--')) {
       throw new Error(`Invalid or incomplete argument: ${key}`);
     }
-    const name = { '--baseline': 'baselinePath', '--origin': 'origin', '--report': 'reportPath', '--snapshot-dir': 'snapshotDir' }[key];
+    const name = { '--baseline': 'baselinePath', '--origin': 'origin', '--report': 'reportPath', '--snapshot-dir': 'snapshotDir', '--d1-database': 'databaseName' }[key];
     options[name] = args[++i];
   }
   if (!options.baselinePath) throw new Error('--baseline is required');
@@ -273,7 +309,7 @@ async function main() {
   try {
     const options = cliOptions(process.argv.slice(2));
     const baseline = parseBaseline(JSON.parse(await fs.readFile(options.baselinePath, 'utf8')));
-    const report = await checkHealth({ origin: options.origin || DEFAULT_ORIGIN, baseline, snapshotDir: options.snapshotDir });
+    const report = await checkHealth({ origin: options.origin || DEFAULT_ORIGIN, baseline, snapshotDir: options.snapshotDir, databaseName: options.databaseName });
     if (options.reportPath) {
       await fs.mkdir(path.dirname(path.resolve(options.reportPath)), { recursive: true });
       await fs.writeFile(options.reportPath, JSON.stringify(report, null, 2) + '\n');

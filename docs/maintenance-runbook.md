@@ -16,15 +16,16 @@
 
 ```powershell
 $env:NODE_USE_ENV_PROXY = '1'
-node scripts/maintenance-health.mjs --baseline docs/production-baseline.json --report .cache/maintenance/latest.json --snapshot-dir .cache/maintenance/backups
+node scripts/maintenance-health.mjs --baseline docs/production-baseline.json --report .cache/maintenance/latest.json --snapshot-dir .cache/maintenance/backups --d1-database longnankejia-admin-main
 ```
 
-- 只使用公开 GET，不需要管理员密码、邀请码或 API 密钥，不写云端数据。
+- 内容检查只使用公开 GET，不需要管理员密码或邀请码，不写云端数据。实际数据库大小由现有 Wrangler 授权只读获取。
 - 检查真实 JSON 接口、禁止缓存响应、版本、格式、重复 ID 和基线 ID 是否缺失。新增条目允许通过；有意删除的条目须核对后更新基线，不自动“补回”。
 - 抽查独立图片内容摘要。元数据达到 2 MiB 或快照限额的 85%（取较早者）就预警，避免等到旧 16 MiB 边界才处理运行资源压力。2 MiB 是维护预算，不是平台硬上限；这里也不能冒充账户的 D1 套餐剩余额度。
 - 备份成功时按版本和内容摘要追加公开 JSON，并校验、缓存所有本站独立图片；已有备份不覆盖、不自动删除。外站媒体、站点自带资源和私有审计历史不属于这份公开内容备份。站点自带资源保存在 Git；完整私有备份由维护人员另行保管。
 - 图片归档失败时报告不完整，不把缺图快照当作完整备份。`.cache` 不提交仓库，应随电脑资料备份保存。
-- 现有 Cloudflare 授权可用时，另以 `wrangler d1 info longnankejia-admin-main --json` 只读检查实际数据库文件大小及增长；授权不可用则记录未知。应用快照额度、D1 文件占用和账户套餐额度分别判断，不互相替代，不擅自开通付费服务。
+- `--d1-database` 调用 `wrangler d1 info ... --json`，同时记录实际数据库文件大小；达到 350 MiB 提前预警。350 MiB 是保守维护预算，不是查询得出的套餐上限。Wrangler 缺失或授权过期会明确提示容量检查未完成，仍继续公开备份，不伪报容量正常。
+- 应用快照额度、D1 文件占用和账户套餐额度分别判断，不互相替代。当前权限无法查询账户订阅；不擅自开通付费服务。超过免费读写或存储额度可能停止服务，若已使用付费套餐则超额可能计费，费用以账户实际订阅为准。
 - 巡检结果不变时保持安静；接口异常、缺条、容量预警、备份失败、修复完成或需要用户决定时才通知。
 
 首次正式基线为 revision 220 的 118 个公开自定义科普 ID，见 `docs/production-baseline.json`。后续每次发布核验当前版本和已有 ID，客户新增内容不能被旧快照覆盖。
