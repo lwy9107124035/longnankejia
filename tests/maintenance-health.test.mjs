@@ -159,3 +159,11 @@ test('storage warnings keep a valid snapshot available for backup', async t => {
   assert.deepEqual(report.problems, []); assert.equal(report.storage.usedPercent, 90);
   assert.equal(report.warnings.length, 1); assert.equal(report.snapshotComplete, true);
 });
+
+test('large snapshots warn before reaching the historical 16 MiB storage limit', async t => {
+  const payload = { ...content(), storage: { metadataBytes: 3 * 1024 * 1024, metadataLimit: 16 * 1024 * 1024 } };
+  const site = await serve(t, () => jsonResponse(payload));
+  const report = await checkHealth({ origin: site.origin, baseline });
+  assert.deepEqual(report.problems, []); assert.equal(report.warnings.length, 1);
+  assert.equal(report.storage.warningBytes, 2 * 1024 * 1024); assert.ok(report.storage.usedPercent < 85);
+});

@@ -186,3 +186,12 @@ test('an already-open old browser cannot put inline pictures back into the share
   assert.equal(actual.detail, '旧页面第二版'); assert.equal(actual.imageUrl, published.imageUrl);
   assert.deepEqual(Buffer.from(await (await backend.fetchApi(actual.imageUrl)).arrayBuffer()), sampleBytes);
 });
+
+test('large media spanning several stored parts returns the exact binary payload', async t => {
+  const backend = setup(t), device = setupEnvironment(backend), user = await login(device);
+  const bytes = Buffer.alloc(750000); for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
+  const uploaded = await backend.call({ action: 'store_media', dataUrl: 'data:image/png;base64,' + bytes.toString('base64') }, user.bearer);
+  assert.equal(uploaded.status, 200);
+  const response = await backend.fetchApi(uploaded.data.url); assert.equal(response.headers.get('Content-Length'), String(bytes.length));
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
+});

@@ -102,7 +102,9 @@ export function mediaResponse(media, request) {
     pull(controller) {
       if (index === media.parts.length) { controller.close(); return; }
       const data = atob(media.parts[index++]);
-      controller.enqueue(Uint8Array.from(data, char => char.charCodeAt(0)));
+      const bytes = new Uint8Array(data.length);
+      for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i);
+      controller.enqueue(bytes);
     }
   }), { headers });
 }

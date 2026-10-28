@@ -9,6 +9,7 @@ const schema = globalThis.HeritageContent;
 const MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
 const MAX_MEDIA_BYTES = 24 * 1024 * 1024;
 const TIMEOUT_MS = 10_000;
+const METADATA_WARNING_BYTES = 2 * 1024 * 1024;
 const DEFAULT_ORIGIN = 'https://longnankejia.pages.dev';
 const MEDIA_TYPES = new Map([
   ['image/png', 'png'], ['image/jpeg', 'jpeg'], ['image/gif', 'gif'],
@@ -209,8 +210,9 @@ export async function checkHealth({
     const { metadataBytes, metadataLimit } = payload.storage;
     if (!Number.isSafeInteger(metadataBytes) || metadataBytes < 0 || !Number.isSafeInteger(metadataLimit) || metadataLimit <= 0) result.problems.push('storage metrics are invalid');
     else {
-      result.storage = { metadataBytes, metadataLimit, usedPercent: metadataBytes * 100 / metadataLimit };
-      if (result.storage.usedPercent >= 85) result.warnings.push('metadata storage has reached 85% of its limit');
+      const warningBytes = Math.min(metadataLimit * 0.85, METADATA_WARNING_BYTES);
+      result.storage = { metadataBytes, metadataLimit, warningBytes, usedPercent: metadataBytes * 100 / metadataLimit };
+      if (metadataBytes >= warningBytes) result.warnings.push('metadata snapshot has reached its maintenance threshold');
     }
   }
 
