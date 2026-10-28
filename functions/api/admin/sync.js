@@ -1,5 +1,5 @@
 // Credentials and shared state belong in D1, never in a Worker isolate.
-import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation } from '../../_lib/admin-content.js';
+import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 import { storeMedia, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
 const LOCK_MS = 60000;
@@ -177,8 +177,7 @@ async function getData(db, request) {
       result.auditLogs = user.role === 'super_admin' ? safeAudit(content.value, tokens.value) : [];
       result.notifications = (content.value._notifications || []).filter(n => user.role === 'super_admin' || n.tokenId === user.tokenId);
       if (user.role === 'super_admin') result.contributions = contributions(content.value, tokens.value);
-      if (user.role === 'super_admin') result.recovery = (content.value._history || []).filter(op => !op.undone && op.before !== null)
-        .slice(-50).reverse().map(op => ({ id: op.id, title: op.title, kind: op.kind, time: op.time }));
+      if (user.role === 'super_admin') result.recovery = recoveryHistory(content.value);
     }
     if (user.role === 'super_admin') {
       result.tokens = tokens.value;
@@ -234,6 +233,7 @@ async function postData(db, env, request, body) {
         const logs = user.role === 'super_admin' ? safeAudit(result.next, tokens.value) : [];
         const values = globalThis.HeritageContent.contentCells(published);
         return { ok: true, revision, baseRevision: current.revision, accepted: result.accepted, conflicts: result.conflicts, auditLogs: logs,
+          recovery: user.role === 'super_admin' ? recoveryHistory(result.next) : undefined,
           receipts: result.accepted.map(key => {
             const value = values.get(key);
             const provenance = value && typeof value === 'object' ? Object.fromEntries(['creatorName', 'creatorTokenId', 'createdAt']

@@ -163,3 +163,10 @@ test('moderation restores an archived picture without putting it back in metadat
   const actual = (await backend.call()).data.kepuCustom[0]; assert.equal(actual.detail, '原正文'); assert.match(actual.imageUrl, /^\/api\/media\//);
   assert.deepEqual(Buffer.from(await (await backend.fetchApi(actual.imageUrl)).arrayBuffer()), sampleBytes);
 });
+
+test('a confirmed deletion immediately appears in the administrator recovery history', async t => {
+  const backend = setup(t), root = setupEnvironment(backend); await login(root);
+  root.store.addHeritageCard({ id: 'immediate-history', name: '刚刚误删' }); await root.store.flushPending();
+  root.store.deleteHeritageCard('immediate-history'); assert.equal(await root.store.flushPending(), true);
+  assert.ok(root.store.getRecoveryHistory().some(op => op.title === '刚刚误删' && op.kind === '删除内容'));
+});

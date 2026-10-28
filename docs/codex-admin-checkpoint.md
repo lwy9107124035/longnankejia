@@ -195,3 +195,4 @@
 - 待办：新增旧图整理/异步读取竞争测试及多引擎完整上传恢复检查；最终 Node/浏览器/Functions 构建；仅提交推送 codex，确认 CI 与真实预览，保存发布证据。
 - 2026-10-28 最终本地验证：Node 130/130、Chrome 全量 319/319、最终相关专项 58/58、WebKit 桌面/手机/微信 UA 模拟 33/33；3 项负向变异、静态检查和 Functions 构建通过。误判 beforeunload 的 WebKit 断言和缺少 location 的知识库夹具兼容问题均已修正，保留实际失败记录。审核回滚改为仅展开所选历史的图片，避免一次读入全部历史图片。
 - 发布前只读 `.cache/capacity-release-before.json`：main revision 220/科普 118；codex revision 42/科普 0；两库密码 revision 1。当前 main 的客户录入量比上轮增加，不复制预览库或覆盖新资料。详细实现、验证、保留容量保护和真实设备限制见 `docs/capacity-recovery-2026-10-28.md`。
+- 首批 `4b2d6bb566ed3ddd306da1a13aceee2b01955bc7` 已只推 codex，[CI 40636024076](https://github.com/lwy9107124035/longnankejia/actions/runs/40636024076) 成功。最后操作核对复现“删除成功但历史列表仍旧”延迟，补充确认包中的超管恢复摘要和 Store 即时更新，新增断言修复前失败；最终 Node 131/131、Functions 构建通过，WebKit 移除手动同步后复验中。

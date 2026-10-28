@@ -89,7 +89,6 @@ try {
       });
       await openAdmin(); await page.locator('[data-tab="kepu"]').click();
       await page.locator('[data-del-kepu="' + first.id + '"]').click(); await idle();
-      await page.evaluate(() => window.Store.syncWithCloud());
       await page.locator('[data-tab="sys"]').click();
       await check('误删单项可从云端历史恢复', async () => {
         const operation = await page.evaluate(() => window.Store.getRecoveryHistory().find(op => op.kind === '删除内容').id);

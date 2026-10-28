@@ -601,6 +601,7 @@
           lastReadSession = null;
           if (data.content && Array.isArray(data.content.auditLogs)) write(LS.audit_logs, data.content.auditLogs);
           if (Array.isArray(data.auditLogs)) write(LS.audit_logs, data.auditLogs);
+          if (Array.isArray(data.recovery)) recoveryRows = data.recovery;
           write('nfyj_cloud_revision', cloudRevision);
           pending = changedCells().length > 0;
           if (!pending) { draftOwner = ''; conflictKeys = []; write('nfyj_cloud_pending', false); }

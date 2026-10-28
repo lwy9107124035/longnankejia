@@ -123,6 +123,10 @@ export async function updatedContent(current, submitted, user, tokens) {
   if (changes || configChanged) audit(next, user, '保存内容', '保存 ' + changes + ' 项内容修改' + (configChanged ? '，更新 AI 配置' : ''), tokens);
   return next;
 }
+export function recoveryHistory(content) {
+  return (content._history || []).filter(op => !op.undone && op.before !== null)
+    .slice(-50).reverse().map(op => ({ id: op.id, title: op.title, kind: op.kind, time: op.time }));
+}
 export function contributions(content, tokens) {
   const rows = new Map();
   for (const op of content._history || []) {

@@ -17,12 +17,13 @@
 
 ## 验证记录
 
-- Node：130/130，`.cache/capacity-all-node-final.txt`。含 10 项新增存储、恢复、迁移与异步竞争测试。
+- Node：131/131，`.cache/capacity-all-node-final.txt`。含 11 项新增存储、恢复、迁移与异步竞争测试。
 - Chrome 全量：319/319，`.cache/capacity-full-browser.txt`；最终同步、安全、协作和管理专项 58/58，`.cache/capacity-browser-final.txt`。实际 CSP，未捕获异常和失败子资源均为 0。
 - WebKit：33/33，`.cache/webkit-final.txt`、`.cache/browser-engine-results.json`。真实选图、Canvas 压缩、跨设备游客读取、普通换行、断网刷新、联网续传、误删恢复、下载与导入全部经过浏览器操作。
 - 3 项负向变异均捕获；静态检查、Cloudflare Pages Functions 构建通过。日志分别为 `.cache/capacity-negative.txt`、`capacity-static.txt`、`capacity-functions-build.txt`。
 - 初轮 WebKit 最后一项把刷新时的 beforeunload 空消息当成异常弹窗，业务流程已成功；修正测试按弹窗类型识别后 33 项全过。
 - 最终 Node 曾发现镜像图片显示逻辑在没有 location 的知识库测试环境中抛错；增加环境判断后 130 项全过。保留实际失败记录，不把最初失败描述成一次通过。
+- 发布前再查发现删除成功后恢复列表需等下一次读取；新增断言明确复现失败（`.cache/capacity-history-before-fix.txt`）。确认响应现即时更新超管恢复列表，最终 131 项全过；WebKit 也移除额外手动同步步骤验证实际操作。
 
 ## 仍需明确的限制
 
