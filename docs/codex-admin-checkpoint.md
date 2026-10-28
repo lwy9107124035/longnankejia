@@ -196,3 +196,7 @@
 - 2026-10-28 最终本地验证：Node 130/130、Chrome 全量 319/319、最终相关专项 58/58、WebKit 桌面/手机/微信 UA 模拟 33/33；3 项负向变异、静态检查和 Functions 构建通过。误判 beforeunload 的 WebKit 断言和缺少 location 的知识库夹具兼容问题均已修正，保留实际失败记录。审核回滚改为仅展开所选历史的图片，避免一次读入全部历史图片。
 - 发布前只读 `.cache/capacity-release-before.json`：main revision 220/科普 118；codex revision 42/科普 0；两库密码 revision 1。当前 main 的客户录入量比上轮增加，不复制预览库或覆盖新资料。详细实现、验证、保留容量保护和真实设备限制见 `docs/capacity-recovery-2026-10-28.md`。
 - 首批 `4b2d6bb566ed3ddd306da1a13aceee2b01955bc7` 已只推 codex，[CI 40636024076](https://github.com/lwy9107124035/longnankejia/actions/runs/40636024076) 成功。最后操作核对复现“删除成功但历史列表仍旧”延迟，补充确认包中的超管恢复摘要和 Store 即时更新，新增断言修复前失败；最终 Node 131/131、Functions 构建通过，WebKit 移除手动同步后复验中。
+- 最终产品提交 `9a68420d34a91d89e5b9790929c739c7898647c9` 仅推 codex，[CI 40636281954](https://github.com/lwy9107124035/longnankejia/actions/runs/40636281954) 91/91 成功，部署 `https://37522869.longnankejia-dev.pages.dev/`，固定入口 `https://codex.longnankejia-dev.pages.dev/`；WebKit 不额外同步直接恢复的 33 项全部通过。
+- 真实 codex D1 `.cache/capacity-preview-smoke-result.json`：三独立会话共享一张 57,118 bytes 图片，去重及二进制逐字核验通过；并发新增 3 条均成功，同条并发仅一方保存、另一方得到冲突。全部临时条目删除，三会话退出，预览从 revision 42 到 47/科普仍 0，原公开内容摘要相同。保留一份内容摘要图片及少量测试历史供可追溯，无生产写入和整库清理。
+- 最终 `.cache/verify-capacity-release.mjs after`、`.cache/capacity-release-after.json`：codex 3 份关键前端文件与已验收本地源码逐字一致；main 3 文件未变化，main revision 220/科普 118，内容及密码派生记录指纹与发布前相同，两库密码 revision 1。main 远端仍 `7324ed3`，API 密钥及邀请设置未改。`地址.html` 的两条稳定入口已核验，无需随每次部署更改 URL。
+- 本轮已完成 codex 改进和预览验收；main 尚未发布本轮存储升级。元数据/单文件/套餐容量保护和真实 iOS/微信未验收等限制如实保留；详见整改报告。后续发布 main 须沿用正式库并先取得新快照，不复制预览资料。

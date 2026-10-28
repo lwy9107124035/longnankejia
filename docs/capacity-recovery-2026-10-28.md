@@ -36,4 +36,8 @@
 
 运行现有 Node 和 Chrome 测试。WebKit 需要安装 Playwright 及其 WebKit 浏览器；若装在项目外，设置 `PLAYWRIGHT_MODULE` 为模块 URL，再运行 `node tests/browser-engines.mjs`。本轮模块位于 `.cache/browser-check/node_modules/playwright/index.mjs`，依赖和浏览器不提交仓库。
 
-发布记录与线上核验结果继续记录于 `docs/codex-admin-checkpoint.md`。
+最终产品提交 `9a68420d34a91d89e5b9790929c739c7898647c9`，仅发布 codex；[CI 40636281954](https://github.com/lwy9107124035/longnankejia/actions/runs/40636281954) 的 91 项检查通过。[固定预览入口](https://codex.longnankejia-dev.pages.dev/)，[本次部署](https://37522869.longnankejia-dev.pages.dev/)。
+
+真实预览 D1 验证图片字节相同、重复上传去重、三会话并发保存及同条冲突保护，随后删除全部临时条目、退出临时会话。预览科普仍为 0，公开内容摘要不变。证据 `.cache/capacity-preview-smoke-result.json`。
+
+发布前后正式站均 revision 220/科普 118，完整公开内容、密码指纹及三份前端源码未变化；预览密码指纹也未变化。没有修改正式密钥、邀请码或复制两库资料。发布核验 `.cache/capacity-release-before.json`、`capacity-release-after.json`；完整发布记录在 `docs/codex-admin-checkpoint.md`。
