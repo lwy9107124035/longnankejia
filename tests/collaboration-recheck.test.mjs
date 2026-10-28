@@ -89,7 +89,7 @@ test('a delayed expiry response from the previous session cannot sign out a new 
   assert.equal(device.store.getSession()?.bearer, fresh.bearer);
 });
 
-test('reaching the server content budget rejects a large image edit without losing the published or local version', async t => {
+test('large legacy image edits move pictures and undo media outside the content snapshot', async t => {
   const backend = setup(t), device = setupEnvironment(backend), user = await login(device);
   const before = (await backend.call()).data;
   const cards = Array.from({ length: 4 }, (_, i) => ({ id: 'capacity-' + i, name: '容量核验 ' + i, imageUrl: 'data:image/png;base64,' + 'A'.repeat(3900000) }));
@@ -98,12 +98,13 @@ test('reaching the server content budget rejects a large image edit without losi
   await device.store.syncWithCloud();
   const published = (await backend.call()).data;
   device.store.updateHeritageCard('capacity-0', { imageUrl: 'data:image/png;base64,' + 'B'.repeat(3900000) });
-  assert.equal(await device.store.flushPending(), false);
-  assert.match(device.store.getSyncStatus().message, /容量上限/);
+  assert.equal(await device.store.flushPending(), true);
   const after = (await backend.call()).data;
-  assert.equal(after.revision, published.revision); assert.equal(after.kepuCustom[0].imageUrl, published.kepuCustom[0].imageUrl);
+  assert.ok(after.revision > published.revision);
+  assert.match(after.kepuCustom.find(c => c.id === 'capacity-0').imageUrl, /^\/api\/media\//);
+  assert.ok(backend.sqlite.prepare('SELECT SUM(length(value)) AS bytes FROM admin_state').get().bytes > 16 * 1024 * 1024);
   const refresh = setupEnvironment(backend, { local: device.local, tab: device.tab }); await refresh.store.ready;
-  assert.equal(refresh.store.getHeritageCards([]).find(c => c.id === 'capacity-0').imageUrl.endsWith('BBBB'), true);
+  assert.equal(refresh.store.getHeritageCards([]).find(c => c.id === 'capacity-0').imageUrl, after.kepuCustom.find(c => c.id === 'capacity-0').imageUrl);
 });
 
 test('a delayed logout completion cannot clear a later successful login', async t => {

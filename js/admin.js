@@ -62,6 +62,13 @@
   function adminAction(action) {
     return Promise.resolve().then(action).catch(function (error) { alert(error.message); });
   }
+  async function downloadBackup(file) {
+    try { downloadJson(await window.Store.exportFullBundleWithMedia(), file); }
+    catch (error) {
+      downloadJson(window.Store.exportFullBundle(), file.replace('.json', '-文字与图片链接.json'));
+      showAdminToast('已备份文字和图片链接，图片未完整打包：' + error.message);
+    }
+  }
   function trackEditorDraft(form, readEditor, recovery) {
     var id = 'editor:' + Date.now() + ':' + Math.random().toString(36).slice(2), content = form.firstElementChild, finished = false;
     async function preserve() {
@@ -206,7 +213,7 @@
       if (button) button.textContent = '找回草稿' + (drafts.length ? '（' + drafts.length + '）' : '');
     }, function (error) { var button = $('#recoverDraftBtn'); if (button) button.title = error.message; });
     $('#backupDraftBtn').addEventListener('click', function () {
-      downloadJson(window.Store.exportFullBundle(), 'longnan-local-backup.json');
+      downloadBackup('longnan-local-backup.json');
     });
     $('#recoverDraftBtn').addEventListener('click', function () { adminAction(async function () {
       var drafts = await window.Store.getRecoveryDrafts();
@@ -2118,6 +2125,7 @@
   /* ==================== 7. 系统与全站资产包备份 ==================== */
   function renderSys(body) {
     var isSuper = currentUser && currentUser.role === 'super_admin';
+    var history = isSuper ? window.Store.getRecoveryHistory() : [];
     body.innerHTML =
       (isSuper ?
       '<div class="admin-form-box">' +
@@ -2141,6 +2149,16 @@
       '    <input type="file" id="importFile" accept=".json" style="display:none">' +
       '  </div>' +
       '</div>' +
+
+      (isSuper ? '<div class="admin-form-box" style="margin-top:12px"><div class="admin-form-title">云端历史</div>' +
+        '<div class="admin-hint">可恢复有前值的修改和删除；后续已有修改时不会覆盖。</div>' +
+        (history.length ? history.slice(0, 20).map(function (op) {
+          return '<div class="admin-form-row" style="margin-top:6px"><span style="flex:1">' + esc(op.title) + ' · ' + esc(op.kind) + '</span><button class="admin-btn-sm" data-restore-operation="' + esc(op.id) + '">恢复</button></div>';
+        }).join('') : '<div class="admin-hint">暂无可恢复的历史记录</div>') + '</div>' : '') +
+
+      (isSuper ? '<div class="admin-form-box" style="margin-top:12px"><div class="admin-form-title">存储空间</div>' +
+        '<div class="admin-hint">图片独立保存。单张图片、正文快照和服务器套餐仍有容量保护。</div><p id="storageInfoText"></p>' +
+        '<button class="admin-btn-sm" id="storageInfoBtn">查看容量</button> <button class="admin-btn-sm" id="optimizeImagesBtn">整理旧图片</button></div>' : '') +
 
       (isSuper ?
       '<div class="admin-form-box" style="margin-top:12px">' +
@@ -2168,9 +2186,21 @@
       });
     }
 
-    $('#exportBundleBtn').addEventListener('click', function () {
-      var json = window.Store.exportFullBundle();
-      downloadJson(json, 'longnan-heritage-bundle-' + new Date().toISOString().slice(0, 10) + '.json');
+    $('#exportBundleBtn').addEventListener('click', function () { downloadBackup('longnan-heritage-bundle-' + new Date().toISOString().slice(0, 10) + '.json'); });
+    if (isSuper) {
+      $('#storageInfoBtn').addEventListener('click', function () { adminAction(async function () {
+        var info = await window.Store.getStorageInfo(), mb = function (bytes) { return (bytes / 1048576).toFixed(1); };
+        $('#storageInfoText').textContent = '独立图片 ' + mb(info.mediaBytes) + ' MB；正文、历史及旧版图片 ' + mb(info.metadataBytes) + ' / ' + mb(info.metadataLimit) + ' MB。';
+      }); });
+      $('#optimizeImagesBtn').addEventListener('click', function () { var button = this; button.disabled = true;
+        adminAction(async function () { try { var result = await window.Store.optimizeImageStorage(); showAdminToast('已整理 ' + result.completed + ' 张旧图片'); renderTab(); } finally { button.disabled = false; } });
+      });
+    }
+    body.querySelectorAll('[data-restore-operation]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        if (!confirm('恢复这项修改之前的版本？已有后续修改时将停止恢复。')) return;
+        adminAction(async function () { await window.Store.restoreOperation(button.dataset.restoreOperation); showAdminToast('已恢复'); renderTab(); });
+      });
     });
 
     $('#importBundleBtn').addEventListener('click', function () {
@@ -2245,8 +2275,11 @@
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename;
+    a.hidden = true; document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(a.href);
+    a.remove();
+    // The browser may start reading the object URL after the click handler returns.
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
 
   function showTokenQrModal(name, token, url) {

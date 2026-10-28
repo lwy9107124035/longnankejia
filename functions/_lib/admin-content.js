@@ -27,7 +27,7 @@ function cells(content) {
 function setCell(content, key, value) {
   globalThis.HeritageContent.setContentCell(content, key, clone(value));
 }
-export async function applyChanges(current, changes, user, tokens) {
+export async function applyChanges(current, changes, user, tokens, legacyValue) {
   if (!Array.isArray(changes) || !changes.length || changes.length > 10000) throw new Error('请选择需要保存的内容');
   const next = safeContent(current, tokens), before = globalThis.HeritageContent.contentCells(next);
   const conflicts = [], accepted = [], seen = new Set();
@@ -41,11 +41,15 @@ export async function applyChanges(current, changes, user, tokens) {
     globalThis.HeritageContent.setContentCell(candidate, change.key, change.value);
     validateContent(candidate);
     const actual = before.get(change.key) ?? null;
-    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(change.value) && await globalThis.HeritageContent.cellHash(actual) !== change.baseHash) {
+    await globalThis.HeritageContent.prepareMediaRecord(actual);
+    await globalThis.HeritageContent.prepareMediaRecord(change.value);
+    const matches = await globalThis.HeritageContent.cellHash(actual) === change.baseHash || await globalThis.HeritageContent.cellHash(actual, true) === change.baseHash;
+    const legacyMatches = !matches && legacyValue && await globalThis.HeritageContent.cellHash(await legacyValue(actual), true) === change.baseHash;
+    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(change.value) && !matches && !legacyMatches) {
       conflicts.push(change.key); continue;
     }
     globalThis.HeritageContent.setContentCell(next, change.key, change.value);
-    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(change.value)) changed = true;
+    if (globalThis.HeritageContent.rawComparable(actual) !== globalThis.HeritageContent.rawComparable(change.value)) changed = true;
     accepted.push(change.key);
   }
   validateContent(next);
@@ -136,7 +140,7 @@ export function contributions(content, tokens) {
   }
   return [...rows.values()];
 }
-export async function rollback(content, token, user, tokens, item, reason) {
+export async function rollback(content, token, user, tokens, item, reason, media = {}) {
   const next = { ...safeContent(content, tokens), auditLogs: (content.auditLogs || []).slice(),
     _history: (content._history || []).map(op => ({ ...op })), _notifications: (content._notifications || []).map(n => ({ ...n })) };
   const selected = op => op.tokenId === token.id && (!item || (op.key === item.type + 'Custom/' + item.id || op.key === item.type + 'Edited/' + item.id || op.key === item.type + 'Deleted/' + item.id));
@@ -147,10 +151,12 @@ export async function rollback(content, token, user, tokens, item, reason) {
     if (op.undone || !selected(op)) continue;
     const laterOther = history.slice(i + 1).some(later => !later.undone && later.key === op.key && later.tokenId !== token.id);
     const current = cells(next).get(op.key) ?? null;
-    if (laterOther || await fingerprint(current) !== op.afterHash) { skipped.add(op.key); continue; }
-    const previous = op.undoPatch ? { ...current, ...op.before } : op.before;
+    const matches = await fingerprint(current) === op.afterHash || media.legacyCurrent && await fingerprint(await media.legacyCurrent(current)) === op.afterHash;
+    if (laterOther || !matches) { skipped.add(op.key); continue; }
+    const before = media.expand ? await media.expand(op.before) : op.before;
+    const previous = op.undoPatch ? { ...current, ...before } : before;
     if (op.undoPatch) for (const key of op.remove) delete previous[key];
-    setCell(next, op.key, previous);
+    setCell(next, op.key, media.normalize ? await media.normalize(previous) : previous);
     op.undone = Date.now(); restored.add(op.key);
   }
   // Old custom records can be withdrawn; pre-upgrade edits have no trustworthy before-version.
@@ -163,4 +169,21 @@ export async function rollback(content, token, user, tokens, item, reason) {
     targetType: item?.type || 'all', targetTypeName: item ? '内容审核' : '修改回滚', targetTitle: redact(item?.title || '已撤回 ' + restored.size + ' 项修改', tokens), reason: redact(reason, tokens) });
   audit(next, user, item ? '剔除修改' : '撤销修改', '受邀人员「' + token.name + '」（ID ' + token.id + '）：撤回 ' + restored.size + ' 项，保留后续修改 ' + skipped.size + ' 项；原因：' + reason, tokens);
   return { next, totalRemoved: restored.size, skipped: skipped.size };
+}
+
+export async function restoreOperation(content, id, user, tokens, expand, normalize, legacyCurrent) {
+  const next = { ...safeContent(content, tokens), auditLogs: (content.auditLogs || []).slice(),
+    _history: (content._history || []).map(op => ({ ...op })), _notifications: (content._notifications || []).slice() };
+  const op = next._history.find(op => op.id === id && !op.undone && op.before !== null);
+  if (!op) throw new Error('未找到可恢复的历史记录');
+  const current = cells(next).get(op.key) ?? null;
+  if (await fingerprint(current) !== op.afterHash && (!legacyCurrent || await fingerprint(await legacyCurrent(current)) !== op.afterHash)) throw new Error('该条目已有后续修改，恢复已停止，当前内容未改变');
+  const before = await expand(op.before);
+  const previous = op.undoPatch ? { ...current, ...before } : before;
+  if (op.undoPatch) for (const key of op.remove) delete previous[key];
+  setCell(next, op.key, normalize ? await normalize(previous) : previous);
+  validateContent(next);
+  op.undone = Date.now();
+  audit(next, user, '恢复历史', op.title, tokens);
+  return { next, title: op.title };
 }

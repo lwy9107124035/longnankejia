@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import { onRequestGet, onRequestPost, onRequestOptions } from '../../functions/api/admin/sync.js';
+import { onRequestGet as onMedia, onRequestHead as onMediaHead } from '../../functions/api/media/[id].js';
 
 // Executes the actual migration and handler SQL, rather than replacing SQL with canned results.
 export function createAdminBackend({ password = 'admin123', filename = ':memory:', maxRowBytes = 2000000 } = {}) {
@@ -33,7 +34,8 @@ export function createAdminBackend({ password = 'admin123', filename = ':memory:
   const env = { ADMIN_DB: db, ADMIN_BOOTSTRAP_PASSWORD: password };
   async function fetchApi(url, options = {}) {
     const request = new Request(new URL(url, 'http://127.0.0.1:8931'), options);
-    const handler = { GET: onRequestGet, POST: onRequestPost, OPTIONS: onRequestOptions }[request.method];
+    const media = new URL(request.url).pathname.startsWith('/api/media/');
+    const handler = media ? (request.method === 'HEAD' ? onMediaHead : onMedia) : { GET: onRequestGet, POST: onRequestPost, OPTIONS: onRequestOptions }[request.method];
     return handler({ request, env });
   }
   async function call(body, bearer, headers = {}) {

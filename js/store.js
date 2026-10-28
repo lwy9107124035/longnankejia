@@ -154,6 +154,7 @@
   var editBases = {};
   var lastSyncedAt = 0;
   var cloudIncomplete = false;
+  var recoveryRows = [];
   var draftDb = null;
   var durableDraft = true;
   // Keep pre-upgrade local edits until an authenticated upload or an explicit discard.
@@ -373,12 +374,19 @@
   }
   function displayRecords(records, type) {
     var seen = new Set();
-    return (Array.isArray(records) ? records : []).filter(function (entry) {
+    var result = (Array.isArray(records) ? records : []).filter(function (entry) {
       try {
         globalThis.HeritageContent.record(entry, type, type, false);
         if (seen.has(entry.id)) return false;
         seen.add(entry.id); return true;
       } catch (_) { return false; }
+    });
+    if (!window.location || window.location.hostname !== 'lwy9107124035.github.io') return result;
+    return result.map(function (entry) {
+      var copy = Object.assign({}, entry), prefix = 'https://longnankejia.pages.dev';
+      ['image', 'imageUrl'].forEach(function (key) { if (/^\/api\/media\//.test(copy[key] || '')) copy[key] = prefix + copy[key]; });
+      if (copy.item && /^\/api\/media\//.test(copy.item.imageUrl || '')) copy.item = Object.assign({}, copy.item, { imageUrl: prefix + copy.item.imageUrl });
+      return copy;
     });
   }
   function setSyncStatus(status, message) {
@@ -407,14 +415,14 @@
             body: body ? JSON.stringify(body) : undefined
           });
         } catch (error) {
-          if (error.name !== 'TypeError' || attempt >= 2 || controller.signal.aborted || (body && body.action !== 'update_content')) throw error;
+          if (error.name !== 'TypeError' || attempt >= 2 || controller.signal.aborted || (body && ['update_content', 'store_media'].indexOf(body.action) < 0)) throw error;
           await new Promise(function (resolve) { setTimeout(resolve, 300 * (attempt + 1)); });
           continue;
         }
         var jsonResponse = (response.headers.get('Content-Type') || '').includes('application/json');
         if (jsonResponse && response.status < 500) break;
         // Only content patches and reads are safe to retry after an ambiguous response.
-        if (attempt >= 2 || (body && body.action !== 'update_content')) break;
+        if (attempt >= 2 || (body && ['update_content', 'store_media'].indexOf(body.action) < 0)) break;
         if (response.body && response.body.cancel) await response.body.cancel();
         await new Promise(function (resolve) { setTimeout(resolve, 300 * (attempt + 1)); });
       }
@@ -447,7 +455,10 @@
     if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
     if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
   }
-  function applyCloud(data) {
+  async function applyCloud(data) {
+    var startedGeneration = generation;
+    await globalThis.HeritageContent.prepareMediaBundle(data);
+    if (generation !== startedGeneration) throw new Error('读取期间有新的编辑，已保留本机草稿，请重新同步。');
     contentIssue = '';
     try { globalThis.HeritageContent.validateBundle(data); }
     catch (error) { contentIssue = '部分历史数据格式异常，已保留原始备份：' + error.message; }
@@ -477,7 +488,7 @@
     });
     return merged;
   }
-  function mergeCloudDraft(latest, acknowledged) {
+  async function mergeCloudDraft(latest, acknowledged) {
     var conflicts = [];
     var base = cloudBase;
     if (Object.keys(editBases).length || acknowledged && acknowledged.length) {
@@ -485,7 +496,14 @@
       Object.keys(editBases).forEach(function (key) { globalThis.HeritageContent.setContentCell(base, key, editBases[key]); });
       (acknowledged || []).forEach(function (change) { globalThis.HeritageContent.setContentCell(base, change.key, change.value); delete editBases[change.key]; });
     }
-    var merged = mergeBundles(base, bundle(), latest, conflicts);
+    await globalThis.HeritageContent.prepareMediaBundle(base);
+    await globalThis.HeritageContent.prepareMediaBundle(latest);
+    var local, startedGeneration;
+    do {
+      startedGeneration = generation; local = bundle();
+      await globalThis.HeritageContent.prepareMediaBundle(local);
+    } while (generation !== startedGeneration);
+    var merged = mergeBundles(base, local, latest, conflicts);
     Object.keys(CONTENT_KEYS).forEach(function (key) { write(CONTENT_KEYS[key], merged[key]); });
     cloudBase = copy(Object.fromEntries(Object.keys(CONTENT_KEYS).map(function (key) { return [key, latest[key] || (OBJECT_KEYS.indexOf(key) >= 0 ? {} : [])]; })));
     cloudRevision = latest.revision;
@@ -498,7 +516,7 @@
     var schema = globalThis.HeritageContent, before = schema.contentCells(cloudBase), after = schema.contentCells(bundle());
     return Array.from(new Set(Array.from(before.keys()).concat(Array.from(after.keys())))).filter(function (key) {
       return schema.comparable(before.get(key)) !== schema.comparable(after.get(key));
-    }).map(function (key) { return { key: key, before: Object.hasOwn(editBases, key) ? editBases[key] : before.get(key), value: after.get(key) === undefined ? null : after.get(key) }; });
+    }).map(function (key) { return { key: key, before: Object.prototype.hasOwnProperty.call(editBases, key) ? editBases[key] : before.get(key), value: after.get(key) === undefined ? null : after.get(key) }; });
   }
   function savedStatus() {
     if (pending && conflictKeys.length) setSyncStatus('conflict', conflictKeys.length + ' 条草稿需核对，其余内容已同步。');
@@ -543,8 +561,9 @@
         if (draftOwner && principal() && draftOwner !== principal()) { await persistState(); setSyncStatus('error', '本机草稿属于另一账号，请使用原账号登录或导出备份后重新加载云端。'); return false; }
         if (!getSession()) { await persistState(); setSyncStatus('pending', '本机有未上传草稿，登录后可继续上传'); return false; }
         await persistState();
-        var retries = 0;
         while (pending) {
+          await globalThis.HeritageContent.prepareMediaBundle(cloudBase);
+          await globalThis.HeritageContent.prepareMediaBundle(bundle());
           var sentGeneration = generation;
           globalThis.HeritageContent.validateBundle(bundle());
           var changed = changedCells();
@@ -554,9 +573,17 @@
             if (!pending) { conflictKeys = []; editBases = {}; draftOwner = ''; }
             await persistState(); savedStatus(); return !pending;
           }
-          var changes = await Promise.all(sendable.map(async function (change) {
-            return { key: change.key, baseHash: await globalThis.HeritageContent.cellHash(change.before), value: change.value };
-          }));
+          var changes = [];
+          var mediaCache = new Map(), requestBytes = 0;
+          // Keep each request small; the library and its pictures may be much larger.
+          for (var change of sendable.slice(0, 8)) {
+            await uploadRecordMedia(change.before, mediaCache);
+            var value = await uploadRecordMedia(change.value, mediaCache);
+            var operation = { key: change.key, baseHash: await globalThis.HeritageContent.cellHash(change.before), value: value };
+            var bytes = new TextEncoder().encode(JSON.stringify(operation)).length;
+            if (changes.length && requestBytes + bytes > 4 * 1024 * 1024) break;
+            changes.push(operation); requestBytes += bytes;
+          }
           var data = await cloudRequest({ action: 'update_content', revision: cloudRevision, changes: changes });
           var acknowledged = changes.filter(function (change) { return data.accepted.indexOf(change.key) >= 0; });
           var latest = copy(cloudBase || globalThis.HeritageContent.defaults);
@@ -570,7 +597,7 @@
             if (data.baseRevision !== cloudRevision) { cloudIncomplete = true; refreshAfterUpload = true; }
           }
           latest.revision = cloudIncomplete ? cloudRevision : Math.max(cloudRevision || 0, data.revision);
-          mergeCloudDraft(latest, acknowledged);
+          await mergeCloudDraft(latest, acknowledged);
           lastReadSession = null;
           if (data.content && Array.isArray(data.content.auditLogs)) write(LS.audit_logs, data.content.auditLogs);
           if (Array.isArray(data.auditLogs)) write(LS.audit_logs, data.auditLogs);
@@ -579,7 +606,6 @@
           if (!pending) { draftOwner = ''; conflictKeys = []; write('nfyj_cloud_pending', false); }
           await persistState();
           if (conflictKeys.length && sentGeneration === generation) break;
-          if (retries++ >= 5) break;
         }
         publishedBundle = null;
         triggerFrontEndRefresh();
@@ -620,6 +646,7 @@
         if (Array.isArray(data.lockouts)) write(LS.locked_clients, data.lockouts);
         if (Array.isArray(data.notifications)) write(LS.notifications, data.notifications);
         if (Array.isArray(data.contributions)) contributionRows = data.contributions;
+        if (Array.isArray(data.recovery)) recoveryRows = data.recovery;
         if (data.unchanged) {
           if (!pending) savedStatus();
         } else if (pending && !getSession()) {
@@ -628,11 +655,11 @@
           setSyncStatus('pending', '已显示云端发布内容；本机未上传草稿已保留，登录后可恢复上传');
         } else if (pending && getSession() && (cloudRevision === null || data.revision >= cloudRevision)) {
           cloudIncomplete = false;
-          mergeCloudDraft(data);
+          await mergeCloudDraft(data);
           await persistState();
           if (uploaded || conflictKeys.length) savedStatus();
         } else if (!pending && (cloudRevision === null || data.revision >= cloudRevision)) {
-          applyCloud(data);
+          await applyCloud(data);
           lastReadSession = bearer;
           await persistState();
           savedStatus();
@@ -662,10 +689,37 @@
     if (pending) { previousDraftId = ''; draftId = 'draft:' + Date.now() + ':' + Math.random().toString(36).slice(2); }
     pending = false; draftOwner = ''; conflictKeys = []; editBases = {}; recoverySource = null;
     write('nfyj_cloud_pending', false);
-    applyCloud(data);
+    await applyCloud(data);
     await persistState();
     setSyncStatus('saved', '已重新加载云端内容');
     return data;
+  }
+  async function uploadRecordMedia(record, cache) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) return record;
+    var value = Object.assign({}, record);
+    async function upload(data) {
+      if (!cache.has(data)) cache.set(data, (await cloudRequest({ action: 'store_media', dataUrl: data })).url);
+      return cache.get(data);
+    }
+    for (var field of ['image', 'imageUrl']) if (/^data:image\//i.test(value[field] || '')) value[field] = await upload(value[field]);
+    if (value.item && /^data:image\//i.test(value.item.imageUrl || '')) value.item = Object.assign({}, value.item, { imageUrl: await upload(value.item.imageUrl) });
+    await globalThis.HeritageContent.prepareMediaRecord(record);
+    return value;
+  }
+  async function optimizeImageStorage() {
+    if (pending && !(await uploadPending())) throw new Error('请先核对待上传草稿，再整理图片。');
+    var snapshot = await cloudRequest(), schema = globalThis.HeritageContent;
+    var records = Array.from(schema.contentCells(snapshot)).filter(function (entry) {
+      var item = entry[1];
+      return item && typeof item === 'object' && (/^data:image\//i.test(item.imageUrl || item.image || '') || item.item && /^data:image\//i.test(item.item.imageUrl || ''));
+    });
+    var completed = 0;
+    for (var entry of records) {
+      var value = await uploadRecordMedia(entry[1], new Map());
+      var result = await cloudRequest({ action: 'update_content', changes: [{ key: entry[0], baseHash: await schema.cellHash(entry[1]), value: value }] });
+      completed += result.accepted.length;
+    }
+    await syncWithCloud(); return { completed: completed, total: records.length };
   }
   function getLockedClients() { return read(LS.locked_clients, []); }
   async function unlockClient(id) { await cloudRequest({ action: 'unlock', id: id }); return syncWithCloud(); }
@@ -1012,7 +1066,7 @@
     return { key: key, value: copy(globalThis.HeritageContent.contentCells(bundle()).get(key) || null) };
   }
   function rememberEditVersion(version) {
-    if (version && typeof version.key === 'string' && !Object.hasOwn(editBases, version.key)) editBases[version.key] = copy(version.value);
+    if (version && typeof version.key === 'string' && !Object.prototype.hasOwnProperty.call(editBases, version.key)) editBases[version.key] = copy(version.value);
   }
 
   function addDialectTrack(track, creatorInfo) {
@@ -1108,6 +1162,26 @@
     };
     return JSON.stringify(exported, null, 2);
   }
+  async function exportFullBundleWithMedia() {
+    var exported = JSON.parse(exportFullBundle()), memo = new Map();
+    async function expand(value, field) {
+      if (['image', 'imageUrl'].indexOf(field) >= 0 && globalThis.HeritageContent.mediaPath(value)) {
+        if (!memo.has(value)) {
+          var origin = window.location.hostname === 'lwy9107124035.github.io' ? 'https://longnankejia.pages.dev' : '';
+          var response = await fetch(/^https:/.test(value) ? value : origin + value, { cache: 'no-store' });
+          if (!response.ok) throw new Error('备份图片读取失败，请联网后重试。草稿未改变。');
+          var bytes = new Uint8Array(await response.arrayBuffer()), chunks = [];
+          for (var start = 0; start < bytes.length; start += 30000) chunks.push(String.fromCharCode.apply(null, bytes.subarray(start, start + 30000)));
+          memo.set(value, 'data:' + response.headers.get('Content-Type').split(';')[0] + ';base64,' + btoa(chunks.join('')));
+        }
+        return memo.get(value);
+      }
+      if (Array.isArray(value)) { var list = []; for (var child of value) list.push(await expand(child, '')); return list; }
+      if (value && typeof value === 'object') { var object = {}; for (var key of Object.keys(value)) object[key] = await expand(value[key], key); return object; }
+      return value;
+    }
+    return JSON.stringify(await expand(exported, ''), null, 2);
+  }
 
   function importFullBundle(jsonStr) {
     try {
@@ -1192,6 +1266,11 @@
 
     // 全站资产包
     exportFullBundle: exportFullBundle,
+    exportFullBundleWithMedia: exportFullBundleWithMedia,
+    getRecoveryHistory: function () { return recoveryRows.slice(); },
+    restoreOperation: function (id) { return moderate({ action: 'restore_operation', operationId: id }); },
+    getStorageInfo: function () { return cloudRequest({ action: 'storage_info' }); },
+    optimizeImageStorage: optimizeImageStorage,
     importFullBundle: importFullBundle,
 
     // 全站多端云同步与客户端锁定监控

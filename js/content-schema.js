@@ -98,13 +98,14 @@
     });
     return result;
   }
-  function comparable(value) {
+  function rawComparable(value) {
     if (object(value)) {
       value = Object.assign({}, value);
       ['creatorName', 'creatorTokenId', 'createdAt'].forEach(function (key) { delete value[key]; });
     }
     return canonical(value === undefined ? null : value);
   }
+  function comparable(value) { return rawComparable(value && typeof value === 'object' && mediaForms.get(value) || value); }
   function contentCells(content) {
     var result = new Map();
     Object.keys(fields).forEach(function (field) {
@@ -118,7 +119,7 @@
   }
   function setContentCell(content, key, value) {
     var slash = key.indexOf('/'), field = slash < 0 ? key : key.slice(0, slash), entryId = key.slice(slash + 1);
-    if (!Object.hasOwn(fields, field) || (slash < 0 ? !['apiConfig', 'workflowConfig'].includes(field) : !id(entryId))) fail('保存条目');
+    if (!Object.prototype.hasOwnProperty.call(fields, field) || (slash < 0 ? !['apiConfig', 'workflowConfig'].includes(field) : !id(entryId))) fail('保存条目');
     if (field.endsWith('Custom')) {
       content[field] = (content[field] || []).filter(function (entry) { return entry.id !== entryId; });
       if (value !== null) { if (!object(value) || value.id !== entryId) fail(key); content[field].push(value); }
@@ -131,10 +132,37 @@
       else { if (!object(value) || value.id !== entryId) fail(key); content[field][entryId] = value; }
     } else { if (slash >= 0 || !object(value)) fail(key); content[field] = value; }
   }
-  async function cellHash(value) {
-    var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(comparable(value)));
+  async function cellHash(value, raw) {
+    if (!raw) await prepareMediaRecord(value);
+    var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw ? rawComparable(value) : comparable(value)));
     return Array.from(new Uint8Array(digest), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
   }
+  var mediaForms = new WeakMap();
+  function mediaPath(value) {
+    if (typeof value !== 'string') return '';
+    var match = /^(?:https:\/\/(?:[a-z0-9-]+\.)?longnankejia(?:-dev)?\.pages\.dev)?(\/api\/media\/[a-f0-9]{64})$/.exec(value);
+    return match ? match[1] : '';
+  }
+  async function mediaIdentity(data) {
+    if (mediaPath(data)) return mediaPath(data);
+    var match = /^data:(image\/(?:png|jpeg|gif|webp|avif));base64,([a-z0-9+/=]+)$/i.exec(data || '');
+    if (!match) return data;
+    var canonicalData = 'data:' + match[1].toLowerCase() + ';base64,' + match[2];
+    var bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalData));
+    return '/api/media/' + Array.from(new Uint8Array(bytes), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+  async function prepareMediaRecord(value) {
+    if (!object(value) || mediaForms.has(value)) return;
+    var result = Object.assign({}, value);
+    for (var key of ['image', 'imageUrl']) if (typeof value[key] === 'string') result[key] = await mediaIdentity(value[key]);
+    if (object(value.item) && typeof value.item.imageUrl === 'string') result.item = Object.assign({}, value.item, { imageUrl: await mediaIdentity(value.item.imageUrl) });
+    mediaForms.set(value, result);
+  }
+  async function prepareMediaBundle(value) {
+    var cells = contentCells(value);
+    for (var entry of cells.values()) await prepareMediaRecord(entry);
+  }
   root.HeritageContent = { defaults: fields, validateBundle: validateBundle, record: record, safeUrl: safeUrl, reserved: reserved, canonical: canonical,
-    comparable: comparable, contentCells: contentCells, setContentCell: setContentCell, cellHash: cellHash };
+    comparable: comparable, rawComparable: rawComparable, contentCells: contentCells, setContentCell: setContentCell, cellHash: cellHash,
+    mediaIdentity: mediaIdentity, mediaPath: mediaPath, prepareMediaRecord: prepareMediaRecord, prepareMediaBundle: prepareMediaBundle };
 })(globalThis);

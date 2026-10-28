@@ -1,6 +1,7 @@
 // Credentials and shared state belong in D1, never in a Worker isolate.
-import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges } from '../../_lib/admin-content.js';
+import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
+import { storeMedia, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
 const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
@@ -176,6 +177,8 @@ async function getData(db, request) {
       result.auditLogs = user.role === 'super_admin' ? safeAudit(content.value, tokens.value) : [];
       result.notifications = (content.value._notifications || []).filter(n => user.role === 'super_admin' || n.tokenId === user.tokenId);
       if (user.role === 'super_admin') result.contributions = contributions(content.value, tokens.value);
+      if (user.role === 'super_admin') result.recovery = (content.value._history || []).filter(op => !op.undone && op.before !== null)
+        .slice(-50).reverse().map(op => ({ id: op.id, title: op.title, kind: op.kind, time: op.time }));
     }
     if (user.role === 'super_admin') {
       result.tokens = tokens.value;
@@ -190,6 +193,24 @@ async function postData(db, env, request, body) {
   if (body.action === 'login') return login(db, env, request, body);
   const user = await session(db, request);
   switch (body.action) {
+    case 'storage_info': {
+      requireSuper(user);
+      const row = await db.prepare("SELECT SUM(CASE WHEN key LIKE 'media:%' THEN length(CAST(value AS BLOB)) ELSE 0 END) AS mediaBytes, SUM(CASE WHEN key='content' OR key GLOB 'content:chunk:*' THEN length(CAST(value AS BLOB)) ELSE 0 END) AS metadataBytes FROM admin_state").first();
+      return { ok: true, mediaBytes: row.mediaBytes || 0, metadataBytes: row.metadataBytes || 0, metadataLimit: MAX_CONTENT_BYTES, imageLimit: 5000000 };
+    }
+    case 'store_media': {
+      try { return { ok: true, ...await storeMedia(db, body.dataUrl) }; }
+      catch (error) { if (error instanceof TypeError) throw new ApiError(400, 'INVALID_IMAGE', error.message); throw error; }
+    }
+    case 'restore_operation': {
+      requireSuper(user);
+      const current = await state(db, 'content', DEFAULTS), tokens = await state(db, 'tokens', []);
+      let restored;
+      try { restored = await restoreOperation(current.value, body.operationId, user, tokens.value, value => expandHistoryMedia(db, value), value => storeRecordMedia(db, value), value => expandRecordMedia(db, value)); }
+      catch (error) { throw new ApiError(409, 'RESTORE_CONFLICT', error.message); }
+      const revision = await saveState(db, 'content', restored.next, current.revision);
+      return { ok: true, revision, title: restored.title };
+    }
     case 'logout':
       await db.prepare('DELETE FROM admin_sessions WHERE id = ?').bind(user.sessionId).run();
       return { ok: true };
@@ -199,8 +220,9 @@ async function postData(db, env, request, body) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const current = await state(db, 'content', DEFAULTS);
         let result;
-        try { result = await applyChanges(current.value, body.changes, user, tokens.value); }
+        try { result = await applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(db, value)); }
         catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
+        if (result.changed) result.next = await archiveHistoryMedia(db, result.next, (current.value._history || []).length);
         let revision = current.revision;
         try {
           if (result.changed) revision = await saveState(db, 'content', result.next, current.revision);
@@ -229,7 +251,7 @@ async function postData(db, env, request, body) {
         if (JSON.stringify(submitted[key]) !== JSON.stringify(current.value[key])) requireSuper(user);
       }
       const tokens = await state(db, 'tokens', []);
-      const next = await updatedContent(current.value, submitted, user, tokens.value);
+      const next = await archiveHistoryMedia(db, await updatedContent(current.value, submitted, user, tokens.value), (current.value._history || []).length);
       const revision = await saveState(db, 'content', next, body.revision);
       return { ok: true, revision, content: { ...safeContent(next, tokens.value), auditLogs: user.role === 'super_admin' ? safeAudit(next, tokens.value) : [] } };
     }
@@ -244,7 +266,9 @@ async function postData(db, env, request, body) {
       const item = body.action === 'reject_item' ? contributions(current.value, tokens.value).find(c => c.tokenId === token.id && c.id === body.itemId && c.type === body.itemType) : null;
       if (body.action === 'reject_item' && !item) throw new ApiError(404, 'ITEM_NOT_FOUND', '未找到该人员可撤回的修改。');
       const reason = String(body.reason || '超级管理员已撤回相关修改').trim().slice(0, 2000);
-      const result = await rollback(current.value, token, user, tokens.value, item, reason);
+      const result = await rollback(current.value, token, user, tokens.value, item, reason, {
+        expand: value => expandHistoryMedia(db, value), normalize: value => storeRecordMedia(db, value), legacyCurrent: value => expandRecordMedia(db, value)
+      });
       validateContent(result.next);
       const revision = await saveState(db, 'content', result.next, current.revision);
       return { ok: true, revision, totalRemoved: result.totalRemoved, skipped: result.skipped, tokenName: token.name, itemTitle: item?.title };

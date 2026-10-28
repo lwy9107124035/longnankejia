@@ -184,3 +184,14 @@
 - 最终只读核验 `.cache/recheck-20261027-main-release-after.json`：10 份关键文件一致，正式 revision 211/科普 114，完整公开内容及密码派生记录指纹与发布前相同。密钥保留，邀请码未变，不复制预览数据、不改生产资料。
 - `.cache/recheck-20261027-record-lineage.json` 逐项比对旧 26 条、旧 102 条的 ID，当前 114 条全部包含，缺失 ID 0、重复 ID 0。`.cache/recheck-20261027-production-visitor.json` 全新浏览器手机/电脑视图实际渲染 114，含矮守围，脚本异常 0；手机截图已查看。
 - 本轮 R01–R08 均闭合；详细证据和限制见 `docs/collaboration-recheck-2026-10-27.md`。文档记录 skip ci 推送 main，并快进 codex 保持一致。保留实际失败记录，不声称所有未来环境绝无缺陷；同邀请码多人归属按邀请码汇总、16 MiB 总容量和真实 iOS/微信边界已明确。
+
+## 2026-10-27 容量、历史恢复与 WebKit 兼容改进（进行中，仅 codex）
+
+- 用户要求修复上述明确边界，且暂时没有苹果设备。只在 codex 完成改进和预览验证；main 仍为已发布基线 `7324ed3`，本轮不改正式资料、密码、邀请码和密钥。
+- 当前未提交实现：D1 独立图片块及不可变图片 GET/HEAD；新编辑按最多 8 条/约 4 MiB 请求分批上传；历史图片引用归档；单项误删/编辑历史恢复且拒绝覆盖后续版本；导出带图片的可迁移完整备份；旧图片整理和容量显示；移除客户端 Object.hasOwn 依赖。
+- 独立图片可累计超过原整库 16 MiB 限制。正文/配置/历史元数据快照、单请求和单文件仍保留安全限制，服务器套餐亦有容量上限，不宣称无限空间。没有原文或备份的未上传历史资料无法重建。
+- 初轮本地 Node 127/127（`.cache/capacity-all-node.txt`）；Chrome 相关 58/58（`.cache/capacity-browser-first.txt`）。之后增加旧图整理/恢复规范化/镜像路径兼容，须最终复验。测试曾因旧容量断言预期失败、匿名大请求预期 401（实际按流预算先 413）失败，已调整为新行为断言，保留原日志。
+- Playwright 1.64.1/WebKit 27.2 build 2370 已下载到本机 cache；准备 WebKit 桌面和手机模拟实测，不能替代实际 iPhone/微信。新共享本地站点夹具 `tests/helpers/site-server.mjs` 用二进制响应图片，不向生产写入。
+- 待办：新增旧图整理/异步读取竞争测试及多引擎完整上传恢复检查；最终 Node/浏览器/Functions 构建；仅提交推送 codex，确认 CI 与真实预览，保存发布证据。
+- 2026-10-28 最终本地验证：Node 130/130、Chrome 全量 319/319、最终相关专项 58/58、WebKit 桌面/手机/微信 UA 模拟 33/33；3 项负向变异、静态检查和 Functions 构建通过。误判 beforeunload 的 WebKit 断言和缺少 location 的知识库夹具兼容问题均已修正，保留实际失败记录。审核回滚改为仅展开所选历史的图片，避免一次读入全部历史图片。
+- 发布前只读 `.cache/capacity-release-before.json`：main revision 220/科普 118；codex revision 42/科普 0；两库密码 revision 1。当前 main 的客户录入量比上轮增加，不复制预览库或覆盖新资料。详细实现、验证、保留容量保护和真实设备限制见 `docs/capacity-recovery-2026-10-28.md`。
