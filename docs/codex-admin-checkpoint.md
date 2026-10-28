@@ -225,7 +225,7 @@
 - 首次维护巡检已真实运行：`.cache/maintenance/latest.json` problems/warnings均空，容量2.68%，全部80张本站独立图片校验复用，完整公开快照保存在 `.cache/maintenance/backups/revision-243-cf07511f851c1a128c9aeac3b035b81d41e787a7774cb93ef639438a7e7fdf13.json`，snapshotComplete=true。私有完整备份独立保留，不能将公开备份当作含审计及密钥的整库备份。
 - 本轮事故处理完成，正式上传已恢复；维护组和6小时巡检已启用。完整报告 `docs/upload-incident-2026-10-28.md`，维护手册 `docs/maintenance-runbook.md`。客户旧26/102/114均仍在118条中；另几十条无已上传证据，需保留原设备草稿，不能编造恢复结果。仅真实iOS/微信及公开负载验收等未做的边界保留。文档记录以skip ci提交并同步main/codex，不再重复部署未改变的网站代码。
 
-## 2026-10-28 再次取证、完整管理员验收和持续容量（进行中）
+## 2026-10-28 再次取证、完整管理员验收和持续容量（已发布并收尾）
 
 - 用户要求继续追查另外几十条成功上传证据，并详测全部功能尤其管理员及持续容量。正式站仅取证和只读核查；所有故障、并发及增长测试使用隔离环境，保护现有密码、邀请码、密钥和客户资料。
 - 最新只读取证 `.cache/deep-review-forensics-20261028.json`：正式revision245/118条，保留历史237项，涉及120个自定义科普ID。当前缺少的两ID中一条是本次已清理的维护验证；另一条标题“1”，有明确新增（本地14:10:16）和删除（14:11:03）记录，保留删除前值，不擅自恢复。23份历史快照未发现旧客户ID缺失；完整范围限制须写报告，不能把没日志当作用户没上传。
@@ -239,3 +239,7 @@
 - 最终本地152/152 Node、完整浏览器319/319、管理员Chrome/WebKit专项17组44项0失败；3项负向变异、静态和Functions构建通过。新增Node7项已进CI；新增UI测试及修复前失败记录保留。证据见 `docs/full-admin-review-2026-10-28.md`。
 - 巡检新增可选 `--d1-database`，读取实际D1文件大小，350MiB维护预算预警（不是账户配额），授权不可用明确警告仍继续公开备份；3项新测试及真实CLI检查通过。`.cache/maintenance/deep-review-before.json`：正式rev245/118，全部80媒体已校验复用，备份完整，元数据450,864 bytes，D1文件16,936,960 bytes，problems/warnings均空。已有automation-2原地更新命令和阈值，仍每6小时、状态不变安静。
 - 发布前 `.cache/deep-review-release-before.json`：main245/118、codex59/0，原密码/邀请码摘要及两站应用摘要已保存。业务修复尚未提交；待持续带图测试完成后提交codex、等待CI、核验预览源码与绑定，再发布同一main、只读比较内容/凭据。用户询问扩容费用，已说明未开通收费扩容，未来超额先给具体费用，不假定当前订阅或无限容量。
+- 实际已完成：产品提交 `26392dbdc3ebe3201524974f978ff678e5b7a9c1` 先codex再快进main，两站CI均112/112成功（codex40652739232，main40657865273）；正式部署 `https://71adc3f3.longnankejia.pages.dev/`，固定 `https://longnankejia.pages.dev/`，预览 `https://f5181182.longnankejia-dev.pages.dev/`。`.cache/deep-review-release-{before,codex,after}.json` 确认3关键文件与测试源码一致，main245/118、codex59/0，公开内容和password/tokens记录摘要均未变；main保留原服务端密钥。
+- 持续QA最终：2000长正文+100不同图片、13批新增全部200，最大请求2,489,279 bytes；三协管会话读回100/100编辑和图片引用一致，最终2100唯一记录/201历史，实库36,323,328 bytes；5图片GET二进制摘要核验、媒体幂等、同ID并发1接受2冲突通过。最初第13编辑批curl传输失败，读库确认96成功，续跑补4条；续跑脚本曾拼双媒体前缀命中HTML，已修正只读抽图全绿，保留初始及superseded失败记录，不冒称请求全无失败。证据 `.cache/deep-review-qa-endurance-{results,initial-results}.json`。
+- 生产只读Chrome两个独立匿名context桌面/390px均实际渲染118、含矮守围、异常0，截图已目视（`.cache/deep-review-production-smoke.json`）；最新`.cache/maintenance/latest.json`备份完整、80媒体校验复用、物理容量读取正常、problems/warnings均空。真实iOS/微信及公网高并发仍未验收，不能承诺未来零故障或无限资源。
+- QA精确资源已清理，`.cache/deep-review-qa-cleanup-verified.json`确认临时库与部署均删除，main317/codexf5原库和绑定正常，preview模板已恢复f5。未删生产历史/客户条目；本轮全部已授权实施和发布完成，仅补文档skip ci同步两分支。完整报告 `docs/full-admin-review-2026-10-28.md`。
