@@ -128,6 +128,8 @@ test('compacting old pictures reduces metadata without changing text or original
   const original = (await backend.call()).data.kepuCustom[0], size = (await device.store.getStorageInfo()).metadataBytes;
   assert.equal((await device.store.optimizeImageStorage()).completed, 1);
   const actual = (await backend.call()).data.kepuCustom[0], info = await device.store.getStorageInfo();
+  assert.equal((await backend.call()).data.storage.metadataLimit, info.metadataLimit);
+  assert.ok((await backend.call()).data.storage.metadataBytes <= info.metadataBytes);
   assert.equal(actual.detail, original.detail); assert.equal(actual.creatorTokenId, invite.id); assert.equal(actual.createdAt, original.createdAt);
   assert.match(actual.imageUrl, /^\/api\/media\//); assert.ok(info.metadataBytes < size / 2); assert.ok(info.mediaBytes > 0);
   assert.equal((await device.store.optimizeImageStorage()).completed, 0);
@@ -169,4 +171,17 @@ test('a confirmed deletion immediately appears in the administrator recovery his
   root.store.addHeritageCard({ id: 'immediate-history', name: '刚刚误删' }); await root.store.flushPending();
   root.store.deleteHeritageCard('immediate-history'); assert.equal(await root.store.flushPending(), true);
   assert.ok(root.store.getRecoveryHistory().some(op => op.title === '刚刚误删' && op.kind === '删除内容'));
+});
+
+test('an already-open old browser cannot put inline pictures back into the shared snapshot', async t => {
+  const backend = setup(t), device = setupEnvironment(backend), user = await login(device);
+  const initial = { id: 'legacy-open-browser', name: '旧页面继续上传', imageUrl: image, detail: '第一版' };
+  const result = await backend.call({ action: 'update_content', changes: [{ key: 'kepuCustom/' + initial.id, baseHash: await globalThis.HeritageContent.cellHash(null), value: initial }] }, user.bearer);
+  assert.equal(result.status, 200); assert.equal(result.data.accepted.length, 1);
+  const published = (await backend.call()).data.kepuCustom[0]; assert.match(published.imageUrl, /^\/api\/media\//);
+  const old = { ...initial, creatorName: published.creatorName, creatorTokenId: published.creatorTokenId, createdAt: published.createdAt };
+  const edited = await backend.call({ action: 'update_content', changes: [{ key: 'kepuCustom/' + initial.id, baseHash: await globalThis.HeritageContent.cellHash(old, true), value: { ...old, detail: '旧页面第二版' } }] }, user.bearer);
+  assert.equal(edited.data.conflicts.length, 0); const actual = (await backend.call()).data.kepuCustom[0];
+  assert.equal(actual.detail, '旧页面第二版'); assert.equal(actual.imageUrl, published.imageUrl);
+  assert.deepEqual(Buffer.from(await (await backend.fetchApi(actual.imageUrl)).arrayBuffer()), sampleBytes);
 });

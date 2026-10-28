@@ -171,6 +171,7 @@ async function getData(db, request) {
   const content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
   const tokens = await state(db, 'tokens', []);
   const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), revision: content.revision, ...(unchanged && { unchanged: true }) };
+  if (!unchanged) result.storage = { metadataBytes: encoder.encode(JSON.stringify(content.value)).length, metadataLimit: MAX_CONTENT_BYTES };
   if (user) {
     result.session = { role: user.role, name: user.name, tokenId: user.tokenId, expiresAt: user.expiresAt };
     if (!unchanged) {
@@ -216,10 +217,11 @@ async function postData(db, env, request, body) {
     case 'update_content': {
       if (Array.isArray(body.changes) && body.changes.some(change => ['apiConfig', 'workflowConfig'].includes(change?.key))) requireSuper(user);
       const tokens = await state(db, 'tokens', []);
+      const mediaCache = new Map();
       for (let attempt = 0; attempt < 5; attempt++) {
         const current = await state(db, 'content', DEFAULTS);
         let result;
-        try { result = await applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(db, value)); }
+        try { result = await applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(db, value), value => storeRecordMedia(db, value, mediaCache)); }
         catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
         if (result.changed) result.next = await archiveHistoryMedia(db, result.next, (current.value._history || []).length);
         let revision = current.revision;

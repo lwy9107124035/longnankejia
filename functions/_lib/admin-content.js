@@ -27,7 +27,7 @@ function cells(content) {
 function setCell(content, key, value) {
   globalThis.HeritageContent.setContentCell(content, key, clone(value));
 }
-export async function applyChanges(current, changes, user, tokens, legacyValue) {
+export async function applyChanges(current, changes, user, tokens, legacyValue, normalizeValue) {
   if (!Array.isArray(changes) || !changes.length || changes.length > 10000) throw new Error('请选择需要保存的内容');
   const next = safeContent(current, tokens), before = globalThis.HeritageContent.contentCells(next);
   const conflicts = [], accepted = [], seen = new Set();
@@ -40,16 +40,17 @@ export async function applyChanges(current, changes, user, tokens, legacyValue) 
     const candidate = clone(DEFAULTS);
     globalThis.HeritageContent.setContentCell(candidate, change.key, change.value);
     validateContent(candidate);
+    const value = normalizeValue ? await normalizeValue(change.value) : change.value;
     const actual = before.get(change.key) ?? null;
     await globalThis.HeritageContent.prepareMediaRecord(actual);
-    await globalThis.HeritageContent.prepareMediaRecord(change.value);
+    await globalThis.HeritageContent.prepareMediaRecord(value);
     const matches = await globalThis.HeritageContent.cellHash(actual) === change.baseHash || await globalThis.HeritageContent.cellHash(actual, true) === change.baseHash;
     const legacyMatches = !matches && legacyValue && await globalThis.HeritageContent.cellHash(await legacyValue(actual), true) === change.baseHash;
-    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(change.value) && !matches && !legacyMatches) {
+    if (globalThis.HeritageContent.comparable(actual) !== globalThis.HeritageContent.comparable(value) && !matches && !legacyMatches) {
       conflicts.push(change.key); continue;
     }
-    globalThis.HeritageContent.setContentCell(next, change.key, change.value);
-    if (globalThis.HeritageContent.rawComparable(actual) !== globalThis.HeritageContent.rawComparable(change.value)) changed = true;
+    globalThis.HeritageContent.setContentCell(next, change.key, value);
+    if (globalThis.HeritageContent.rawComparable(actual) !== globalThis.HeritageContent.rawComparable(value)) changed = true;
     accepted.push(change.key);
   }
   validateContent(next);

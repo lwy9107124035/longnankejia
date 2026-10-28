@@ -81,11 +81,15 @@ export async function expandRecordMedia(db, value) {
   if (result.item && rawReference(result.item.imageUrl)) result.item = { ...result.item, imageUrl: await expandHistoryMedia(db, { $image: rawReference(result.item.imageUrl) }) };
   return result;
 }
-export async function storeRecordMedia(db, value) {
+export async function storeRecordMedia(db, value, cache = new Map()) {
   if (!value || typeof value !== 'object') return value;
   const result = { ...value };
-  for (const field of ['image', 'imageUrl']) if (IMAGE.test(result[field] || '')) result[field] = (await storeMedia(db, result[field])).url;
-  if (result.item && IMAGE.test(result.item.imageUrl || '')) result.item = { ...result.item, imageUrl: (await storeMedia(db, result.item.imageUrl)).url };
+  async function store(data) {
+    if (!cache.has(data)) cache.set(data, (await storeMedia(db, data)).url);
+    return cache.get(data);
+  }
+  for (const field of ['image', 'imageUrl']) if (IMAGE.test(result[field] || '')) result[field] = await store(result[field]);
+  if (result.item && IMAGE.test(result.item.imageUrl || '')) result.item = { ...result.item, imageUrl: await store(result.item.imageUrl) };
   return result;
 }
 
