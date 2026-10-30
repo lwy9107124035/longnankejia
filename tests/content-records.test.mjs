@@ -265,3 +265,40 @@ test('an explicit server conflict stays visible even when a local three-way merg
   assert.equal(device.store.getSyncStatus().conflictCount, 1); assert.equal(device.store.getHeritageCards([])[0].name, '待核对稿');
   assert.equal((await loadContentState(backend.db)).value.kepuCustom[0].name, '原稿');
 });
+
+test('a legacy cached device adopts the complete new catalog without resurrecting old deletions or losing an offline draft', async t => {
+  const backend = setup(t), bearer = await login(backend), old = structuredClone(schema.defaults);
+  old.kepuCustom = [{ id: 'old-deleted', name: '旧缓存里已经删除的条目', detail: '不应重新出现' }, { id: 'kept-offline', name: '离线改稿', detail: '旧正文' }];
+  assert.equal((await backend.call({ action: 'update_custom_bundle', ...old, revision: 0 }, bearer)).status, 200);
+  const device = setupEnvironment(backend); device.store.saveSession({ bearer, role: 'super_admin', expiresAt: Date.now() + 3600000 }); await device.store.syncWithCloud();
+  const fetch = device.sandbox.fetch; device.sandbox.fetch = async () => { throw new Error('offline'); };
+  device.store.updateHeritageCard('kept-offline', { id: 'kept-offline', name: '离线改稿', detail: '本机新正文' }); assert.equal(await device.store.flushPending(), false);
+  const current = await loadContentState(backend.db);
+  const changed = await backend.call({ action: 'update_content', changes: [{ key: 'kepuCustom/old-deleted', baseHash: await schema.cellHash(current.value.kepuCustom.find(row => row.id === 'old-deleted')), value: null }] }, bearer);
+  assert.equal(changed.status, 200);
+  const beforeMigration = await loadContentState(backend.db);
+  beforeMigration.value.kepuCustom.push(...Array.from({ length: 75 }, (_, i) => ({ id: 'new-catalog-' + i, name: '另一台设备的资料' + i, detail: '云端正文' + i })));
+  await migrateRecordStorage(backend.db, beforeMigration);
+  device.sandbox.fetch = fetch; await device.store.syncWithCloud();
+  assert.equal(device.store.getCatalog().model, 'records-v1'); assert.equal(device.store.getContentCount('kepuCustom'), 76);
+  assert.equal(device.store.getHeritageCards([]).some(row => row.id === 'old-deleted'), false);
+  assert.equal(device.store.getHeritageCards([]).filter(row => row.id.startsWith('new-catalog-')).length, 75);
+  assert.equal(device.store.getHeritageCards([]).find(row => row.id === 'kept-offline').detail, '本机新正文');
+  assert.equal((await loadContentState(backend.db)).value.kepuCustom.find(row => row.id === 'kept-offline').detail, '本机新正文');
+});
+
+test('edited builtin summaries do not expose the superseded original answer or detail before hydration', async t => {
+  const backend = setup(t), content = structuredClone(schema.defaults), kbId = schema.reserved.kb[0], cardId = schema.reserved.kepu[0];
+  content.auditLogs = []; content.kbEdited[kbId] = { id: kbId, title: '校正后的知识', answer: '老师校正的答案' };
+  content.kepuEdited[cardId] = { id: cardId, name: '校正后的科普', detail: '老师校正的正文' };
+  await migrateRecordStorage(backend.db, { value: content, revision: 0 });
+  const device = setupEnvironment(backend);
+  device.window.KNOWLEDGE_BASE = [{ id: kbId, title: '内置知识', answer: '已被替代的旧答案' }];
+  const base = [{ id: cardId, name: '内置科普', detail: '已被替代的旧正文' }];
+  await device.store.syncWithCloud();
+  assert.equal(device.store.getEntries().find(row => row.id === kbId).answer, undefined);
+  assert.equal(device.store.getHeritageCards(base)[0].detail, undefined);
+  await device.store.loadRecord('kb', kbId); await device.store.loadRecord('kepu', cardId);
+  assert.equal(device.store.getEntries().find(row => row.id === kbId).answer, '老师校正的答案');
+  assert.equal(device.store.getHeritageCards(base)[0].detail, '老师校正的正文');
+});

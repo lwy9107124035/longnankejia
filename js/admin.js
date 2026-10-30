@@ -935,7 +935,8 @@
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-preview-kepu');
         var box = document.getElementById('preview-box-' + id);
-        if (box) {
+        function toggle() {
+          if (!box || !box.isConnected) return;
           if (box.classList.contains('open')) {
             box.classList.remove('open');
             btn.textContent = '游客预览';
@@ -944,6 +945,19 @@
             btn.textContent = '收起预览';
           }
         }
+        var summary = window.Store.getCatalog().summaries.some(function (key) { return key === 'kepuCustom/' + id || key === 'kepuEdited/' + id; });
+        if (summary && box && !box.classList.contains('open')) {
+          btn.disabled = true;
+          adminAction(async function () {
+            try {
+              await window.Store.loadRecord('kepu', id);
+              var card = window.Heritage.list().find(function (card) { return card.id === id; });
+              if (!box.isConnected || !card) return;
+              box.querySelector('.heritage-detail').innerHTML = window.UI.formatHeritageDetail(card.detail || '暂无详细介绍');
+              toggle();
+            } finally { btn.disabled = false; }
+          });
+        } else toggle();
       });
     });
 

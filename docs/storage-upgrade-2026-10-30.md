@@ -2,6 +2,8 @@
 
 本轮仅升级 codex。main 继续使用原数据库和已发布代码；客户密码、邀请码、服务端密钥及资料不随预览迁移复制或重置。最终提交、部署和迁移结果见 `codex-admin-checkpoint.md` 最后一节。
 
+用户已确认暂不开通R2。因此本次上线D1逐条存储及相关功能；R2上传、旧图迁移和历史归档代码保留但不接云端，影音可继续填写已有链接。图片仍占原D1数据库空间，不能据此承诺一万张250KB图片可装进现有云端数据库。
+
 ## 已实现
 
 - 正文按条保存在 D1，不再把整站正文及历史塞进一个16MiB快照。保存使用条目摘要、全局条件事务及操作回执；不同条目可合并，同一条目的冲突保留草稿。
@@ -31,18 +33,20 @@ R2接入使用已有桶的GitHub变量 `CODEX_ADMIN_R2_BUCKET`，main对应 `MAI
 
 | 范围 | 结果与证据 |
 | --- | --- |
-| Node/API/数据迁移与安全回归 | 188/188，`.cache/storage-all-node-release.txt`；旧图迁移接口最后补充4/4，`.cache/storage-copy-api-tests.txt` |
+| Node/API/数据迁移与安全回归 | 最终190/190，`.cache/storage-final-all-node.txt`；含迁移、并发、权限、缓存切换及旧图迁移接口 |
 | 完整页面回归 | 320/320，`.cache/storage-full-browser-final.txt`；最后兼容补修另跑相关流程 |
 | 管理员 Chrome/WebKit 组合 | 44/44，`.cache/storage-admin-ui.txt` |
 | WebKit 桌面、手机与微信UA模拟 | 33/33，`.cache/storage-webkit-verified.txt`；不等同苹果真机/真实微信 |
-| 新模式完整应用界面 | Chrome/WebKit各12项，`.cache/records-browser-complete.txt`、`records-browser-results.json` |
+| 新模式完整应用界面 | 最终Chrome/WebKit各13项，`.cache/storage-final-preview-ui.txt`、`records-browser-results.json` |
 | 三设备协作及草稿恢复 | 17/17，`.cache/storage-collaboration-verified.txt`；另见同步、安全、管理员专项 |
-| 流式上传控件 | Chrome/WebKit共22项，`.cache/media-upload-browser-20261028.json` |
+| 流式上传控件 | 最后复验Chrome/WebKit共22项，`.cache/storage-upload-ui.txt` |
 | 250MiB影音 | 本地workerd/R2实传32片、最终摘要及读回通过，`.cache/media-250mib-check-20261028.txt` |
-| 规模、完整公开备份与隔离恢复 | 一万条长正文和一万张250KB合成JPEG，综合演练结果以`.cache/records-browser-scale-results.json`为准；未取得成功结果前不标作完成 |
+| 规模、完整公开备份与隔离恢复 | 一万条长正文+一万张250KB合成JPEG，共2.5GB；25项通过、0失败，全部正文及图片从备份恢复到隔离库与另一对象存储并逐项核对，`.cache/records-browser-scale-results.json`、`records-scale-integrated-final.txt` |
 | 静态、负向验证、Functions编译 | `.cache/storage-static.txt`、`storage-negative.txt`、`storage-functions-build-final.txt` |
 
 保留的实际失败：旧测试漏载共享schema；异步表单测试过早访问DOM；方言名称含徽章导致精确文本定位失败。均调整夹具/等待方式后验证。WebKit还发现了真实的旧模式问题：历史恢复后使用过期摘要删除、服务器拒绝时反复重试；已修正旧模式摘要使用，并保留服务器明确返回的冲突。新增两项Node回归和WebKit完整恢复流程通过。
+
+最后补修两处升级边界：旧设备由整库缓存切入逐条存储时，首次读取完整有效目录，移除云端早已删除的旧缓存，同时保留离线改稿；内置内容被编辑后的摘要不再借用旧内置正文，管理员游客预览先取完整正文再展开。新增Node两项和Chrome/WebKit预览检查通过。
 
 旧规模测试确实在同一进程中完成过2.5GB媒体校验，但旧夹具使用的`r2Persist`被新运行时忽略，关闭进程后无法复用；不是持久化验收。已按安装的官方运行时代码改用`resourcePersistencePath`，重新生成持久化数据，综合备份再逐图校验。合成图共用同一种子JPEG并加入不同合法注释段，是字节规模测试，不是一万幅不同文化照片。
 
@@ -53,3 +57,13 @@ R2接入使用已有桶的GitHub变量 `CODEX_ADMIN_R2_BUCKET`，main对应 `MAI
 R2存在免费用量，也会按实际存储与操作超额计费；不是无限免费空间。是否启用及费用处理由账户所有者决定。[官方计费](https://developers.cloudflare.com/r2/pricing/)
 
 公开备份涵盖正文和本站独立媒体，不包含外站媒体、私有审计、R2历史归档或明文凭据。迁移工具单独保留私有内容历史快照，凭据只保存摘要。容量预警是维护预算，不代表已查询到账户套餐余量；公众号正式开放前仍需真实设备、实际媒体云端及预期并发验收。
+
+## codex 实际部署与核对
+
+主体提交 `63e44fd0cc6de2b833e4de4f453579f1b9b0106b`，部署检查[41074631651](https://github.com/lwy9107124035/longnankejia/actions/runs/41074631651)通过。四份关键前端与Git提交内容逐字一致；校验采用Git保存的LF源码，避免把Windows工作区CRLF差异误认成部署失败。
+
+原codex库已由revision59条件迁移到60。79项原内容及私有历史逐项一致，密码及邀请码摘要、旧媒体不变，旧快照仍保留。真实D1并发三条新增、同条冲突保护、单项历史恢复通过；临时资料全部删除，最终revision78/自定义科普0、临时维护会话0。`.cache/storage-final-verification-1793372607336.json`独立只读核对全部79项原行和凭据仍一致。测试新增的审计和回滚记录保留，没有批量清理历史。
+
+实际验收脚本的非产品失败也保留：预期HTTP503被curl的exit22误当网络失败、零计数字段未出现被当undefined、重跑结果文件禁止覆盖导致EEXIST；另有一次TLS35发生在只读预检。没有把这些脚本退出码冒充完整验收成功。已完成独立只读核对，证明临时内容及会话已清理、原数据未被改变；证据为`storage-preview-smoke-initial-result.json`、`storage-preview-post-cleanup-check.json`和上述最终核对报告。
+
+正式main仍revision385/188条，公开响应与发布前逐字相同，分支未推送本轮代码。codex使用独立测试库，未复制正式客户资料。稳定入口和`地址.html`中的链接继续有效：`https://codex.longnankejia-dev.pages.dev/`。

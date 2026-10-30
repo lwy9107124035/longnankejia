@@ -466,7 +466,8 @@
   }
   async function expandCatalogSnapshot(data) {
     if (data.model !== 'records-v1' || data.unchanged || (cloudRevision !== null && data.revision < cloudRevision)) return data;
-    var schema = globalThis.HeritageContent, remote = copy(cloudBase || schema.defaults);
+    var schema = globalThis.HeritageContent, transition = !!cloudBase && catalog.model !== 'records-v1';
+    var remote = copy(transition ? schema.defaults : cloudBase || schema.defaults);
     var summaries = new Set(catalog.summaries || []), hashes = Object.assign({}, catalog.hashes), previous = schema.contentCells(cloudBase);
     function accept(row) {
       var keepFull = row.summary && hashes[row.key] === row.hash && !summaries.has(row.key) && previous.has(row.key);
@@ -474,10 +475,12 @@
       hashes[row.key] = row.hash;
       if (row.summary && !keepFull) summaries.add(row.key); else summaries.delete(row.key);
     }
-    if (cloudBase && cloudRevision !== null && data.revision > cloudRevision) {
+    if (transition || cloudBase && cloudRevision !== null && data.revision > cloudRevision) {
       var cursor = '';
       do {
-        var page = await cloudRequest(null, false, undefined, { format: 'records', since: cloudRevision, summary: 1, cursor: cursor });
+        var query = { format: 'records', summary: 1, cursor: cursor };
+        if (!transition) query.since = cloudRevision;
+        var page = await cloudRequest(null, false, undefined, query);
         if (page.revision !== data.revision) throw Object.assign(new Error('内容正在更新，请重试同步；草稿已保留'), { code: 'PAGE_CHANGED' });
         page.rows.forEach(accept); cursor = page.cursor;
       } while (cursor);
@@ -1010,7 +1013,11 @@
 
     var merged = base
       .filter(function (e) { return deleted.indexOf(e.id) === -1; })
-      .map(function (e) { return Object.assign({}, e, edited[e.id]); });
+      .map(function (e) {
+        var value = Object.assign({}, e, edited[e.id]);
+        if (catalog.summaries.indexOf('kbEdited/' + e.id) >= 0 && !Object.prototype.hasOwnProperty.call(edited[e.id] || {}, 'answer')) delete value.answer;
+        return value;
+      });
 
     return displayRecords(merged.concat(custom), 'kb');
   }
@@ -1134,7 +1141,11 @@
 
     var merged = base
       .filter(function (c) { return deleted.indexOf(c.id) === -1; })
-      .map(function (c) { return Object.assign({}, c, edited[c.id]); });
+      .map(function (c) {
+        var value = Object.assign({}, c, edited[c.id]);
+        if (catalog.summaries.indexOf('kepuEdited/' + c.id) >= 0 && !Object.prototype.hasOwnProperty.call(edited[c.id] || {}, 'detail')) delete value.detail;
+        return value;
+      });
 
     return displayRecords(merged.concat(custom), 'kepu');
   }

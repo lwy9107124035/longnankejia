@@ -64,11 +64,11 @@ try {
     const origin = 'http://127.0.0.1:' + server.address().port;
     const group = { engine, count, metadataBytes: migrated.bytes, checks: [], errors: [], failures: [] };
     report.profiles.push(group);
-    let context;
+    let context, page;
     try {
       browser = await (engine === 'chromium' ? chromium : webkit).launch(engine === 'chromium' ? { executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true } : {});
       context = await browser.newContext({ viewport, acceptDownloads: true });
-      const page = await context.newPage(); page.setDefaultTimeout(20000);
+      page = await context.newPage(); page.setDefaultTimeout(20000);
       page.on('pageerror', error => group.errors.push(error.message));
       page.on('dialog', dialog => dialog.type() === 'confirm' ? dialog.dismiss() : dialog.accept());
       async function check(name, action) { await action(); group.checks.push(name); }
@@ -109,6 +109,15 @@ try {
       await check('管理员统计显示云端全部条数，列表限制50条', async () => {
         assert.equal(await page.locator('.admin-stat-val').nth(1).textContent(), String(count));
         assert.ok(await page.locator('[data-edit-kepu]').count() <= 50);
+      });
+      await check('管理员游客预览先读取完整正文再展开', async () => {
+        const id = await page.evaluate(() => {
+          const summaries = new Set(window.Store.getCatalog().summaries);
+          return [...document.querySelectorAll('[data-preview-kepu]')].find(button => summaries.has('kepuCustom/' + button.dataset.previewKepu))?.dataset.previewKepu;
+        });
+        assert.ok(id);
+        await page.locator('[data-preview-kepu="' + id + '"]').click();
+        await page.waitForFunction(id => document.getElementById('preview-box-' + id)?.querySelector('.heritage-detail')?.textContent.includes('完整正文' + Number(id.slice(6))), id);
       });
       await page.locator('#kepuSearch').fill(target); await page.locator(`[data-edit-kepu="scale-${String(count - 1).padStart(5, '0')}"]`).waitFor();
       await page.locator(`[data-edit-kepu="scale-${String(count - 1).padStart(5, '0')}"]`).click();

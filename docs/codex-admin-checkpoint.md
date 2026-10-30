@@ -288,3 +288,14 @@
 - 真实codex只读迁移演练成功，revision59、79个内容/私有元数据行，内容/历史/密码tokens摘要已保留在`.cache/content-record-migrations/records-codex-rev59-1793369391092-451ca73e-265a-4df1-81b2-d4b05e83a51f.json`，凭据不落明文。`.cache/storage-cloud-preflight.txt`记录演练结果；尚未apply、提交或部署。
 - R2再次API/CLI只读检查，10042明确为“Please enable R2 through the Cloudflare Dashboard”，证据`.cache/storage-r2-cli.txt`，不是已启用或仅凭权限猜测。未进入订阅/账单流程。代码与本地验收完成后可先部署codex逐条D1，再由用户启用R2后接桶做真实媒体验收；main不动。
 - 待办：等一万图备份及全量隔离恢复成功；最后Node/相关检查和Functions构建（旧图迁移后）；只显式暂存本轮源码/测试/文档，提交推codex并确认CI；按已审查rev59条件迁移原codex库，核对内容/私有历史/凭据、网页及真实D1 API临时资料验收后精确清理。`.cache/storage-preview-smoke.mjs`已准备，创建临时维护会话、不用客户密码或改邀请码，仅在codex写3条自建记录并最终删除；未执行。不得批量清理原历史。R2未启用部分如实交付需用户操作的具体步骤。
+
+## 2026-10-30 codex D1升级已发布，R2按用户选择未启用
+
+- 用户先误选“自行启用R2”，随后明确“我不自行启用R2了，刚才点错了”。已确认暂不开通，不创建R2资源/订阅、不改账单，不再要求用户开通。仅D1逐条存储作为本次有效云端升级；R2代码保留为可选、capabilities.mediaUploads=false，图片沿用D1，影音可填已有链接。现有套餐/数据库仍有容量限制，不能把本地2.5GB测试说成当前云端容量。
+- 主体43个文件提交 `63e44fd0cc6de2b833e4de4f453579f1b9b0106b` 已仅推codex，[CI41074631651](https://github.com/lwy9107124035/longnankejia/actions/runs/41074631651)成功，四关键前端与Git LF源码一致（Windows CRLF比较的初次误报已排除）。main仍559ed09/业务26392db，本轮没有推main。
+- 实际迁移先遇9109授权过期、在任何D1写前终止；一次Wrangler只读info刷新后，按rev59条件迁移成功到60，generation38d98b6f-1031-471e-b7ed-ab72fdb83945。全部79原行、私有历史及原密码/邀请码摘要一致，媒体和旧快照保留。备份`.cache/content-record-migrations/records-codex-rev59-1793371913471-b8b18bc3-ecac-4353-9ba9-38e03923b12e.json`、结果`storage-codex-migration-apply.txt`。
+- 真实codex D1并发3条新增、同条竞争仅一方接受、另一方冲突、单项历史恢复均通过。脚本的预期HTTP503被curl exit22当失败、0字段缺省、结果文件wx重跑EEXIST，以及一次只读预检TLS35均保留，不把脚本失败掩盖成全绿。所有自建临时资料已删除、维护会话已退出，原历史未清理。
+- 独立只读`.cache/storage-final-verification-1793372607336.json`：codex rev78/自定义科普0，79原行digest和password/tokens摘要与迁移备份完全一致，temporaryRecords=0、maintenanceSessions=0；main rev385/188，公开响应与本轮前置快照逐字相同。正式资料、密码、邀请码、密钥不变，不复制正式库进预览。
+- 综合规模终于全绿：`.cache/records-browser-scale-results.json`、`records-scale-integrated-final.txt`，10000长正文/10000个不同摘要的250000B合成JPEG，2.5GB；Chrome13项（含备份/恢复）+WebKit12项共25项，脚本异常/失败0。所有公开正文及10000图片备份并恢复到另一隔离SQLite和R2运行时，逐条/逐字节核对；privateHistoryIncluded=false，remoteResources=false。公开快照`.cache/records-scale-backup/revision-2-d490359e2b105218d0ce6057c2cc2423793841d14d39e6f87cba1d071e3cfe8d.json`，图片同目录media/。这是本地测试；不是付费开户、真实R2云端或峰值负载验收。
+- 最后源审补修：旧整库缓存切换records目录时从有效目录重建，避免已删条目从旧设备缓存复活，同时保留离线改稿；内置编辑摘要不借用过期内置正文，后台游客预览先取全文。新Node2项与Chrome/WebKit各新增1预览检查；最终Node190/190（`.cache/storage-final-all-node.txt`）、新模式UI26/26（`storage-final-preview-ui.txt`）、静态0套话均通过。此前完整页面320、管理员44、WebKit33、协作17、上传控件22、3负向及Functions构建均通过。无需再无故全跑。
+- 当前待收尾：只提交这两项前端补修及相关测试/本记录和报告，推codex等CI；只读再核对关键源码、codex模型及main不变，补实际提交/CI。不得重新迁移数据库或再次重复真实写入测试。用户已拒绝开通R2，不把它当仍待用户审批或自动重试的步骤。当前业务仍63e44fd，补修尚未提交。
