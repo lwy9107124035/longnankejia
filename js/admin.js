@@ -62,7 +62,36 @@
   function adminAction(action) {
     return Promise.resolve().then(action).catch(function (error) { alert(error.message); });
   }
+  function cloudListControls(body, field, input, refresh) {
+    if (!window.Store.getCatalog().model) return;
+    var box = document.createElement('div'); box.className = 'admin-toolbar-row';
+    var label = document.createElement('span'), more = document.createElement('button');
+    more.className = 'admin-btn-sm'; more.textContent = '继续加载';
+    box.appendChild(label); box.appendChild(more); body.appendChild(box);
+    var query = '', cursor = window.Store.getCatalog().pages[field], request = 0, timer;
+    function status() {
+      label.textContent = '云端共 ' + window.Store.getContentCount(field) + ' 条，列表按页读取';
+      more.hidden = !cursor;
+    }
+    async function load(first) {
+      var current = ++request; more.disabled = true;
+      try {
+        var page = await window.Store.loadContentPage(field, { query: query, cursor: first ? '' : cursor, full: !!query });
+        if (!box.isConnected || current !== request) return;
+        cursor = page.cursor; refresh(); status();
+      } catch (error) { if (box.isConnected) showAdminToast(error.message); }
+      finally { more.disabled = false; }
+    }
+    more.addEventListener('click', function () { load(false); });
+    if (input) input.addEventListener('input', function () {
+      clearTimeout(timer); query = input.value.trim(); cursor = '';
+      timer = setTimeout(function () { if (box.isConnected) load(true); }, 350);
+    });
+    status();
+  }
   async function downloadBackup(file) {
+    try { await window.Store.prepareExport(); }
+    catch (error) { showAdminToast(error.message); return; }
     try { downloadJson(await window.Store.exportFullBundleWithMedia(), file); }
     catch (error) {
       downloadJson(window.Store.exportFullBundle(), file.replace('.json', '-文字与图片链接.json'));
@@ -313,20 +342,22 @@
   var kbPageSize = 15;
 
   function renderKB(body) {
+    if (window.Store.getCatalog().model) kbPageSize = Math.min(kbPageSize, 50);
     var allEntries = window.Store.getEntries();
     var customCount = allEntries.filter(function (e) {
       return (e.id && e.id.indexOf('custom-') === 0) || e.creatorTokenId || (e.creatorName && e.creatorName !== '超级管理员' && e.creatorName !== '典藏内置');
     }).length;
     var builtinCount = allEntries.length - customCount;
+    if (window.Store.getCatalog().model) customCount = window.Store.getContentCount('kbCustom');
     var totalChars = allEntries.reduce(function (sum, e) { return sum + (e.answer ? e.answer.length : 0); }, 0);
     var charsDisplay = totalChars > 10000 ? (totalChars / 10000).toFixed(1) + '万' : totalChars;
 
     body.innerHTML =
       '<div class="admin-stats-bar">' +
-      '  <div class="admin-stat-card"><div class="admin-stat-val">' + allEntries.length + '</div><div class="admin-stat-label">知识总条目</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + (builtinCount + customCount) + '</div><div class="admin-stat-label">知识总条目</div></div>' +
       '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + customCount + '</div><div class="admin-stat-label">自定义录入</div></div>' +
       '  <div class="admin-stat-card"><div class="admin-stat-val">' + builtinCount + '</div><div class="admin-stat-label">典藏内置</div></div>' +
-      '  <div class="admin-stat-card"><div class="admin-stat-val">' + charsDisplay + '</div><div class="admin-stat-label">知识总字数</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + charsDisplay + '</div><div class="admin-stat-label">' + (window.Store.getCatalog().model ? '已加载字数' : '知识总字数') + '</div></div>' +
       '</div>' +
       '<div class="admin-kb-toolbar">' +
       '  <div class="admin-search-wrap">' +
@@ -337,7 +368,7 @@
       '</div>' +
       '<div class="admin-toolbar-row">' +
       '  <select id="kbSourceFilter" class="admin-select-sm">' +
-      '    <option value="all">来源：全部 (' + allEntries.length + ')</option>' +
+      '    <option value="all">来源：全部 (' + (builtinCount + customCount) + ')</option>' +
       '    <option value="custom">来源：仅自定义 (' + customCount + ')</option>' +
       '    <option value="builtin">来源：仅内置 (' + builtinCount + ')</option>' +
       '  </select>' +
@@ -351,12 +382,12 @@
       '    <option value="15">每页 15 条</option>' +
       '    <option value="30">每页 30 条</option>' +
       '    <option value="50">每页 50 条</option>' +
-      '    <option value="9999">查看全部</option>' +
+      (window.Store.getCatalog().model ? '' : '    <option value="9999">查看全部</option>') +
       '  </select>' +
       '  <button class="admin-btn-sm" id="kbExportFilterBtn" title="导出当前筛选条目为JSON">导出筛选</button>' +
       '</div>' +
       '<div class="admin-filter-bar" id="kbFilterBar">' +
-      '  <button class="filter-chip active" data-cat="all">全部 (' + allEntries.length + ')</button>' +
+      '  <button class="filter-chip active" data-cat="all">全部 (' + (builtinCount + customCount) + ')</button>' +
       '  <button class="filter-chip" data-cat="craft">手艺工艺</button>' +
       '  <button class="filter-chip" data-cat="arch">围屋建筑</button>' +
       '  <button class="filter-chip" data-cat="custom">民俗礼俗</button>' +
@@ -377,18 +408,16 @@
     sortSelect.value = kbCurSort;
     pageSizeSelect.value = String(kbPageSize);
 
-    function refreshKBView() {
+    function filteredKBEntries() {
       var q = (searchInput.value || '').toLowerCase().trim();
-      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
-
-      var filtered = allEntries.filter(function (e) {
+      return allEntries.filter(function (e) {
         var isCustom = (e.id && e.id.indexOf('custom-') === 0) || e.creatorTokenId || (e.creatorName && e.creatorName !== '超级管理员' && e.creatorName !== '典藏内置');
         if (kbCurSource === 'custom' && !isCustom) return false;
         if (kbCurSource === 'builtin' && isCustom) return false;
 
         var matchQ = !q || (e.title && e.title.toLowerCase().indexOf(q) !== -1) ||
                      (e.keywords && e.keywords.join(' ').toLowerCase().indexOf(q) !== -1) ||
-                     (e.answer && e.answer.toLowerCase().indexOf(q) !== -1);
+                     (e.answer && (e.answer || '').toLowerCase().indexOf(q) !== -1);
         if (!matchQ) return false;
 
         if (kbCurFilter === 'all') return true;
@@ -400,6 +429,13 @@
         if (kbCurFilter === 'dialect') return text.indexOf('话') !== -1 || text.indexOf('歌') !== -1 || text.indexOf('谣') !== -1 || text.indexOf('音') !== -1;
         return true;
       });
+    }
+
+    function refreshKBView() {
+      var q = (searchInput.value || '').toLowerCase().trim();
+      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+
+      var filtered = filteredKBEntries();
 
       filtered.sort(function (a, b) {
         var isCustomA = (a.id && a.id.indexOf('custom-') === 0) || a.creatorTokenId || a.createdAt;
@@ -466,17 +502,12 @@
       refreshKBView();
     });
 
-    $('#kbExportFilterBtn').addEventListener('click', function () {
-      var q = (searchInput.value || '').toLowerCase().trim();
-      var filtered = allEntries.filter(function (e) {
-        var isCustom = (e.id && e.id.indexOf('custom-') === 0) || e.creatorTokenId;
-        if (kbCurSource === 'custom' && !isCustom) return false;
-        if (kbCurSource === 'builtin' && isCustom) return false;
-        if (q && (e.title.toLowerCase().indexOf(q) === -1 && e.answer.toLowerCase().indexOf(q) === -1)) return false;
-        return true;
-      });
+    $('#kbExportFilterBtn').addEventListener('click', function () { adminAction(async function () {
+      await window.Store.prepareExport(['kbCustom', 'kbEdited', 'kbDeleted']);
+      allEntries = window.Store.getEntries();
+      var filtered = filteredKBEntries();
       downloadJson(JSON.stringify(filtered, null, 2), '龙南知识库筛选导出-' + Date.now() + '.json');
-    });
+    }); });
 
     $('#kbFilterBar').querySelectorAll('.filter-chip').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -494,6 +525,7 @@
     });
 
     refreshKBView();
+    cloudListControls(body, 'kbCustom', searchInput, function () { allEntries = window.Store.getEntries(); refreshKBView(); });
   }
 
   function renderKBList(pageEntries) {
@@ -515,10 +547,10 @@
         '  <span class="admin-kb-item-title">' + esc(e.title) + '</span>' + badge +
         '</div>' +
         '<div class="admin-kb-item-keywords">' + kwText + '</div>' +
-        '<div class="admin-kb-item-preview">' + esc(e.answer.slice(0, 95)) + (e.answer.length > 95 ? '…' : '') + '</div>' +
+        '<div class="admin-kb-item-preview">' + esc((e.answer || '').slice(0, 95)) + ((e.answer || '').length > 95 ? '…' : '') + '</div>' +
         '<div class="admin-kb-fulltext" id="full-' + esc(e.id) + '">' + esc(e.answer) + '</div>' +
         '<div class="admin-kb-item-footer">' +
-        '  <span class="admin-kb-item-meta">' + e.answer.length + ' 字' + sourceText + '</span>' +
+        '  <span class="admin-kb-item-meta">' + (e.answer === undefined ? '正文按需读取' : e.answer.length + ' 字') + sourceText + '</span>' +
         '  <div class="admin-kb-item-actions">' +
         '    <button class="admin-btn-sm admin-btn-expand" data-action="expand">展开全文</button>' +
         '    <button class="admin-btn-sm admin-btn-copy" data-action="copy">复制模板</button>' +
@@ -533,20 +565,22 @@
     list.querySelectorAll('.admin-kb-item').forEach(function (item) {
       var id = item.getAttribute('data-id');
 
-      item.querySelector('[data-action="expand"]').addEventListener('click', function () {
+      item.querySelector('[data-action="expand"]').addEventListener('click', function () { adminAction(async function () {
         var drawer = item.querySelector('.admin-kb-fulltext');
         var btn = item.querySelector('[data-action="expand"]');
         if (drawer.classList.contains('open')) {
           drawer.classList.remove('open');
           btn.textContent = '展开全文';
         } else {
+          var full = await window.Store.loadRecord('kb', id);
+          if (full) drawer.textContent = full.answer || '';
           drawer.classList.add('open');
           btn.textContent = '收起全文';
         }
-      });
+      }); });
 
-      item.querySelector('[data-action="copy"]').addEventListener('click', function () {
-        var entry = window.Store.getEntries().find(function (e) { return e.id === id; });
+      item.querySelector('[data-action="copy"]').addEventListener('click', function () { adminAction(async function () {
+        var entry = await window.Store.loadRecord('kb', id) || window.Store.getEntries().find(function (e) { return e.id === id; });
         if (entry) {
           editingId = null;
           showKBForm({
@@ -556,13 +590,13 @@
             sources: entry.sources ? entry.sources.slice() : []
           });
         }
-      });
+      }); });
 
-      item.querySelector('[data-action="edit"]').addEventListener('click', function () {
-        var entry = window.Store.getEntries().find(function (e) { return e.id === id; });
+      item.querySelector('[data-action="edit"]').addEventListener('click', function () { adminAction(async function () {
+        var entry = await window.Store.loadRecord('kb', id) || window.Store.getEntries().find(function (e) { return e.id === id; });
         editingId = id;
         showKBForm(entry);
-      });
+      }); });
 
       item.querySelector('[data-action="test"]').addEventListener('click', function () {
         var btn = item.querySelector('[data-action="test"]');
@@ -734,6 +768,22 @@
 
   /* ==================== 2. 科普模块动态管理 ==================== */
   var kepuCurSource = 'all';
+  var listPages = {};
+  function listSlice(rows, key) {
+    if (!window.Store.getCatalog().model) return rows;
+    listPages[key] = Math.min(Math.max(1, listPages[key] || 1), Math.max(1, Math.ceil(rows.length / 50)));
+    return rows.slice((listPages[key] - 1) * 50, listPages[key] * 50);
+  }
+  function listNavigation(list, rows, key, refresh) {
+    if (!window.Store.getCatalog().model || rows.length <= 50) return;
+    var nav = document.createElement('div'); nav.className = 'admin-toolbar-row'; nav.style.gridColumn = '1 / -1';
+    ['上一页', '下一页'].forEach(function (label, index) {
+      var button = document.createElement('button'); button.className = 'admin-btn-sm'; button.textContent = label;
+      button.disabled = index ? listPages[key] * 50 >= rows.length : listPages[key] <= 1;
+      button.addEventListener('click', function () { listPages[key] += index ? 1 : -1; refresh(); }); nav.appendChild(button);
+    });
+    list.appendChild(nav);
+  }
 
   function renderKepu(body) {
     var rawCards = window.Heritage ? window.Heritage.list() : window.Store.getHeritageCards([]);
@@ -745,10 +795,12 @@
     var sortedCards = customCards.concat(builtinCards);
     var cloud = window.Store.getSyncStatus();
 
+    var customTotal = window.Store.getCatalog().model ? window.Store.getContentCount('kepuCustom') : customCards.length;
+    var totalCards = builtinCards.length + customTotal;
     body.innerHTML =
       '<div class="admin-stats-bar">' +
-      '  <div class="admin-stat-card"><div class="admin-stat-val">' + (cloud.cloudLoaded ? rawCards.length : '—') + '</div><div class="admin-stat-label">科普总卡片</div></div>' +
-      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + (cloud.cloudLoaded ? customCards.length : '—') + '</div><div class="admin-stat-label">自定义卡片</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val">' + (cloud.cloudLoaded ? totalCards : '—') + '</div><div class="admin-stat-label">科普总卡片</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + (cloud.cloudLoaded ? customTotal : '—') + '</div><div class="admin-stat-label">自定义卡片</div></div>' +
       '  <div class="admin-stat-card"><div class="admin-stat-val">' + builtinCards.length + '</div><div class="admin-stat-label">内置卡片</div></div>' +
       '</div>' +
       '<div class="admin-kb-toolbar">' +
@@ -760,8 +812,8 @@
       '</div>' +
       '<div class="admin-toolbar-row">' +
       '  <select id="kepuSourceFilter" class="admin-select-sm">' +
-      '    <option value="all">来源：全部卡片 (' + rawCards.length + ')</option>' +
-      '    <option value="custom">来源：仅自定义 (' + customCards.length + ')</option>' +
+      '    <option value="all">来源：全部卡片 (' + totalCards + ')</option>' +
+      '    <option value="custom">来源：仅自定义 (' + customTotal + ')</option>' +
       '    <option value="builtin">来源：仅内置 (' + builtinCards.length + ')</option>' +
       '  </select>' +
       '  <div class="admin-toolbar-tip" style="margin-left:auto;font-size:11px;color:var(--muted)">保存后显示在科普页</div>' +
@@ -776,6 +828,8 @@
     sourceSelect.value = kepuCurSource;
 
     function refreshKepuList() {
+      rawCards = window.Heritage ? window.Heritage.list() : window.Store.getHeritageCards([]);
+      sortedCards = rawCards;
       var q = (searchInput.value || '').toLowerCase().trim();
       if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
 
@@ -815,6 +869,7 @@
     });
 
     refreshKepuList();
+    cloudListControls(body, 'kepuCustom', searchInput, refreshKepuList);
   }
 
   function renderKepuItems(cards, allCards) {
@@ -824,7 +879,7 @@
       return;
     }
 
-    list.innerHTML = cards.map(function (c) {
+    list.innerHTML = listSlice(cards, 'kepu').map(function (c) {
       var isCustom = (window.Heritage ? window.Heritage.isCustomCard(c) : true);
       var badge = isCustom
         ? '<span class="admin-badge admin-badge-custom">自定义</span>' + (c.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(c.creatorName) + '</span>' : '')
@@ -874,6 +929,7 @@
         '</div>' +
         '</div>';
     }).join('');
+    listNavigation(list, cards, 'kepu', function () { renderKepuItems(cards, allCards); });
 
     list.querySelectorAll('[data-preview-kepu]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -894,7 +950,8 @@
     list.querySelectorAll('[data-copy-kepu]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-copy-kepu');
-        var card = allCards.find(function (c) { return c.id === id; });
+        adminAction(async function () {
+        var card = await window.Store.loadRecord('kepu', id) || allCards.find(function (c) { return c.id === id; });
         if (card) {
           editingKepuId = null;
           showKepuForm({
@@ -910,16 +967,17 @@
             videoUrl: card.videoUrl || card.video || ''
           });
         }
+        });
       });
     });
 
     list.querySelectorAll('[data-edit-kepu]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', function () { adminAction(async function () {
         var id = btn.getAttribute('data-edit-kepu');
-        var card = allCards.find(function (c) { return c.id === id; });
+        var card = await window.Store.loadRecord('kepu', id) || allCards.find(function (c) { return c.id === id; });
         editingKepuId = id;
         showKepuForm(card);
-      });
+      }); });
     });
 
     list.querySelectorAll('[data-del-kepu]').forEach(function (btn) {
@@ -1097,6 +1155,7 @@
       return { type: 'kepu', recordId: formRecordId, version: version, value: value };
     }
     var draft = trackEditorDraft(form, editorData, recovery), preserveEditor = draft.preserve;
+    if (window.MediaUpload) window.MediaUpload.bind(form);
     var formContent = form.firstElementChild;
 
     var fileInput = $('#kpImageFile');
@@ -1243,12 +1302,13 @@
   function renderDialect(body) {
     var baseTracks = (window.Diancang && window.Diancang.videoExhibits) ? window.Diancang.videoExhibits() : [];
     var customTracks = window.Store.getCustomDialectTracks();
-    var totalCount = baseTracks.length + customTracks.length;
+    var customCount = window.Store.getCatalog().model ? window.Store.getContentCount('dialectCustom') : customTracks.length;
+    var totalCount = baseTracks.length + customCount, localPage = 0;
 
     body.innerHTML =
       '<div class="admin-stats-bar">' +
       '  <div class="admin-stat-card"><div class="admin-stat-val">' + totalCount + '</div><div class="admin-stat-label">方言总语料</div></div>' +
-      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + customTracks.length + '</div><div class="admin-stat-label">自定义录入</div></div>' +
+      '  <div class="admin-stat-card"><div class="admin-stat-val" style="color:var(--primary)">' + customCount + '</div><div class="admin-stat-label">自定义录入</div></div>' +
       '  <div class="admin-stat-card"><div class="admin-stat-val">' + baseTracks.length + '</div><div class="admin-stat-label">典藏内置讲解</div></div>' +
       '</div>' +
       '<div class="admin-kb-toolbar">' +
@@ -1259,8 +1319,9 @@
       '  <button class="admin-btn admin-btn-primary" id="dialectAddBtn">＋ 新增方言讲解/音频</button>' +
       '</div>' +
       '<div class="admin-kb-form" id="dialectForm" style="display:none"></div>' +
-      '<div class="admin-section-subtitle">自定义语料 (' + customTracks.length + ') · 置顶管理</div>' +
+      '<div class="admin-section-subtitle">自定义语料 (' + customCount + ')</div>' +
       '<div class="admin-dialect-list" id="customDialectList"></div>' +
+      '<div class="admin-toolbar-row"><button class="admin-btn-sm" id="dlPrev">上一页</button><span id="dlPage"></span><button class="admin-btn-sm" id="dlNext">下一页</button></div>' +
       '<div class="admin-section-subtitle" style="margin-top:14px">典藏内置原声讲解 (' + baseTracks.length + ')</div>' +
       '<div class="admin-dialect-list" id="baseDialectList"></div>';
 
@@ -1268,6 +1329,7 @@
     var clearBtn = $('#dlSearchClear');
 
     function refreshDialectView() {
+      customTracks = window.Store.getCustomDialectTracks();
       var q = (searchInput.value || '').toLowerCase().trim();
       if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
 
@@ -1278,12 +1340,15 @@
       });
 
       var cList = $('#customDialectList');
+      localPage = Math.min(localPage, Math.max(0, Math.ceil(filteredCustom.length / 50) - 1));
+      $('#dlPrev').disabled = localPage === 0; $('#dlNext').disabled = (localPage + 1) * 50 >= filteredCustom.length;
+      $('#dlPage').textContent = '第 ' + (localPage + 1) + ' 页，已加载 ' + customTracks.length + ' 条';
       if (!filteredCustom.length) {
         cList.innerHTML = '<div class="admin-empty-sm">' + (customTracks.length ? '未找到匹配的自定义语料' : '暂无自定义语料，点击上方按钮新增') + '</div>';
       } else {
-        cList.innerHTML = filteredCustom.map(function (t) {
+        cList.innerHTML = filteredCustom.slice(localPage * 50, (localPage + 1) * 50).map(function (t) {
           var creatorTag = t.creatorName ? '<span class="admin-creator-tag">👤 ' + esc(t.creatorName) + '</span>' : '';
-          var isAud = (t.mediaType === 'audio' || (t.item && t.item.mediaType === 'audio') || (t.item && t.item.audioUrl) || /\.(mp3|wav|ogg|aac|m4a)(\?.*)?$/i.test((t.item && (t.item.videoUrl || t.item.audioUrl)) || ''));
+          var isAud = globalThis.HeritageContent.isAudioTrack(t);
           var mediaBadge = isAud
             ? '<span class="admin-badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D">🔊 录音</span>'
             : '<span class="admin-badge" style="background:#E0E7FF;color:#3730A3;border:1px solid #C7D2FE">🎬 视频</span>';
@@ -1360,7 +1425,9 @@
       }
     }
 
-    searchInput.addEventListener('input', refreshDialectView);
+    searchInput.addEventListener('input', function () { localPage = 0; refreshDialectView(); });
+    $('#dlPrev').addEventListener('click', function () { localPage--; refreshDialectView(); });
+    $('#dlNext').addEventListener('click', function () { localPage++; refreshDialectView(); });
     if (clearBtn) {
       clearBtn.addEventListener('click', function () {
         searchInput.value = '';
@@ -1374,6 +1441,7 @@
     });
 
     refreshDialectView();
+    cloudListControls(body, 'dialectCustom', searchInput, function () { localPage = 0; refreshDialectView(); });
   }
 
   function showDialectForm(track, recovery) {
@@ -1448,6 +1516,7 @@
       };
     }
     var draft = trackEditorDraft(form, function () { return { type: 'dialect', recordId: recordId, version: version, value: readTrack() }; }, recovery);
+    if (window.MediaUpload) window.MediaUpload.bind(form);
     $('#dlSaveBtn').addEventListener('click', async function () {
       var button = this, value = readTrack();
       if (button.disabled) return;
@@ -2028,10 +2097,11 @@
       });
     }
 
-    function showInspectBox(tokenId) {
+    function showInspectBox(tokenId, cursor) { return adminAction(async function () {
       var box = $('#inspectContainer');
       if (!box) return;
-      var detailed = window.Store.getTokenDetailedContributions(tokenId);
+      var detailed = await window.Store.loadTokenContributions(tokenId, cursor);
+      if (!box.isConnected) return;
       if (!detailed.items.length) {
         box.style.display = 'none';
         alert('该令牌暂无可审查的修改条目');
@@ -2044,7 +2114,8 @@
         '    <div class="admin-inspect-title">📋 审查【' + esc(detailed.token.name) + '】提交的内容明细 (' + detailed.items.length + ' 条)</div>' +
         '    <button class="admin-btn-sm" id="closeInspectBtn">✕ 收起明细</button>' +
         '  </div>' +
-        '  <div class="admin-hint" style="margin-bottom:8px">逐条核对内容，对不妥当的改动点击「剔除此项」并附带理由，系统将精准剔除该项并将驳回原因通知该管理员。</div>' +
+        '  <div class="admin-hint" style="margin-bottom:8px">每页最多50条。撤回时会保留他人的后续修改，并通知录入者。</div>' +
+        (detailed.cursor || cursor ? '<div class="admin-toolbar-row"><button class="admin-btn-sm" id="inspectFirst">返回第一页</button><button class="admin-btn-sm" id="inspectNext"' + (!detailed.cursor ? ' disabled' : '') + '>下一页</button></div>' : '') +
         '  <div class="admin-inspect-list">' +
         detailed.items.map(function (item) {
           var timeStr = item.createdAt ? new Date(item.createdAt).toLocaleString() : '最近';
@@ -2067,6 +2138,8 @@
       $('#closeInspectBtn').addEventListener('click', function () {
         box.style.display = 'none';
       });
+      if ($('#inspectFirst')) $('#inspectFirst').addEventListener('click', function () { showInspectBox(tokenId); });
+      if ($('#inspectNext')) $('#inspectNext').addEventListener('click', function () { showInspectBox(tokenId, detailed.cursor); });
 
       box.querySelectorAll('[data-reject-id]').forEach(function (rBtn) {
         rBtn.addEventListener('click', function () {
@@ -2089,7 +2162,7 @@
           }
         });
       });
-    }
+    }); }
 
     $('#refreshAuditBtn').addEventListener('click', function () {
       renderTab();
@@ -2198,7 +2271,7 @@
 
       (isSuper ? '<div class="admin-form-box" style="margin-top:12px"><div class="admin-form-title">存储空间</div>' +
         '<div class="admin-hint">图片独立保存。单张图片、正文快照和服务器套餐仍有容量保护。</div><p id="storageInfoText"></p>' +
-        '<button class="admin-btn-sm" id="storageInfoBtn">查看容量</button> <button class="admin-btn-sm" id="optimizeImagesBtn">整理旧图片</button></div>' : '') +
+        '<button class="admin-btn-sm" id="storageInfoBtn">查看容量</button> <button class="admin-btn-sm" id="optimizeImagesBtn">整理旧图片</button> <button class="admin-btn-sm" id="archiveHistoryBtn">归档30天前历史</button></div>' : '') +
 
       (isSuper ?
       '<div class="admin-form-box" style="margin-top:12px">' +
@@ -2230,10 +2303,17 @@
     if (isSuper) {
       $('#storageInfoBtn').addEventListener('click', function () { adminAction(async function () {
         var info = await window.Store.getStorageInfo(), mb = function (bytes) { return (bytes / 1048576).toFixed(1); };
+        if (info.model === "records-v1") {
+          document.getElementById("storageInfoText").textContent = "逐条存储：正文及历史 " + mb(info.metadataBytes) + " MB；数据库旧图片 " + mb(info.mediaBytes) + " MB；媒体存储" + (info.r2Enabled ? "已接入 R2" : "尚未接入 R2") + "。";
+          return;
+        }
         $('#storageInfoText').textContent = '独立图片 ' + mb(info.mediaBytes) + ' MB；正文、历史及旧版图片 ' + mb(info.metadataBytes) + ' / ' + mb(info.metadataLimit) + ' MB。';
       }); });
       $('#optimizeImagesBtn').addEventListener('click', function () { var button = this; button.disabled = true;
-        adminAction(async function () { try { var result = await window.Store.optimizeImageStorage(); showAdminToast('已整理 ' + result.completed + ' 张旧图片'); renderTab(); } finally { button.disabled = false; } });
+        adminAction(async function () { try { var result = await window.Store.optimizeImageStorage(); showAdminToast('已整理 ' + result.completed + ' 张旧图片' + (result.copied ? '，迁入媒体存储 ' + result.copied + ' 张' : '')); renderTab(); } finally { button.disabled = false; } });
+      });
+      $('#archiveHistoryBtn').addEventListener('click', function () { var button = this; button.disabled = true;
+        adminAction(async function () { try { var result = await window.Store.archiveHistory(); showAdminToast('本批已归档 ' + result.archived + ' 项，历史仍可恢复'); } finally { button.disabled = false; } });
       });
     }
     body.querySelectorAll('[data-restore-operation]').forEach(function (button) {
@@ -2251,6 +2331,7 @@
       if (!file) return;
       var reader = new FileReader();
       reader.onload = async function () {
+        try { await window.Store.prepareExport(); } catch (error) { showAdminToast(error.message); return; }
         if (window.Store.importFullBundle(reader.result)) {
           var saved = await window.Store.flushPending();
           alert(saved ? '备份已恢复并上传。' : '已导入本机，尚未上传成功：' + window.Store.getSyncStatus().message);
@@ -2263,10 +2344,11 @@
       reader.readAsText(file);
     });
 
-    $('#exportBtn').addEventListener('click', function () {
+    $('#exportBtn').addEventListener('click', function () { adminAction(async function () {
+      await window.Store.prepareExport(['kbCustom', 'kbEdited', 'kbDeleted']);
       var json = window.Store.exportKB();
       downloadJson(json, 'heritage-kb-' + new Date().toISOString().slice(0, 10) + '.json');
-    });
+    }); });
 
     $('#importBtn').addEventListener('click', function () {
       $('#importFile').click();
@@ -2276,6 +2358,7 @@
       if (!file) return;
       var reader = new FileReader();
       reader.onload = async function () {
+        try { await window.Store.prepareExport(['kbCustom', 'kbEdited', 'kbDeleted']); } catch (error) { showAdminToast(error.message); return; }
         if (window.Store.importKB(reader.result)) {
           var saved = await window.Store.flushPending();
           alert(saved ? '已上传云端，共 ' + window.Store.getEntries().length + ' 条知识。' : '已导入本机，尚未上传成功：' + window.Store.getSyncStatus().message);
@@ -2292,7 +2375,7 @@
         if (confirm('确定重置知识库？所有自定义内容将丢失。')) {
           var button = this; button.disabled = true;
           try {
-            window.Store.resetKB();
+            await window.Store.resetKB();
             if (!(await window.Store.flushPending())) { showAdminToast('重置尚未上传：' + window.Store.getSyncStatus().message); return; }
             if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
             showAdminToast('知识库已重置');

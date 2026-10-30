@@ -492,6 +492,40 @@
     var curCat = 'all';
     var curKeyword = '';
     var eventsBound = false;
+    var catalogView = null, searchTimer;
+    function galleryView(cards) {
+      var info = window.Store.getCatalog(), initial = !curKeyword && ['all', 'custom'].indexOf(curCat) >= 0;
+      var key = curCat + '\n' + curKeyword, revision = window.Store.getSyncStatus().revision, signature = (info.firstPageKeys || []).join('|');
+      if (catalogView && catalogView.key === key && catalogView.revision === revision && catalogView.signature === signature) return catalogView;
+      var first = new Set((info.firstPageKeys || []).filter(function (key) { return key.indexOf('kepuCustom/') === 0; }).map(function (key) { return key.slice(11); }));
+      var buffer = cards.filter(function (card) { return !isCustomCard(card) && matchCategory(card, curCat) && (!curKeyword || ((card.name || '') + (card.tag || '') + (card.detail || '')).toLowerCase().indexOf(curKeyword) >= 0); }).map(function (card) { return card.id; });
+      if (initial) buffer = buffer.concat(cards.filter(function (card) { return isCustomCard(card) && first.has(card.id); }).map(function (card) { return card.id; }));
+      catalogView = { key: key, revision: revision, signature: signature, query: curKeyword, category: ['all', 'custom'].indexOf(curCat) >= 0 ? '' : curCat, filter: curCat,
+        pages: [], index: 0, buffer: buffer, seen: new Set(buffer), cursor: initial ? (info.firstCursors || info.pages).kepuCustom || '' : '', more: initial ? !!(info.firstCursors || info.pages).kepuCustom : true, busy: false };
+      if (initial) catalogView.pages.push(catalogView.buffer.splice(0, 50));
+      return catalogView;
+    }
+    async function fetchCatalogPage(view, index) {
+      if (view.busy) return;
+      view.busy = true; view.failed = false;
+      try {
+        for (var attempt = 0; view.buffer.length < 50 && view.more && attempt < 3; attempt++) {
+          var page = await window.Store.loadContentPage('kepuCustom', { cursor: view.cursor, query: view.query, category: view.category, full: !!view.query });
+          if (catalogView !== view) return;
+          if (page.revision !== view.revision) throw new Error('内容已更新，请重新选择分类');
+          page.rows.forEach(function (row) {
+            var card = row.value;
+            if (card && !view.seen.has(card.id) && matchCategory(card, view.filter)) { view.seen.add(card.id); view.buffer.push(card.id); }
+          });
+          view.cursor = page.cursor; view.more = !!page.cursor;
+        }
+        view.pages[index] = view.buffer.splice(0, 50); view.index = index;
+      } catch (error) {
+        view.failed = true;
+        var label = document.getElementById('heritageSyncLabel'); if (label) label.textContent = error.message;
+        var notice = document.getElementById('heritageSyncNotice'); if (notice) notice.hidden = false;
+      } finally { view.busy = false; render(); }
+    }
 
     function isCustomCard(c) {
       return !CARDS.some(function (base) { return base.id === c.id; });
@@ -680,7 +714,10 @@
       if (sInput) {
         sInput.addEventListener('input', function () {
           curKeyword = sInput.value.trim().toLowerCase();
+          catalogView = null; clearTimeout(searchTimer);
+          if (window.Store.getCatalog().model) searchTimer = setTimeout(function () { searchTimer = null; render(); }, 350);
           if (sClear) sClear.hidden = !curKeyword;
+          if (window.Store.getCatalog().model) return;
           render();
         });
       }
@@ -689,6 +726,8 @@
           if (sInput) {
             sInput.value = '';
             curKeyword = '';
+            catalogView = null;
+            clearTimeout(searchTimer); searchTimer = null;
             sClear.hidden = true;
             render();
             sInput.focus();
@@ -701,6 +740,8 @@
             pills.querySelectorAll('.h-cat-pill').forEach(function (b) { b.classList.remove('active'); });
             btn.classList.add('active');
             curCat = btn.getAttribute('data-cat') || 'all';
+            catalogView = null;
+            clearTimeout(searchTimer); searchTimer = null;
             render();
           });
         });
@@ -713,10 +754,11 @@
       bindHeritageEvents();
 
       var allCards = (window.Store && window.Store.getHeritageCards) ? window.Store.getHeritageCards(CARDS) : CARDS;
-      var customCount = allCards.filter(isCustomCard).length;
+      var loadedCustomCount = allCards.filter(isCustomCard).length;
+      var customCount = window.Store.getCatalog().model ? window.Store.getContentCount('kepuCustom') : loadedCustomCount;
 
       var pillAll = document.getElementById('hPillAll');
-      if (pillAll) pillAll.textContent = allCards.length;
+      if (pillAll) pillAll.textContent = allCards.length - loadedCustomCount + customCount;
       var pillCustom = document.getElementById('hPillCustom');
       if (pillCustom) pillCustom.textContent = customCount;
 
@@ -733,7 +775,13 @@
       if (emptyEl) emptyEl.hidden = filtered.length > 0;
 
       grid.innerHTML = '';
-      filtered.forEach(function (card) {
+      var paged = !!window.Store.getCatalog().model;
+      var view = paged ? galleryView(allCards) : null;
+      if (view && !view.pages.length && !view.busy && !view.failed && !searchTimer) fetchCatalogPage(view, 0);
+      var lookup = new Map(allCards.map(function (card) { return [card.id, card]; }));
+      var displayed = view ? (view.pages[view.index] || []).map(function (id) { return lookup.get(id); }).filter(Boolean) : filtered;
+      if (emptyEl && view) emptyEl.hidden = view.busy || displayed.length > 0;
+      displayed.forEach(function (card) {
         var isCust = isCustomCard(card);
         var btn = document.createElement('button');
         btn.type = 'button';
@@ -750,6 +798,22 @@
         });
         grid.appendChild(btn);
       });
+      var nav = document.getElementById('heritagePages');
+      if (nav) nav.remove();
+      if (paged) {
+        nav = document.createElement('div'); nav.id = 'heritagePages'; nav.className = 'admin-toolbar-row';
+        var info = document.createElement('span'); info.textContent = view.failed ? '读取失败，请点下一页重试' : '馆藏新增 ' + customCount + ' 条 · 每页最多50条'; nav.appendChild(info);
+        ['上一页', '下一页'].forEach(function (label, index) {
+          var button = document.createElement('button'); button.className = 'admin-btn-sm'; button.textContent = label;
+          button.disabled = view.busy || (index ? !view.pages[view.index + 1] && !view.buffer.length && !view.more : view.index <= 0);
+          button.addEventListener('click', function () {
+            if (!index) { view.index--; render(); }
+            else if (view.pages[view.index + 1]) { view.index++; render(); }
+            else fetchCatalogPage(view, view.pages.length ? view.index + 1 : 0);
+          }); nav.appendChild(button);
+        });
+        grid.insertAdjacentElement('afterend', nav);
+      }
     }
 
     function init(onOpen) {
@@ -970,7 +1034,15 @@
       }
     }
 
-    function open(card) {
+    var detailRequest = 0;
+    async function open(card) {
+      var request = ++detailRequest;
+      var catalog = window.Store.getCatalog();
+      if (catalog.model && catalog.summaries.some(function (key) { return key === 'kepuCustom/' + card.id || key === 'kepuEdited/' + card.id; })) {
+        try { card = await window.Store.loadRecord('kepu', card.id) || card; }
+        catch (error) { alert(error.message); return; }
+      }
+      if (request !== detailRequest) return;
       titleEl.textContent = card.name;
       renderMedia(card);
       bodyEl.innerHTML = formatHeritageDetail(card.detail);
@@ -981,6 +1053,7 @@
     }
 
     function close() {
+      detailRequest++;
       modal.hidden = true;
       if (mediaEl) {
         var v = mediaEl.querySelector('video');
@@ -998,6 +1071,7 @@
      ================================================================ */
   var ChatSearch = (function () {
     var wrapEl, inputEl, clearBtn, resultsEl;
+    var searchRequest = 0, searchTimer;
 
     function highlight(text, q) {
       var s = String(text || '');
@@ -1058,7 +1132,7 @@
             type: 'card',
             badge: '科普卡片',
             title: c.name,
-            snippet: highlight(c.detail.replace(/<[^>]+>/g, ''), q),
+            snippet: highlight(String(c.detail || '').replace(/<[^>]+>/g, ''), q),
             card: c,
             askText: c.ask || ('介绍一下' + c.name),
             score: score
@@ -1144,6 +1218,7 @@
     }
 
     function hide() {
+      searchRequest++; clearTimeout(searchTimer);
       if (resultsEl) resultsEl.hidden = true;
     }
 
@@ -1163,6 +1238,20 @@
         }
         var hits = search(q);
         renderResults(hits, q);
+        if (window.Store && window.Store.getCatalog().model) {
+          clearTimeout(searchTimer); var request = ++searchRequest;
+          searchTimer = setTimeout(async function () {
+            try {
+              await window.Store.searchKnowledge(q);
+              for (var field of ['kepuCustom', 'kepuEdited']) await window.Store.loadContentPage(field, { query: q, full: true });
+              if (request === searchRequest && inputEl.value.trim() === q) renderResults(search(q), q);
+            } catch (error) {
+              if (request === searchRequest && inputEl.value.trim() === q) {
+                var status = document.createElement('div'); status.className = 'chat-search-empty'; status.textContent = '云端检索未完成：' + error.message; resultsEl.appendChild(status);
+              }
+            }
+          }, 300);
+        }
       });
 
       inputEl.addEventListener('keydown', function (e) {

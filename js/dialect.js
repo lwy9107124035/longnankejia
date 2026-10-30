@@ -23,17 +23,24 @@
   var curFilter = 'all';
   var curSearch = '';
   var dialectEventsBound = false;
+  var customTrackIds = new Set(), listPage = 1, searchTimer, pageBusy = false, pageCursor = null, pageFailed = false;
 
-  function isAudioTrack(t) {
-    if (!t) return false;
-    if (t.mediaType === 'audio' || (t.item && t.item.mediaType === 'audio') || (t.item && t.item.audioUrl)) return true;
-    var url = (t.item && (t.item.videoUrl || t.item.audioUrl)) || '';
-    return /\.(mp3|wav|ogg|aac|m4a)(\?.*)?$/i.test(url);
-  }
+  var isAudioTrack = globalThis.HeritageContent.isAudioTrack;
 
   function isCustomTrack(t) {
     if (!t) return false;
-    return !!(t.isCustom || t.creatorTokenId || (t.id && String(t.id).indexOf('dl-') === 0));
+    return !!(customTrackIds.has(t.id) || t.isCustom || t.creatorTokenId || (t.id && String(t.id).indexOf('dl-') === 0));
+  }
+  async function readMore(first) {
+    if (pageBusy || !window.Store.getCatalog().model) return;
+    pageBusy = true; pageFailed = false;
+    var query = curSearch, filter = curFilter;
+    try {
+      var result = await window.Store.loadContentPage('dialectCustom', { query: query, media: ['audio', 'video'].indexOf(filter) >= 0 ? filter : '',
+        cursor: first ? '' : pageCursor === null ? window.Store.getCatalog().pages.dialectCustom || '' : pageCursor });
+      if (query === curSearch && filter === curFilter) pageCursor = result.cursor;
+    } catch (error) { pageFailed = true; }
+    finally { pageBusy = false; render(); if (query !== curSearch || filter !== curFilter) readMore(true); }
   }
 
   function bindDialectEvents() {
@@ -52,6 +59,8 @@
     if (sInput) {
       sInput.addEventListener('input', function () {
         curSearch = sInput.value.trim().toLowerCase();
+        listPage = 1; pageCursor = null; clearTimeout(searchTimer);
+        if (window.Store.getCatalog().model) searchTimer = setTimeout(function () { readMore(true); }, 350);
         if (sClear) sClear.hidden = !curSearch;
         render();
       });
@@ -61,6 +70,7 @@
         if (sInput) {
           sInput.value = '';
           curSearch = '';
+          listPage = 1; pageCursor = null; clearTimeout(searchTimer);
           sClear.hidden = true;
           render();
           sInput.focus();
@@ -73,6 +83,8 @@
           pills.querySelectorAll('.dl-pill').forEach(function (b) { b.classList.remove('active'); });
           btn.classList.add('active');
           curFilter = btn.getAttribute('data-filter') || 'all';
+          listPage = 1; pageCursor = null;
+          if (window.Store.getCatalog().model && ['audio', 'video'].indexOf(curFilter) >= 0) readMore(true);
           render();
         });
       });
@@ -138,9 +150,16 @@
       if (isAudioTrack(t)) audioCount++; else videoCount++;
       if (isCustomTrack(t)) customCount++; else classicCount++;
     });
+    var catalog = window.Store.getCatalog();
+    if (catalog.model) {
+      var loadedCustom = tracks.filter(isCustomTrack), actualCustom = window.Store.getContentCount('dialectCustom');
+      audioCount += (catalog.counts['dialectCustom/media/audio'] || 0) - loadedCustom.filter(isAudioTrack).length;
+      videoCount += (catalog.counts['dialectCustom/media/video'] || 0) - loadedCustom.filter(function (track) { return !isAudioTrack(track); }).length;
+      customCount = actualCustom; countEl.textContent = classicCount + actualCustom;
+    }
 
     var pAll = document.getElementById('dlPillAll');
-    if (pAll) pAll.textContent = tracks.length;
+    if (pAll) pAll.textContent = classicCount + customCount;
     var pAudio = document.getElementById('dlPillAudio');
     if (pAudio) pAudio.textContent = audioCount;
     var pVideo = document.getElementById('dlPillVideo');
@@ -171,10 +190,13 @@
 
     if (!filteredWithIndices.length) {
       listEl.innerHTML = '<li class="dl-empty">未找到符合条件的方言语料</li>';
-      return;
+      if (!catalog.model) return;
     }
 
-    listEl.innerHTML = filteredWithIndices.map(function (pair) {
+    var paged = !!catalog.model;
+    listPage = Math.min(Math.max(1, listPage), Math.ceil(filteredWithIndices.length / 50) || 1);
+    var displayed = paged ? filteredWithIndices.slice((listPage - 1) * 50, listPage * 50) : filteredWithIndices;
+    listEl.innerHTML = displayed.length ? displayed.map(function (pair) {
       var t = pair.track;
       var i = pair.originalIndex;
       var isAud = isAudioTrack(t);
@@ -203,13 +225,24 @@
         '  </span>' +
         '  <span class="dl-track-play">' + (isAud ? '▶' : '🎬') + '</span>' +
         '</button></li>';
-    }).join('');
+    }).join('') : '<li class="dl-empty">未找到符合条件的方言语料</li>';
 
     listEl.querySelectorAll('.dl-track').forEach(function (btn) {
       btn.addEventListener('click', function () {
         select(parseInt(btn.getAttribute('data-i'), 10));
       });
     });
+    var nav = document.getElementById('dialectPages'); if (nav) nav.remove();
+    if (paged) {
+      nav = document.createElement('div'); nav.id = 'dialectPages'; nav.className = 'admin-toolbar-row';
+      var info = document.createElement('span'); info.textContent = pageFailed ? '读取失败，可继续加载重试' : '自定义语料共 ' + customCount + ' 条'; nav.appendChild(info);
+      ['上一页', '下一页', '继续加载'].forEach(function (label, index) {
+        var button = document.createElement('button'); button.className = 'admin-btn-sm'; button.textContent = label;
+        button.disabled = pageBusy || (index === 0 ? listPage <= 1 : index === 1 ? listPage * 50 >= filteredWithIndices.length : !(pageCursor === null ? catalog.pages.dialectCustom : pageCursor));
+        button.addEventListener('click', function () { if (index === 2) readMore(false); else { listPage += index ? 1 : -1; render(); } }); nav.appendChild(button);
+      });
+      listEl.insertAdjacentElement('afterend', nav);
+    }
   }
 
   function initRhyme() {
@@ -382,6 +415,7 @@
     }
     tracks = (window.Diancang.videoExhibits() || []).slice();
     var custom = (window.Store && window.Store.getCustomDialectTracks) ? window.Store.getCustomDialectTracks() : [];
+    customTrackIds = new Set(custom.map(function (track) { return track.id; }));
     if (custom.length) tracks = tracks.concat(custom);
     render();
   }
@@ -392,6 +426,7 @@
       if (!window.Diancang || !window.Diancang.videoExhibits) return;
       tracks = (window.Diancang.videoExhibits() || []).slice();
       var custom = (window.Store && window.Store.getCustomDialectTracks) ? window.Store.getCustomDialectTracks() : [];
+      customTrackIds = new Set(custom.map(function (track) { return track.id; }));
       if (custom.length) tracks = tracks.concat(custom);
       render();
     },

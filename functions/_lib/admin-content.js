@@ -148,9 +148,10 @@ export function contributions(content, tokens) {
 export async function rollback(content, token, user, tokens, item, reason, media = {}) {
   const next = { ...safeContent(content, tokens), auditLogs: (content.auditLogs || []).slice(),
     _history: (content._history || []).map(op => ({ ...op })), _notifications: (content._notifications || []).map(n => ({ ...n })) };
-  const selected = op => op.tokenId === token.id && (!item || (op.key === item.type + 'Custom/' + item.id || op.key === item.type + 'Edited/' + item.id || op.key === item.type + 'Deleted/' + item.id));
+  const selected = op => op.tokenId === token.id && (!media.cutoff || op.time <= media.cutoff) && (!item || (op.key === item.type + 'Custom/' + item.id || op.key === item.type + 'Edited/' + item.id || op.key === item.type + 'Deleted/' + item.id));
   const restored = new Set(), skipped = new Set();
   const history = next._history;
+  let processed = 0, limited = false;
   for (let i = history.length - 1; i >= 0; i--) {
     const op = history[i];
     if (op.undone || !selected(op)) continue;
@@ -158,11 +159,13 @@ export async function rollback(content, token, user, tokens, item, reason, media
     const current = cells(next).get(op.key) ?? null;
     const matches = await fingerprint(current) === op.afterHash || media.legacyCurrent && await fingerprint(await media.legacyCurrent(current)) === op.afterHash;
     if (laterOther || !matches) { skipped.add(op.key); continue; }
+    if (media.maxOperations && processed >= media.maxOperations) { limited = true; break; }
+    if (media.prepareOperation) await media.prepareOperation(op);
     const before = media.expand ? await media.expand(op.before) : op.before;
     const previous = op.undoPatch ? { ...current, ...before } : before;
     if (op.undoPatch) for (const key of op.remove) delete previous[key];
     setCell(next, op.key, media.normalize ? await media.normalize(previous) : previous);
-    op.undone = Date.now(); restored.add(op.key);
+    op.undone = Date.now(); restored.add(op.key); processed++;
   }
   // Old custom records can be withdrawn; pre-upgrade edits have no trustworthy before-version.
   for (const [key, entry] of cells(next)) {
@@ -173,7 +176,7 @@ export async function rollback(content, token, user, tokens, item, reason, media
   if (restored.size) next._notifications.unshift({ id: crypto.randomUUID(), tokenId: token.id, time: Date.now(), read: false,
     targetType: item?.type || 'all', targetTypeName: item ? '内容审核' : '修改回滚', targetTitle: redact(item?.title || '已撤回 ' + restored.size + ' 项修改', tokens), reason: redact(reason, tokens) });
   audit(next, user, item ? '剔除修改' : '撤销修改', '受邀人员「' + token.name + '」（ID ' + token.id + '）：撤回 ' + restored.size + ' 项，保留后续修改 ' + skipped.size + ' 项；原因：' + reason, tokens);
-  return { next, totalRemoved: restored.size, skipped: skipped.size };
+  return { next, totalRemoved: restored.size, skipped: skipped.size, limited, removedKeys: [...restored], skippedKeys: [...skipped] };
 }
 
 export async function restoreOperation(content, id, user, tokens, expand, normalize, legacyCurrent) {

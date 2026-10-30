@@ -1,7 +1,9 @@
 // Credentials and shared state belong in D1, never in a Worker isolate.
 import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
-import { storeMedia, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
+import { storeMedia, migrateD1Media, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
+import { recordsManifest, readRecordState, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
+import { archiveHistoryBefore, expandArchivedHistory } from '../../_lib/admin-history-archive.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
 const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
@@ -39,6 +41,8 @@ async function passwordHash(password, salt) {
 }
 async function state(db, key, fallback) {
   if (key === 'content') {
+    const manifest = await recordsManifest(db);
+    if (manifest) return readRecordState(db, manifest);
     // Read the manifest and all parts in one SQL snapshot during concurrent writes.
     const { results } = await db.prepare("SELECT key, value, revision, length(CAST(value AS BLOB)) AS bytes FROM admin_state WHERE key = 'content' OR key GLOB 'content:chunk:*'").all();
     const row = results.find(item => item.key === 'content');
@@ -63,6 +67,12 @@ async function state(db, key, fallback) {
 }
 async function saveState(db, key, value, revision) {
   if (key === 'content') {
+    const manifest = await recordsManifest(db);
+    if (manifest) {
+      if (manifest.revision !== revision) throw new ApiError(409, 'SYNC_CONFLICT', '云端已有新内容，请重新同步。本机草稿已保留。');
+      const previous = await readRecordState(db, manifest);
+      return writeRecordState(db, manifest, previous.value, value);
+    }
     const text = JSON.stringify(value);
     if (encoder.encode(text).length > MAX_CONTENT_BYTES) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', '本站内容已达到当前容量上限，请联系维护人员扩容；本机草稿已保留，请导出备份。');
     const chunks = [];
@@ -111,8 +121,15 @@ async function session(db, request, required = true) {
   if (!found) throw new ApiError(401, 'SESSION_EXPIRED', '登录已失效，请重新登录。');
   return { role: found.role, name: found.name, tokenId: found.token_id, sessionId: found.id, expiresAt: found.expires_at };
 }
+export async function authorizeAdmin(request, env) {
+  const origin = request.headers.get('Origin');
+  if (origin && !allowedOrigin(request, origin)) throw new ApiError(403, 'ORIGIN_DENIED', '此网址不允许访问管理接口。');
+  if (!env.ADMIN_DB) throw new ApiError(503, 'STORAGE_NOT_CONFIGURED', '云端数据库尚未配置');
+  return session(env.ADMIN_DB, request);
+}
+export async function loadContentState(db) { return state(db, 'content', DEFAULTS); }
 function requireSuper(user) {
-  if (user.role !== 'super_admin') throw new ApiError(403, 'FORBIDDEN', '此操作需要超级管理员权限。');
+  if (!user || user.role !== 'super_admin') throw new ApiError(403, 'FORBIDDEN', '此操作需要超级管理员权限。');
 }
 async function clientKeys(request, body) {
   const ip = request.headers.get('CF-Connecting-IP') || 'local';
@@ -162,18 +179,56 @@ async function login(db, env, request, body) {
   return { ok: true, ...user, title: user.role === 'super_admin' ? user.name : '受邀管理员 · ' + user.name, bearer, expiresAt };
 }
 function contentPayload(body) {
+  if (['kbCustom', 'kepuCustom', 'dialectCustom'].some(key => Array.isArray(body[key]) && body[key].length > 10000)) throw new ApiError(400, 'BATCH_REQUIRED', '请刷新页面后分批导入内容');
   try { return validateContent(body); }
   catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
 }
-async function getData(db, request) {
+async function getData(db, request, env) {
   const user = await session(db, request, false);
-  const since = new URL(request.url).searchParams.get('revision');
+  const params = new URL(request.url).searchParams;
+  const since = params.get('revision');
+  const manifest = await recordsManifest(db);
+  if (manifest && params.get('format') === 'contributions') {
+    requireSuper(user);
+    return pageContributions(db, manifest, { tokenId: (params.get('tokenId') || '').slice(0, 200), cursor: params.get('cursor') || '' });
+  }
+  if (manifest && manifest.bytes > MAX_CONTENT_BYTES && !params.has('format')) throw new ApiError(409, 'CLIENT_UPGRADE_REQUIRED', '内容存储已升级，请刷新页面后继续使用；本机草稿已保留');
+  if (manifest && ['records', 'record', 'search'].includes(params.get('format'))) {
+    const tokens = await state(db, 'tokens', []);
+    let result;
+    if (params.get('format') === 'search') result = await searchKnowledgeRecords(db, manifest, params.get('q') || '');
+    else if (params.get('format') === 'record') {
+      const key = params.get('key') || '';
+      if (!Object.keys(DEFAULTS).some(field => key === field || key.startsWith(field + '/')) || key.startsWith('auditLogs')) throw new ApiError(400, 'INVALID_RECORD', '内容编号不正确');
+      const current = await readRecordState(db, manifest, [key]);
+      result = { ok: true, model: 'records-v1', revision: manifest.revision, rows: [{ key, value: globalThis.HeritageContent.contentCells(safeContent(current.value, tokens.value)).get(key) ?? null, summary: false }] };
+    } else result = await pageRecords(db, manifest, { field: params.get('field') || undefined, cursor: params.get('cursor') || '', query: (params.get('q') || '').slice(0, 500), category: params.get('category') || '', media: params.get('media') || '', summary: params.get('summary') === '1', since: params.has('since') ? Number(params.get('since')) : undefined });
+    const pageContent = structuredClone(DEFAULTS);
+    for (const row of result.rows) globalThis.HeritageContent.setContentCell(pageContent, row.key, row.value);
+    const redacted = globalThis.HeritageContent.contentCells(safeContent(pageContent, tokens.value));
+    result.rows = await Promise.all(result.rows.map(async row => ({ ...row, value: redacted.get(row.key) ?? null, hash: row.hash || await globalThis.HeritageContent.cellHash(row.value, true) })));
+    const latest = await recordsManifest(db);
+    if (latest.revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
+    return result;
+  }
   const known = since !== null && await db.prepare("SELECT revision FROM admin_state WHERE key = 'content'").first();
   const unchanged = known && String(known.revision) === since;
-  const content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
+  let content, paging;
+  if (!unchanged && manifest && params.get('format') === 'pages') {
+    const value = structuredClone(DEFAULTS), pages = {}, summaryKeys = [], hashes = {};
+    for (const field of Object.keys(globalThis.HeritageContent.defaults)) {
+      const page = await pageRecords(db, manifest, { field, summary: true });
+      pages[field] = page.cursor;
+      for (const row of page.rows) { globalThis.HeritageContent.setContentCell(value, row.key, row.value); hashes[row.key] = row.hash; if (row.summary) summaryKeys.push(row.key); }
+    }
+    content = { value, revision: manifest.revision, bytes: manifest.bytes };
+    paging = { model: 'records-v1', pages, summaryKeys, hashes, counts: await recordCounts(db, manifest) };
+    const latest = await recordsManifest(db);
+    if (latest.revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
+  } else content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
   const tokens = await state(db, 'tokens', []);
-  const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), revision: content.revision, ...(unchanged && { unchanged: true }) };
-  if (!unchanged) result.storage = { metadataBytes: content.bytes, metadataLimit: MAX_CONTENT_BYTES };
+  const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), ...paging, capabilities: { mediaUploads: !!env.ADMIN_MEDIA }, revision: content.revision, ...(unchanged && { unchanged: true }) };
+  if (!unchanged) result.storage = { metadataBytes: content.bytes, metadataLimit: manifest ? null : MAX_CONTENT_BYTES, ...(manifest && { model: 'records-v1', maxRecordBytes: MAX_RECORD_BYTES }) };
   if (user) {
     result.session = { role: user.role, name: user.name, tokenId: user.tokenId, expiresAt: user.expiresAt };
     if (!unchanged) {
@@ -181,6 +236,7 @@ async function getData(db, request) {
       result.notifications = (content.value._notifications || []).filter(n => user.role === 'super_admin' || n.tokenId === user.tokenId);
       if (user.role === 'super_admin') result.contributions = contributions(content.value, tokens.value);
       if (user.role === 'super_admin') result.recovery = recoveryHistory(content.value);
+      if (manifest && paging) Object.assign(result, await recordMetadata(db, manifest, user, tokens.value));
     }
     if (user.role === 'super_admin') {
       result.tokens = tokens.value;
@@ -197,20 +253,39 @@ async function postData(db, env, request, body) {
   switch (body.action) {
     case 'storage_info': {
       requireSuper(user);
+      const manifest = await recordsManifest(db);
       const row = await db.prepare("SELECT SUM(CASE WHEN key LIKE 'media:%' THEN length(CAST(value AS BLOB)) ELSE 0 END) AS mediaBytes, SUM(CASE WHEN key='content' OR key GLOB 'content:chunk:*' THEN length(CAST(value AS BLOB)) ELSE 0 END) AS metadataBytes FROM admin_state").first();
-      return { ok: true, mediaBytes: row.mediaBytes || 0, metadataBytes: row.metadataBytes || 0, metadataLimit: MAX_CONTENT_BYTES, imageLimit: 5000000 };
+      return { ok: true, model: manifest ? 'records-v1' : 'snapshot', r2Enabled: !!env.ADMIN_MEDIA, mediaBytes: row.mediaBytes || 0, metadataBytes: manifest ? manifest.bytes : row.metadataBytes || 0, metadataLimit: manifest ? null : MAX_CONTENT_BYTES, maxRecordBytes: MAX_RECORD_BYTES, imageLimit: 5000000 };
+    }
+    case 'archive_history': {
+      requireSuper(user);
+      const manifest = await recordsManifest(db);
+      if (!manifest) throw new ApiError(409, 'MIGRATION_REQUIRED', '请先完成逐条存储迁移');
+      return archiveHistoryBefore(db, manifest, env.ADMIN_MEDIA, user);
     }
     case 'store_media': {
-      try { return { ok: true, ...await storeMedia(db, body.dataUrl) }; }
+      try { return { ok: true, ...await storeMedia(db, body.dataUrl, env.ADMIN_MEDIA) }; }
       catch (error) { if (error instanceof TypeError) throw new ApiError(400, 'INVALID_IMAGE', error.message); throw error; }
+    }
+    case 'migrate_media': {
+      requireSuper(user);
+      try { return await migrateD1Media(db, env.ADMIN_MEDIA, body.cursor || ''); }
+      catch (error) { if (error.code && [400, 503].includes(error.status)) throw new ApiError(error.status, error.code, error.message); throw error; }
     }
     case 'restore_operation': {
       requireSuper(user);
-      const current = await state(db, 'content', DEFAULTS), tokens = await state(db, 'tokens', []);
+      const manifest = await recordsManifest(db), tokens = await state(db, 'tokens', []);
+      let current;
+      if (manifest) {
+        if (typeof body.operationId !== 'string' || body.operationId.length > 200) throw new ApiError(400, 'INVALID_OPERATION', '请选择要恢复的记录');
+        const row = await db.prepare("SELECT value FROM admin_content_items WHERE generation=? AND key=? AND kind='_history'").bind(manifest.generation, '_history/' + body.operationId).first();
+        if (!row) throw new ApiError(404, 'HISTORY_NOT_FOUND', '未找到该历史记录');
+        current = await readRecordState(db, manifest, ['_history/' + body.operationId, JSON.parse(row.value).key]);
+      } else current = await state(db, 'content', DEFAULTS);
       let restored;
-      try { restored = await restoreOperation(current.value, body.operationId, user, tokens.value, value => expandHistoryMedia(db, value), value => storeRecordMedia(db, value), value => expandRecordMedia(db, value)); }
-      catch (error) { throw new ApiError(409, 'RESTORE_CONFLICT', error.message); }
-      const revision = await saveState(db, 'content', restored.next, current.revision);
+      try { restored = await restoreOperation(current.value, body.operationId, user, tokens.value, async value => expandHistoryMedia(db, await expandArchivedHistory(value, env.ADMIN_MEDIA), env.ADMIN_MEDIA), value => storeRecordMedia(db, value, new Map(), env.ADMIN_MEDIA), value => expandRecordMedia(db, value, env.ADMIN_MEDIA)); }
+      catch (error) { if (error.status >= 500) throw error; throw new ApiError(409, 'RESTORE_CONFLICT', error.message); }
+      const revision = manifest ? await writeRecordState(db, manifest, current.value, restored.next) : await saveState(db, 'content', restored.next, current.revision);
       return { ok: true, revision, title: restored.title };
     }
     case 'logout':
@@ -221,41 +296,63 @@ async function postData(db, env, request, body) {
       const tokens = await state(db, 'tokens', []);
       const mediaCache = new Map();
       for (let attempt = 0; attempt < 5; attempt++) {
-        const current = await state(db, 'content', DEFAULTS);
+        const manifest = await recordsManifest(db);
+        if (manifest && (!Array.isArray(body.changes) || body.changes.length > 16)) throw new ApiError(400, 'TOO_MANY_CHANGES', '每批最多保存16条，请分批提交');
+        const current = manifest ? await readRecordState(db, manifest, body.changes.map(change => change.key)) : await state(db, 'content', DEFAULTS);
+        let operation;
+        if (manifest && body.operationId) {
+          if (!/^[a-zA-Z0-9-]{16,100}$/.test(body.operationId)) throw new ApiError(400, 'INVALID_OPERATION_ID', '保存编号不正确');
+          operation = { id: body.operationId, owner: user.tokenId || 'super_admin', hash: await digest(JSON.stringify(body.changes)) };
+          const found = await db.prepare('SELECT owner,request_hash,value FROM admin_content_receipts WHERE generation=? AND id=?').bind(manifest.generation, operation.id).first();
+          if (found) {
+            if (found.owner !== operation.owner || found.request_hash !== operation.hash) throw new ApiError(409, 'OPERATION_MISMATCH', '保存编号已用于其他内容，请刷新后重试');
+            const receipt = JSON.parse(found.value), values = globalThis.HeritageContent.contentCells(safeContent(current.value, tokens.value));
+            return { ...receipt, revision: manifest.revision, counts: publicRecordCounts(manifest.counts), baseRevision: -1, replayed: true, updates: receipt.conflicts.map(key => ({ key, value: values.get(key) ?? null })) };
+          }
+        }
         let result;
-        try { result = await applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(db, value), value => storeRecordMedia(db, value, mediaCache)); }
-        catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
-        if (result.changed) result.next = await archiveHistoryMedia(db, result.next, (current.value._history || []).length);
+        try { result = await applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(db, value, env.ADMIN_MEDIA), async value => {
+          try { return await storeRecordMedia(db, value, mediaCache, env.ADMIN_MEDIA); }
+          catch (error) { if (error instanceof TypeError) throw error; throw new ApiError(503, 'MEDIA_UNAVAILABLE', '图片存储暂不可用，草稿已保留'); }
+        }); }
+        catch (error) { if (error.status) throw error; throw new ApiError(400, 'INVALID_CONTENT', error.message); }
+        if (result.changed) result.next = await archiveHistoryMedia(db, result.next, (current.value._history || []).length, env.ADMIN_MEDIA);
+        const values = globalThis.HeritageContent.contentCells(safeContent(result.next, tokens.value));
+        const reply = { ok: true, baseRevision: current.revision, accepted: result.accepted, conflicts: result.conflicts,
+          receipts: result.accepted.map(key => {
+            const value = values.get(key);
+            const provenance = value && typeof value === 'object' ? Object.fromEntries(['creatorName', 'creatorTokenId', 'createdAt'].filter(prop => Object.hasOwn(value, prop)).map(prop => [prop, value[prop]])) : {};
+            return { key, provenance };
+          }) };
         let revision = current.revision;
         try {
-          if (result.changed) revision = await saveState(db, 'content', result.next, current.revision);
+          if (manifest) {
+            if (operation) operation.value = reply;
+            if (result.changed || operation) revision = await writeRecordState(db, manifest, current.value, result.next, { receipt: operation });
+          } else if (result.changed) revision = await saveState(db, 'content', result.next, current.revision);
         } catch (error) {
           if (error.code === 'SYNC_CONFLICT' && attempt < 4) continue;
           throw error;
         }
-        const published = safeContent(result.next, tokens.value);
         const logs = user.role === 'super_admin' ? safeAudit(result.next, tokens.value) : [];
-        const values = globalThis.HeritageContent.contentCells(published);
-        return { ok: true, revision, baseRevision: current.revision, accepted: result.accepted, conflicts: result.conflicts, auditLogs: logs,
+        const savedManifest = manifest && await recordsManifest(db);
+        const summaries = savedManifest && user.role === 'super_admin' ? await recordSummaries(db, savedManifest, tokens.value) : null;
+        return { ...reply, revision, ...(savedManifest && savedManifest.revision === revision && { counts: publicRecordCounts(savedManifest.counts) }), auditLogs: logs,
           recovery: user.role === 'super_admin' ? recoveryHistory(result.next) : undefined,
-          receipts: result.accepted.map(key => {
-            const value = values.get(key);
-            const provenance = value && typeof value === 'object' ? Object.fromEntries(['creatorName', 'creatorTokenId', 'createdAt']
-              .filter(prop => Object.hasOwn(value, prop)).map(prop => [prop, value[prop]])) : {};
-            return { key, provenance };
-          }),
+          ...summaries,
           updates: result.conflicts.map(key => ({ key, value: values.get(key) ?? null })) };
       }
       break;
     }
     case 'update_custom_bundle': {
+      if (await recordsManifest(db)) throw new ApiError(409, 'CLIENT_UPGRADE_REQUIRED', '存储已升级，请刷新页面后继续录入；本机草稿已保留');
       const current = await state(db, 'content', DEFAULTS);
       const submitted = contentPayload(body);
       if (user.role !== 'super_admin') for (const key of ['apiConfig', 'workflowConfig']) {
         if (JSON.stringify(submitted[key]) !== JSON.stringify(current.value[key])) requireSuper(user);
       }
       const tokens = await state(db, 'tokens', []);
-      const next = await archiveHistoryMedia(db, await updatedContent(current.value, submitted, user, tokens.value), (current.value._history || []).length);
+      const next = await archiveHistoryMedia(db, await updatedContent(current.value, submitted, user, tokens.value), (current.value._history || []).length, env.ADMIN_MEDIA);
       const revision = await saveState(db, 'content', next, body.revision);
       return { ok: true, revision, content: { ...safeContent(next, tokens.value), auditLogs: user.role === 'super_admin' ? safeAudit(next, tokens.value) : [] } };
     }
@@ -266,29 +363,56 @@ async function postData(db, env, request, body) {
       const token = tokens.value.find(t => t.id === body.tokenId);
       if (!token) throw new ApiError(404, 'INVITE_NOT_FOUND', '邀请记录不存在。');
       if (body.action === 'reject_item' && (!['kb', 'kepu', 'dialect'].includes(body.itemType) || typeof body.itemId !== 'string')) throw new ApiError(400, 'INVALID_INPUT', '请选择需要审核的条目。');
-      const current = await state(db, 'content', DEFAULTS);
+      const manifest = await recordsManifest(db);
+      let batch, receipt;
+      if (manifest) {
+        if (body.chunked !== true) throw new ApiError(409, 'CLIENT_UPGRADE_REQUIRED', '请刷新页面后分批撤回修改');
+        if (!Number.isSafeInteger(body.cutoff) || body.cutoff < 0 || body.cutoff > Date.now() + 5000 || typeof body.cursor !== 'string' || body.cursor.length > 300 || !/^[a-f0-9]{64}$/.test(body.requestId || '')) throw new ApiError(400, 'INVALID_ROLLBACK_BATCH', '撤回批次不正确，请刷新后重试');
+        receipt = { id: body.requestId, owner: 'super_admin', hash: await digest(JSON.stringify(body)) };
+        const found = await db.prepare('SELECT owner,request_hash,value FROM admin_content_receipts WHERE generation=? AND id=?').bind(manifest.generation, receipt.id).first();
+        if (found) {
+          if (found.owner !== receipt.owner || found.request_hash !== receipt.hash) throw new ApiError(409, 'OPERATION_MISMATCH', '操作编号已使用，请重试');
+          return { ...JSON.parse(found.value), replayed: true };
+        }
+        batch = body.action === 'reject_item' ? { keys: ['Custom', 'Edited', 'Deleted'].map(kind => body.itemType + kind + '/' + body.itemId), more: false }
+          : await rollbackRecordKeys(db, manifest, token.id, { cursor: body.cursor, cutoff: body.cutoff });
+        if (!batch.keys.length) return { ok: true, revision: manifest.revision, totalRemoved: 0, skipped: 0, removedKeys: [], skippedKeys: [], more: false, tokenName: token.name };
+      }
+      const current = manifest ? await readRollbackState(db, manifest, batch.keys) : await state(db, 'content', DEFAULTS);
       const item = body.action === 'reject_item' ? contributions(current.value, tokens.value).find(c => c.tokenId === token.id && c.id === body.itemId && c.type === body.itemType) : null;
       if (body.action === 'reject_item' && !item) throw new ApiError(404, 'ITEM_NOT_FOUND', '未找到该人员可撤回的修改。');
       const reason = String(body.reason || '超级管理员已撤回相关修改').trim().slice(0, 2000);
       const result = await rollback(current.value, token, user, tokens.value, item, reason, {
-        expand: value => expandHistoryMedia(db, value), normalize: value => storeRecordMedia(db, value), legacyCurrent: value => expandRecordMedia(db, value)
+        cutoff: manifest ? body.cutoff : undefined, maxOperations: manifest ? 4 : undefined,
+        prepareOperation: manifest ? async op => {
+          const row = await db.prepare("SELECT value FROM admin_content_items WHERE generation=? AND key=? AND kind='_history'").bind(manifest.generation, '_history/' + op.id).first();
+          if (!row) throw new ApiError(409, 'SYNC_CONFLICT', '历史已更新，请重试');
+          Object.assign(op, JSON.parse(row.value));
+        } : undefined,
+        expand: async value => expandHistoryMedia(db, await expandArchivedHistory(value, env.ADMIN_MEDIA), env.ADMIN_MEDIA), normalize: value => storeRecordMedia(db, value, new Map(), env.ADMIN_MEDIA), legacyCurrent: value => expandRecordMedia(db, value, env.ADMIN_MEDIA)
       });
       validateContent(result.next);
-      const revision = await saveState(db, 'content', result.next, current.revision);
-      return { ok: true, revision, totalRemoved: result.totalRemoved, skipped: result.skipped, tokenName: token.name, itemTitle: item?.title };
+      const reply = { ok: true, revision: current.revision + 1, totalRemoved: result.totalRemoved, skipped: result.skipped, removedKeys: result.removedKeys, skippedKeys: result.skippedKeys, tokenName: token.name, itemTitle: item?.title,
+        ...(manifest ? { more: result.limited || batch.more, cursor: result.limited ? body.cursor : batch.keys.at(-1), cutoff: body.cutoff } : {}) };
+      if (receipt) receipt.value = reply;
+      reply.revision = manifest ? await writeRecordState(db, manifest, current.value, result.next, { receipt }) : await saveState(db, 'content', result.next, current.revision);
+      return reply;
     }
     case 'read_notifications': {
-      const current = await state(db, 'content', DEFAULTS);
-      for (const n of current.value._notifications || []) if ((user.role === 'super_admin' || n.tokenId === user.tokenId) && (!body.id || n.id === body.id)) n.read = true;
-      const revision = await saveState(db, 'content', current.value, current.revision);
+      const manifest = await recordsManifest(db);
+      const current = manifest ? await readRecordKinds(db, manifest, ['_notifications'], user.role === 'super_admin' ? undefined : user.tokenId) : await state(db, 'content', DEFAULTS);
+      const next = structuredClone(current.value);
+      for (const n of next._notifications || []) if ((user.role === 'super_admin' || n.tokenId === user.tokenId) && (!body.id || n.id === body.id)) n.read = true;
+      const revision = manifest ? await writeRecordState(db, manifest, current.value, next) : await saveState(db, 'content', next, current.revision);
       return { ok: true, revision };
     }
     case 'clear_audit_logs': {
       requireSuper(user);
-      const current = await state(db, 'content', DEFAULTS);
-      current.value.auditLogs = [];
-      audit(current.value, user, '归档日志', '已清空显示日志，版本回滚历史仍保留', []);
-      const revision = await saveState(db, 'content', current.value, current.revision);
+      const manifest = await recordsManifest(db);
+      const current = manifest ? await readRecordKinds(db, manifest, ['auditLogs']) : await state(db, 'content', DEFAULTS);
+      const next = structuredClone(current.value); next.auditLogs = [];
+      audit(next, user, '归档日志', '已清空显示日志，版本回滚历史仍保留', []);
+      const revision = manifest ? await writeRecordState(db, manifest, current.value, next) : await saveState(db, 'content', next, current.revision);
       return { ok: true, revision };
     }
     case 'update_password': {
@@ -344,7 +468,7 @@ async function handle({ request, env = {} }) {
     if (request.method === 'OPTIONS') return json(204, null, request);
     if (!env.ADMIN_DB) throw new ApiError(503, 'STORAGE_NOT_CONFIGURED', '云端数据库尚未配置，管理登录和同步暂不可用。');
     let result;
-    if (request.method === 'GET') result = await getData(env.ADMIN_DB, request);
+    if (request.method === 'GET') result = await getData(env.ADMIN_DB, request, env);
     else if (request.method === 'POST') {
       if (!request.headers.get('Content-Type')?.includes('application/json')) throw new ApiError(415, 'INVALID_TYPE', '请求需要使用 JSON。');
       // Login stays available with an expired bearer; only validated sessions get the large upload budget.
@@ -364,7 +488,7 @@ async function handle({ request, env = {} }) {
     } else throw new ApiError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法。');
     return json(200, result, request);
   } catch (error) {
-    if (error instanceof ApiError) return json(error.status, { ok: false, code: error.code, error: error.message, ...error.extra }, request);
+    if (error instanceof ApiError || error instanceof RecordError) return json(error.status, { ok: false, code: error.code, error: error.message, ...error.extra }, request);
     console.error('Admin storage request failed:', error.name);
     return json(503, { ok: false, code: 'STORAGE_UNAVAILABLE', error: '云端数据库暂时不可用，请稍后重试。本机编辑不会因此删除。' }, request);
   }

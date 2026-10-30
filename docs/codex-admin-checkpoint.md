@@ -252,3 +252,39 @@
 - 已查官方D1限制及R2计费/限制/启用流程。R2只读列表探测被10042拒绝，未确认启用状态，未进入订阅流程。按250KB/图估算10GB约4万图；100GB的R2纯存储例约$1.35/月，读写/Workers/AI等另计，不是整站报价、无限免费或超额自动停费保证。当前套餐仍未知，不自行开通付费服务。
 - 完整交付 `docs/acceptance-and-storage-plan-2026-10-28.md`，含逐步迁移、数据核对、并发/断网/幂等/旧页面/真机/负载/恢复验收门槛及预算边界。现有规模的已测试功能通过，公众号正式大规模上线仍需补真实环境验收。仅文档提交skip ci同步main/codex，继续原6小时巡检。
 - 补充正式公开GET轻量并发冒烟：5并发+20并发，共25请求全部HTTP200/JSON、118唯一ID、rev245、基线缺失0，无写入/重试；`.cache/acceptance-concurrent-read-20261028.json`。不把此小规模读取测试标为真实峰值完整业务压测或最大承载验收。
+
+## 2026-10-28 按方案实施存储升级（进行中，未提交/未发布）
+
+- 用户明确授权“按照方案实施”，随后“继续”。当前codex HEAD559ed09；正式main业务仍26392db，原118条/密码/邀请码/密钥不动。先完成codex、本地真实模拟与规模验收；不自行开通R2订阅，R2可用性上轮只读探测10042尚未解决。主代理继续，独立成员media_storage因用量限制结束，不重试或再开成员。
+- 新`functions/_lib/admin-records.js`与`migrations/admin/0002_content_records.sql`：逐cell记录、独立历史/通知/审计行、原子CAS、保存回执、元数据计数、分页摘要/详情/变更feed、每页字节预算；原快照分阶段迁移、校验后按旧revision切manifest，保留legacy marker/chunks。shared schema去掉全库10000条限制，旧整库写仍限10000且records模式拒绝旧整库写。`sync.js`已初步整合并导出authorizeAdmin/loadContentState，auth没有复制。
+- `js/store.js`初步接入format=pages、懒加载/详情hash、变更feed合并、分页/全文导出预读、保存operationId、防部分列表被当删除、云端真实数量。`js/admin.js/ui.js`正在接入分页、云端总数、详情读取和媒体控件；仍需完整检查边界及新模式浏览器验收。问答引擎/全局搜索尚未接后端全文检索，方言分页、备份工具/巡检的records模式和归档按钮仍待完成。浏览器单次内嵌媒体打包有64MiB预算，超限要明确仅文字链接并给维护分文件备份，不能声称2.5GB浏览器打包通过。
+- 独立成员完成并落地：`admin-media.js`可选末尾bucket参数，R2二进制+旧D1回退，原hash/非标准base64尾部保真；`admin-uploads.js`、`api/admin/uploads.js`和0003迁移实现8MiB分片/250MiB影音/24h/会话归属/流大小/最终摘要/幂等回执；`js/media-upload.js`、本地js-sha2560.11.1 vendor+许可，控件断网/刷新重选续传、云端确认才回填URL、手改链接暂停、capability false禁用。index已加载module，Kepu/Dialect表单已bind。
+- `admin-history-archive.js`和测试：旧before批量≤16归档R2，读回摘要后才CAS替换before引用，保留可恢复历史；root restore/rollback已包装expandArchivedHistory再expandHistoryMedia，503不冒充恢复冲突；archive_history已接API，UI及归档备份仍待整合。
+- 已执行证据：根`tests/content-records.test.mjs`5项（含10000长正文超过16MiB、10001新增、分页、迁移保真/失败/并发、Store详情/回执丢失）通过；与归档6项合并11/11 `.cache/records-integrated-tests.txt`。先前旧模式相关116项通过（之后仍有前端/能力字段修改，须最终重跑）。测试夹具首次缺expiresAt已修复；没有修改真实账户。
+- 媒体实测：后端22/22；归档6/6；Chrome/WebKit控件各11项22/22；250MiB/32片实传SHA与回执通过；10000唯一250000B合成JPEG对象共2.5GB在真实本地workerd/R2逐图SHA与列举全通过，约230s。证据`.cache/media-backend-tests-20261028.txt`、`history-archive-tests-20261028.txt`、`media-upload-browser-20261028.json`、`media-250mib-check-20261028.txt`、`media-scale-10000-worker-20261028.txt`；每图清单`.cache/media-scale-10000-250k-parallel4-worker/manifest-10000.json`。这是合成同种子+合法COM段的字节规模，不是1万幅不同文化画面或云性能；与1万正文的完整UI端到端整合还未验收。
+- 成员中断前新增`scripts/migrate-content-records.mjs`与`tests/migrate-content-records.test.mjs`，尚待主代理检查完整性/本地跑；预期默认dry-run、--apply/--expect-revision、main额外确认标记、不可覆盖备份及密码tokens摘要、复用migrateRecordStorage。禁止未经验证执行远程apply。无新提交，用户其他未跟踪素材不碰。
+- 下一步：先检查新迁移工具及UI语法/Guard；完成问答检索、方言/管理员分页、导出/重置完整性、records模式巡检与归档；补真实新模式浏览器及一万正文+一万图片综合演练；全回归/构建后只提交发布codex，先备份原codex再按工具条件迁移、验证旧内容/凭据不变。R2订阅若需用户启用，在全部代码和本地验收具体完成后再给出具体步骤；不能把未接入R2说成已完成云端大容量验收，main保持原状。
+
+## 2026-10-30 例行巡检与缺条核查（生产只读，升级仍在进行）
+
+- 实际检查时间为北京时间2026-10-30晚间，触发消息中的10月28日时间不是当前检测时间。先读维护手册、上述检查点和Git状态；当前仍codex559ed09及未提交存储升级，未推送、部署或迁移main，不改客户资料或凭据。
+- 初始巡检发现main revision385、188个唯一科普ID，相比118条基线新增72、缺少2。正式接口HTTP200/JSON/no-store，不能把条目总数增加当作基线从未缺失。原始报告`.cache/maintenance/initial-20261030T132755Z.json`，前次原始报告另存`before-20261030T132742Z.json`，均未覆盖。
+- 只读D1核查`.cache/maintenance/investigation-20261030.json`确认：`kepu-1792982202411-0o4oa2ji`“龙南传统体育”于10月30日09:17:52、`kepu-1793151098059-yq7juytv`“杨屋围”于08:57:28由受邀管理员删除，均有删除前值。当前另一个ID `kepu-1793150912009-on58r6w3` 的“杨屋围”仍存在。记录证明执行过删除，但不能代替客户确认是否误删；未自动恢复、未更新基线。
+- 首次直接D1读取9109授权拒绝；一次正常Wrangler只读info刷新授权后核查成功，不把授权问题当作数据丢失。D1实际34,340,864 bytes，元数据711,723 bytes，低于既定预警线；账户套餐额度仍未知。
+- 巡检工具原先遇到基线缺条就提前返回，连当前内容备份和容量查询也停止。新增断言修复前失败；现保留缺条/版本告警并继续保护格式有效的数据。维护工具14/14通过，证据`.cache/maintenance/tests-20261030.txt`，相关diff检查通过；只改本地codex的工具、测试和维护说明，未发布业务代码。
+- 最终`.cache/maintenance/report-20261030T132951Z.json`与latest：revision385/188唯一ID，3图线上抽查，101个新增媒体归档、80个已有媒体校验复用，公开快照及181个本站媒体备份完整，snapshotComplete=true。problems仍保留基线缺2条，warnings为空，退出码1是保留告警，不是备份失败。追加快照在`.cache/maintenance/backups/revision-385-6b10a9b2232400d0c927c25658032f0967a14a296de99298050bf453728c4b02.json`。这份公开备份不包含私有审计历史或外站媒体。
+- `.cache/maintenance/notification-state.json`记录本次已通知的缺条签名和待确认ID；下次相同状态不重复提醒。本次未运行无关全量回归、未新建聊天/代理或付费服务。
+- 上一轮升级实现的后续证据：迁移CLI6/6（`.cache/migrate-records-tests-resumed.txt`）；新模式浏览器Chrome/WebKit各8项共16项（`.cache/records-browser-results.json`）；HTTP Range3/3（`.cache/media-range-tests.txt`）；records模式完整分页/影音流备份维护测试14/14。已加入知识检索排序、稳定科普翻页、按字节批量行写入、方言媒体分类计数。真实云端R2可用性与一万正文+一万图片整合演练仍未验收。
+- 升级下一步仍由主代理完成：`admin-records.js`新增target_key、rollbackRecordKeys/readRollbackState及`admin-content.js`的cutoff/maxOperations/prepareOperation只是分块回滚脚手架，**尚未接sync.js和Store.moderate、未测试**，须完成并验证或移除，不得当作已实现。方言管理员分页、归档UI、完整导出、CI/R2绑定和最终回归仍待收尾；不因本次巡检中断而宣称升级完成。保持当前未提交修改及用户其他未跟踪资料。
+
+## 2026-10-30 继续 codex 存储升级（实现收尾，发布前验证中）
+
+- 用户明确要求继续存储升级。主代理独立完成分批回滚集成、每批回执及丢失响应重放、只读取所选历史并按需展开；他人后续修改保留。增加元数据分页，审查50条/页，人员统计来自完整数据库聚合；不再随库增长在超级管理员首次加载中展开全部历史。
+- 方言管理员分页/真实云端总数、公开方言检索、全局搜索懒加载、知识库筛选导出共用同一筛选逻辑、完整导出与导入预读、归档按钮均已接好。records备份v4只保留一份cloudDraft；未加载完的同步导出拒绝生成残缺包。
+- 旧D1图片到R2迁移已补齐，每批最多3张，逐项核验原身份并保留D1源块；重复迁移幂等，异常停止。相关14项通过`.cache/storage-media-migration-tests.txt`。CI加入逐条存储、迁移、R2/分片/历史测试，隔离安装Wrangler运行时；新增可选独立R2桶绑定变量，不创建桶或开通服务。
+- 当前Node187/187（最后旧图迁移新增之前）、完整浏览器320/320、管理员44/44、新模式Chrome/WebKit24/24、最终WebKit33/33及协作17/17通过。静态套话0、3负向变异、Functions构建通过。详细证据与真实失败见`docs/storage-upgrade-2026-10-30.md`。
+- WebKit实际捕获旧模式历史恢复后删除死循环：过期catalog摘要误用于旧模式；服务器明确冲突又被本地三方合并丢弃。现限制缓存摘要用于records模式，保留明确冲突、更新冲突摘要，新增两项回归及WebKit完整恢复33项通过；原失败日志`.cache/debug-storage-webkit-ack.txt`保留。
+- 原一万图夹具错误地以r2Persist配置新运行时，旧进程内测试有效但对象未持久化；改用官方运行时代码支持的resourcePersistencePath，重新生成一万张。当前一万正文+一万图综合公开备份/隔离全量恢复仍在运行（`.cache/records-scale-integrated-final.txt`），尚不得声称综合验收完成。后续只需查该进程及结果，不重复生成数据。
+- 真实codex只读迁移演练成功，revision59、79个内容/私有元数据行，内容/历史/密码tokens摘要已保留在`.cache/content-record-migrations/records-codex-rev59-1793369391092-451ca73e-265a-4df1-81b2-d4b05e83a51f.json`，凭据不落明文。`.cache/storage-cloud-preflight.txt`记录演练结果；尚未apply、提交或部署。
+- R2再次API/CLI只读检查，10042明确为“Please enable R2 through the Cloudflare Dashboard”，证据`.cache/storage-r2-cli.txt`，不是已启用或仅凭权限猜测。未进入订阅/账单流程。代码与本地验收完成后可先部署codex逐条D1，再由用户启用R2后接桶做真实媒体验收；main不动。
+- 待办：等一万图备份及全量隔离恢复成功；最后Node/相关检查和Functions构建（旧图迁移后）；只显式暂存本轮源码/测试/文档，提交推codex并确认CI；按已审查rev59条件迁移原codex库，核对内容/私有历史/凭据、网页及真实D1 API临时资料验收后精确清理。`.cache/storage-preview-smoke.mjs`已准备，创建临时维护会话、不用客户密码或改邀请码，仅在codex写3条自建记录并最终删除；未执行。不得批量清理原历史。R2未启用部分如实交付需用户操作的具体步骤。

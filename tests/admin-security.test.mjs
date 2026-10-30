@@ -280,7 +280,7 @@ test('F06 reserved IDs match the actual shipped builtin records', () => {
 
 test('early storage restoration can refresh dialect data before its DOM initialization', () => {
   const window = { Diancang: { videoExhibits: () => [] } };
-  vm.runInNewContext(fs.readFileSync(new URL('../js/dialect.js', import.meta.url), 'utf8'), { window });
+  vm.runInNewContext(fs.readFileSync(new URL('../js/dialect.js', import.meta.url), 'utf8'), { window, HeritageContent: globalThis.HeritageContent });
   assert.doesNotThrow(() => window.Dialect.refresh());
 });
 

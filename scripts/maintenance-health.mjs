@@ -6,10 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createReadStream } from 'node:fs';
 
 const schema = globalThis.HeritageContent;
 const MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
-const MAX_MEDIA_BYTES = 24 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 250 * 1024 * 1024;
 const TIMEOUT_MS = 10_000;
 const METADATA_WARNING_BYTES = 2 * 1024 * 1024;
 const DATABASE_WARNING_BYTES = 350 * 1024 * 1024;
@@ -17,7 +18,8 @@ const executeFile = promisify(execFile);
 const DEFAULT_ORIGIN = 'https://longnankejia.pages.dev';
 const MEDIA_TYPES = new Map([
   ['image/png', 'png'], ['image/jpeg', 'jpeg'], ['image/gif', 'gif'],
-  ['image/webp', 'webp'], ['image/avif', 'avif']
+  ['image/webp', 'webp'], ['image/avif', 'avif'], ['audio/mpeg', 'mp3'], ['audio/mp4', 'm4a'],
+  ['audio/ogg', 'oga'], ['audio/wav', 'wav'], ['audio/webm', 'weba'], ['video/mp4', 'mp4'], ['video/webm', 'webm'], ['video/ogg', 'ogv']
 ]);
 
 function sha256(value) {
@@ -66,20 +68,48 @@ function publicMediaUrls(bundle) {
   return urls.slice(0, 3);
 }
 
-async function inspectMedia(url, fetchImpl, origin) {
+function imageData(bytes, mime, encoding) {
+  let base64 = Buffer.from(bytes).toString('base64');
+  if (encoding) {
+    if (!Number.isSafeInteger(encoding.length) || encoding.length < 1 || encoding.length > 5000000 || !/^[a-zA-Z0-9+/=]{1,4}$/.test(encoding.tail || '') || encoding.tail.length > encoding.length) throw new Error('Invalid legacy image encoding');
+    base64 = base64.slice(0, encoding.length - encoding.tail.length) + encoding.tail;
+  }
+  return `data:${mime};base64,${base64}`;
+}
+async function inspectMedia(url, fetchImpl, origin, directory) {
   const response = await fetchImpl(new URL(url, origin), {
     method: 'GET', cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-    signal: AbortSignal.timeout(TIMEOUT_MS)
+    signal: AbortSignal.timeout(120000)
   });
   if (response.status !== 200) throw new Error(`media ${url}: HTTP ${response.status}`);
   const contentType = response.headers.get('content-type') || '';
   const mime = contentType.split(';', 1)[0].trim().toLowerCase();
-  if (!/^image\/(?:png|jpeg|gif|webp|avif)$/.test(mime)) throw new Error(`media ${url}: non-image Content-Type`);
-  const bytes = await readLimited(response, MAX_MEDIA_BYTES);
-  const dataUrl = `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
-  const expected = await schema.mediaIdentity(dataUrl);
-  if (expected !== url) throw new Error(`media ${url}: content hash mismatch`);
-  return { bytes, mime };
+  if (!MEDIA_TYPES.has(mime)) throw new Error(`media ${url}: unsupported Content-Type`);
+  if (mime.startsWith('image/')) {
+    const bytes = await readLimited(response, 5 * 1024 * 1024);
+    let encoding;
+    if (await schema.mediaIdentity(imageData(bytes, mime)) !== url) {
+      if (!response.headers.get('x-media-base64-length') || !response.headers.get('x-media-base64-tail')) throw new Error(`media ${url}: content hash mismatch`);
+      encoding = { length: Number(response.headers.get('x-media-base64-length')), tail: response.headers.get('x-media-base64-tail') };
+      if (await schema.mediaIdentity(imageData(bytes, mime, encoding)) !== url) throw new Error(`media ${url}: content hash mismatch`);
+    }
+    return { bytes, mime, encoding };
+  }
+  const file = directory && path.join(directory, url.split('/').at(-1) + '.' + MEDIA_TYPES.get(mime));
+  let handle, length = 0; const hash = createHash('sha256');
+  try {
+    if (file) { await fs.mkdir(directory, { recursive: true }); handle = await fs.open(file, 'wx'); }
+    for await (const chunk of response.body) {
+      length += chunk.length;
+      if (length > MAX_MEDIA_BYTES) throw new Error('media exceeds 250 MiB');
+      hash.update(chunk); if (handle) await handle.writeFile(chunk);
+    }
+    if (hash.digest('hex') !== url.split('/').at(-1)) throw new Error(`media ${url}: content hash mismatch`);
+    return { bytes: null, mime, file };
+  } catch (error) {
+    if (handle) { await handle.close(); handle = null; await fs.unlink(file); }
+    throw error;
+  } finally { if (handle) await handle.close(); }
 }
 
 function collectMediaUrls(value, urls = new Set()) {
@@ -94,17 +124,23 @@ function collectMediaUrls(value, urls = new Set()) {
   return [...urls];
 }
 
-function validCachedImage(bytes, mime, url) {
-  return schema.mediaIdentity(`data:${mime};base64,${Buffer.from(bytes).toString('base64')}`).then(identity => identity === url);
+async function validCachedMedia(file, mime, url) {
+  if (!mime.startsWith('image/')) {
+    const hash = createHash('sha256'); for await (const chunk of createReadStream(file)) hash.update(chunk);
+    return hash.digest('hex') === url.split('/').at(-1);
+  }
+  let encoding;
+  try { encoding = JSON.parse(await fs.readFile(file + '.encoding.json', 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  return await schema.mediaIdentity(imageData(await fs.readFile(file), mime, encoding)) === url;
 }
 
-async function findCachedImage(directory, url) {
+async function findCachedMedia(directory, url) {
   const hash = url.split('/').at(-1);
   for (const [mime, extension] of MEDIA_TYPES) {
     const file = path.join(directory, `${hash}.${extension}`);
     try {
-      const bytes = await fs.readFile(file);
-      if (await validCachedImage(bytes, mime, url)) return file;
+      if (await validCachedMedia(file, mime, url)) return file;
       throw new Error(`cached media ${hash}.${extension} failed its content hash`);
     } catch (error) {
       if (error.code === 'ENOENT') continue;
@@ -115,18 +151,20 @@ async function findCachedImage(directory, url) {
 }
 
 async function archiveMedia(url, directory, fetchImpl, origin, fetched) {
-  const existing = await findCachedImage(directory, url);
+  const existing = await findCachedMedia(directory, url);
   if (existing) return { file: existing, reused: true };
-  const media = fetched.get(url) || await inspectMedia(url, fetchImpl, origin);
+  const media = fetched.get(url) || await inspectMedia(url, fetchImpl, origin, directory);
+  if (media.file) return { file: media.file, reused: false };
   const extension = MEDIA_TYPES.get(media.mime);
   const hash = url.split('/').at(-1);
   const file = path.join(directory, `${hash}.${extension}`);
   await fs.mkdir(directory, { recursive: true });
   try {
     await fs.writeFile(file, media.bytes, { flag: 'wx' });
+    if (media.encoding) await fs.writeFile(file + '.encoding.json', JSON.stringify(media.encoding), { flag: 'wx' });
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
-    if (!await validCachedImage(await fs.readFile(file), media.mime, url)) {
+    if (!await validCachedMedia(file, media.mime, url)) {
       throw new Error(`existing media ${hash}.${extension} failed its content hash`);
     }
     return { file, reused: true };
@@ -184,6 +222,7 @@ export async function checkHealth({
   }
   const endpoint = new URL('/api/admin/sync', baseUrl);
   endpoint.searchParams.set('_health', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  endpoint.searchParams.set('format', 'pages');
   let response;
   try {
     response = await fetchImpl(endpoint, {
@@ -215,6 +254,30 @@ export async function checkHealth({
   if (!Array.isArray(payload?.kepuCustom)) result.problems.push('kepuCustom is not an array');
   if (result.problems.length) return result;
 
+  if (payload.model === 'records-v1') {
+    try {
+      const complete = structuredClone(schema.defaults);
+      for (const field of Object.keys(schema.defaults)) {
+        let cursor = ''; const seen = new Set(), cursors = new Set();
+        do {
+          const url = new URL(endpoint); url.searchParams.set('format', 'records'); url.searchParams.set('field', field); url.searchParams.set('cursor', cursor);
+          const response = await fetchImpl(url, { method: 'GET', cache: 'no-store', headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+          if (response.status !== 200 || !/application\/json/i.test(response.headers.get('content-type') || '') || !/no-store/i.test(response.headers.get('cache-control') || '')) throw new Error('record page has an invalid status, type or cache policy');
+          const page = JSON.parse(new TextDecoder().decode(await readLimited(response, MAX_RESPONSE_BYTES)));
+          if (!page.ok || page.revision !== payload.revision || !Array.isArray(page.rows) || typeof page.cursor !== 'string') throw new Error('record pages changed or are invalid; retry a fresh backup');
+          for (const row of page.rows) {
+            if (row.summary || (row.key !== field && !row.key.startsWith(field + '/')) || seen.has(row.key)) throw new Error('duplicate, partial or unexpected record in backup');
+            seen.add(row.key); schema.setContentCell(complete, row.key, row.value);
+          }
+          if (page.cursor && cursors.has(page.cursor)) throw new Error('record cursor repeated');
+          cursors.add(page.cursor); cursor = page.cursor;
+        } while (cursor);
+        if (payload.counts && seen.size !== (payload.counts[field] || 0)) throw new Error('record page count differs from the manifest');
+      }
+      Object.assign(payload, complete);
+    } catch (error) { result.problems.push('paged content backup incomplete: ' + error.message); return result; }
+  }
+
   try {
     schema.validateBundle(payload);
   } catch (error) {
@@ -234,7 +297,11 @@ export async function checkHealth({
   result.contentHash = sha256(Buffer.from(schema.canonical(payload), 'utf8'));
   if (payload.storage) {
     const { metadataBytes, metadataLimit } = payload.storage;
-    if (!Number.isSafeInteger(metadataBytes) || metadataBytes < 0 || !Number.isSafeInteger(metadataLimit) || metadataLimit <= 0) result.problems.push('storage metrics are invalid');
+    if (payload.storage.model === 'records-v1' && Number.isSafeInteger(metadataBytes) && metadataBytes >= 0 && metadataLimit === null) {
+      const warningBytes = 50 * 1024 * 1024;
+      result.storage = { model: 'records-v1', metadataBytes, metadataLimit: null, warningBytes, usedPercent: null, maxRecordBytes: payload.storage.maxRecordBytes };
+      if (metadataBytes >= warningBytes) result.warnings.push('row metadata has reached the 50 MiB maintenance budget');
+    } else if (!Number.isSafeInteger(metadataBytes) || metadataBytes < 0 || !Number.isSafeInteger(metadataLimit) || metadataLimit <= 0) result.problems.push('storage metrics are invalid');
     else {
       const warningBytes = Math.min(metadataLimit * 0.85, METADATA_WARNING_BYTES);
       result.storage = { metadataBytes, metadataLimit, warningBytes, usedPercent: metadataBytes * 100 / metadataLimit };
@@ -242,7 +309,6 @@ export async function checkHealth({
     }
   }
 
-  if (result.problems.length) return result;
   if (databaseName) {
     try {
       result.databaseStorage = await readCapacity(databaseName);

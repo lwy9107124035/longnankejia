@@ -14,10 +14,10 @@ const MIME = {
 export function startSiteServer({ root: ROOT, port: PORT, base: BASE, backend = createAdminBackend() }) {
   const server = http.createServer(async (req, res) => {
     const pathname = decodeURIComponent(req.url.split('?')[0]);
-    if (pathname === '/api/admin/sync' || pathname.startsWith('/api/media/')) {
+    if (pathname === '/api/admin/sync' || pathname === '/api/admin/uploads' || pathname.startsWith('/api/media/')) {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
-      const response = await backend.fetchApi(BASE + req.url, {
+      const response = await backend.fetchApi((BASE || 'http://127.0.0.1:' + server.address().port) + req.url, {
         method: req.method, headers: req.headers,
         body: req.method === 'POST' ? Buffer.concat(chunks) : undefined
       });

@@ -4,6 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import '../js/content-schema.js';
 import { checkHealth, readDatabaseCapacity } from '../scripts/maintenance-health.mjs';
 
@@ -69,12 +70,26 @@ test('HTML and service errors are reported as failures', async t => {
   assert.ok(error.problems.some(problem => problem.includes('HTTP 503')));
 });
 
-test('missing baseline IDs and revision rollback fail independently', async t => {
-  const site = await serve(t, () => jsonResponse(content({ revision: 9, records: [{ id: 'other', name: '别的条目' }] })));
-  const report = await checkHealth({ origin: site.origin, baseline });
+test('missing baseline IDs and revision rollback remain failures without blocking the current content backup or capacity check', async t => {
+  const bytes = Buffer.from('current image after a missing baseline record');
+  const imageUrl = await schema.mediaIdentity(`data:image/png;base64,${bytes.toString('base64')}`);
+  const payload = content({ revision: 9, records: [{ id: 'other', name: '别的条目', imageUrl }] });
+  const site = await serve(t, req => req.url.startsWith('/api/media/')
+    ? { headers: { 'Content-Type': 'image/png' }, body: bytes }
+    : jsonResponse(payload));
+  const snapshotDir = await fs.mkdtemp(path.join(os.tmpdir(), 'maintenance-missing-baseline-'));
+  t.after(() => fs.rm(snapshotDir, { recursive: true, force: true }));
+  const report = await checkHealth({ origin: site.origin, baseline, snapshotDir, databaseName: 'synthetic-db', readCapacity: async database => ({
+    database, sizeBytes: 17_000_000, warningBytes: 350 * 1024 * 1024, planLimitBytes: null
+  }) });
   assert.ok(report.problems.includes('revision is below baseline'));
   assert.ok(report.problems.includes('baseline IDs are missing'));
   assert.deepEqual(report.missingIds, ['existing-1']);
+  assert.equal(report.snapshotComplete, true);
+  assert.equal(report.databaseStorage.sizeBytes, 17_000_000);
+  assert.equal(report.mediaArchived, 1);
+  assert.deepEqual(JSON.parse(await fs.readFile(report.snapshotPath, 'utf8')), payload);
+  assert.deepEqual(await fs.readFile(path.join(snapshotDir, 'media', imageUrl.split('/').at(-1) + '.png')), bytes);
 });
 
 test('sampled media uses GET and verifies MIME and content-derived media identity', async t => {
@@ -198,4 +213,46 @@ test('unavailable D1 authorization is explicit and does not block the public bac
   assert.deepEqual(report.problems, []); assert.match(report.warnings[0], /capacity check incomplete/);
   assert.equal(report.databaseStorage, null); assert.equal(report.snapshotComplete, true);
   await assert.rejects(readDatabaseCapacity('synthetic-db', { run: async () => { throw new Error('secret stderr'); } }), /^Error: D1 capacity unavailable;/);
+});
+
+test('row storage backs up every detail page and streams binary audio/video to a verified reusable file', async t => {
+  const bytes = Buffer.alloc(1200000, 37), hash = createHash('sha256').update(bytes).digest('hex');
+  const full = content({ records: [{ id: 'existing-1', name: '已有内容', detail: '完整正文', videoUrl: '/api/media/' + hash }, { id: 'new-1', name: '第二页内容', detail: '不能遗漏' }] });
+  const cells = [...schema.contentCells(full)], counts = {};
+  cells.forEach(([key]) => { const field = key.split('/')[0]; counts[field] = (counts[field] || 0) + 1; });
+  const initial = { ...content({ records: [{ id: 'existing-1', name: '已有内容' }] }), model: 'records-v1', counts,
+    storage: { model: 'records-v1', metadataBytes: 30 * 1024 * 1024, metadataLimit: null, maxRecordBytes: 1500000 } };
+  const site = await serve(t, req => {
+    if (req.url.startsWith('/api/media/')) return { headers: { 'Content-Type': 'video/mp4' }, body: bytes };
+    const url = new URL(req.url, 'http://localhost');
+    if (url.searchParams.get('format') !== 'records') return jsonResponse(initial);
+    const field = url.searchParams.get('field'), rows = cells.filter(([key]) => key.split('/')[0] === field).map(([key, value]) => ({ key, value, summary: false }));
+    const cursor = url.searchParams.get('cursor');
+    return jsonResponse({ ok: true, revision: 11, rows: field === 'kepuCustom' ? rows.slice(cursor ? 1 : 0, cursor ? 2 : 1) : rows, cursor: field === 'kepuCustom' && !cursor ? 'second' : '' });
+  });
+  const snapshotDir = await fs.mkdtemp(path.join(os.tmpdir(), 'maintenance-row-video-'));
+  t.after(() => fs.rm(snapshotDir, { recursive: true, force: true }));
+  const report = await checkHealth({ origin: site.origin, baseline, snapshotDir });
+  assert.deepEqual(report.problems, []); assert.deepEqual(report.warnings, []); assert.equal(report.count, 2); assert.equal(report.snapshotComplete, true);
+  assert.equal(report.storage.usedPercent, null); assert.equal(report.mediaArchived, 1);
+  const saved = JSON.parse(await fs.readFile(report.snapshotPath, 'utf8'));
+  assert.equal(saved.kepuCustom[1].detail, '不能遗漏');
+  assert.deepEqual(await fs.readFile(path.join(snapshotDir, 'media', hash + '.mp4')), bytes);
+  const second = await checkHealth({ origin: site.origin, baseline, snapshotDir });
+  assert.deepEqual(second.problems, []); assert.equal(second.mediaReused, 1);
+});
+
+test('legacy non-canonical base64 spelling is preserved in the media cache verification', async t => {
+  const image = 'data:image/png;base64,AQ', url = await schema.mediaIdentity(image), hash = url.split('/').at(-1);
+  const site = await serve(t, req => req.url.startsWith('/api/media/') ? {
+    headers: { 'Content-Type': 'image/png', 'X-Media-Base64-Length': '2', 'X-Media-Base64-Tail': 'AQ' }, body: Buffer.from([1])
+  } : jsonResponse(content({ records: [{ id: 'existing-1', name: '旧图片', imageUrl: url }] })));
+  const snapshotDir = await fs.mkdtemp(path.join(os.tmpdir(), 'maintenance-old-encoding-'));
+  t.after(() => fs.rm(snapshotDir, { recursive: true, force: true }));
+  const first = await checkHealth({ origin: site.origin, baseline, snapshotDir });
+  assert.deepEqual(first.problems, []); assert.equal(first.snapshotComplete, true);
+  const encoding = JSON.parse(await fs.readFile(path.join(snapshotDir, 'media', hash + '.png.encoding.json'), 'utf8'));
+  assert.deepEqual(encoding, { length: 2, tail: 'AQ' });
+  const second = await checkHealth({ origin: site.origin, baseline, snapshotDir });
+  assert.deepEqual(second.problems, []); assert.equal(second.mediaReused, 1);
 });

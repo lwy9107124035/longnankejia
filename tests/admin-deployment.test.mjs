@@ -48,3 +48,16 @@ test('unknown branches and invalid database IDs cannot generate deployment bindi
     assert.equal(result.config, null);
   }
 });
+
+test('optional R2 bindings use existing separate buckets without changing D1 or credentials', t => {
+  const previewResult = run(t, 'codex', { CODEX_ADMIN_R2_BUCKET: 'synthetic-preview-media', MAIN_ADMIN_R2_BUCKET: 'synthetic-main-media' });
+  assert.equal(previewResult.status, 0, previewResult.stderr);
+  assert.deepEqual(previewResult.config.r2_buckets, [{ binding: 'ADMIN_MEDIA', bucket_name: 'synthetic-preview-media' }]);
+  assert.equal(previewResult.config.d1_databases[0].database_id, preview);
+  assert.equal(previewResult.config.vars, undefined);
+  const absent = run(t, 'codex', { CODEX_ADMIN_R2_BUCKET: '', MAIN_ADMIN_R2_BUCKET: '' });
+  assert.equal(absent.config.r2_buckets, undefined);
+  for (const extra of [{ CODEX_ADMIN_R2_BUCKET: 'Invalid bucket' }, { CODEX_ADMIN_R2_BUCKET: 'same-media', MAIN_ADMIN_R2_BUCKET: 'same-media' }]) {
+    const rejected = run(t, 'codex', extra); assert.notEqual(rejected.status, 0); assert.equal(rejected.config, null);
+  }
+});

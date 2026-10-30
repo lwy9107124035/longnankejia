@@ -2,13 +2,15 @@ import fs from 'node:fs';
 
 const branch = process.env.BRANCH;
 const target = {
-  codex: { project: 'longnankejia-dev', database: 'longnankejia-admin-codex', id: process.env.CODEX_ADMIN_D1_ID },
-  main: { project: 'longnankejia', database: 'longnankejia-admin-main', id: process.env.MAIN_ADMIN_D1_ID }
+  codex: { project: 'longnankejia-dev', database: 'longnankejia-admin-codex', id: process.env.CODEX_ADMIN_D1_ID, bucket: process.env.CODEX_ADMIN_R2_BUCKET },
+  main: { project: 'longnankejia', database: 'longnankejia-admin-main', id: process.env.MAIN_ADMIN_D1_ID, bucket: process.env.MAIN_ADMIN_R2_BUCKET }
 }[branch];
 if (!target) throw new Error('Admin D1 setup is restricted to main and codex.');
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const token = process.env.CLOUDFLARE_API_TOKEN;
 const configuredId = target.id;
+if (target.bucket && (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(target.bucket) || /^\d+\.\d+\.\d+\.\d+$/.test(target.bucket))) throw new Error('The media bucket must be an existing R2 bucket name.');
+if (target.bucket && process.env.CODEX_ADMIN_R2_BUCKET === process.env.MAIN_ADMIN_R2_BUCKET) throw new Error('main and codex must use separate media buckets.');
 // Production must use the migrated state, including the current password; never initialize an empty replacement.
 if (branch === 'main' && !configuredId) throw new Error('MAIN_ADMIN_D1_ID must identify the pre-migrated production database.');
 if (!configuredId && (!account || !token || (process.env.ADMIN_BOOTSTRAP_PASSWORD || '').trim().length < 8)) {
@@ -39,6 +41,7 @@ if (configuredId) {
 }
 fs.writeFileSync('wrangler.jsonc', JSON.stringify({
   name: target.project, pages_build_output_dir: '_site', compatibility_date: '2026-10-20',
-  d1_databases: [{ binding: 'ADMIN_DB', database_name: name, database_id: database.uuid }]
+  d1_databases: [{ binding: 'ADMIN_DB', database_name: name, database_id: database.uuid }],
+  ...(target.bucket ? { r2_buckets: [{ binding: 'ADMIN_MEDIA', bucket_name: target.bucket }] } : {})
 }, null, 2));
 console.log(configuredId ? `${branch} deployment binding is ready for the pre-provisioned D1 database.` : `${branch} admin D1 schema and deployment binding are ready.`);

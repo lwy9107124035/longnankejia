@@ -152,6 +152,8 @@
   var contentIssue = '';
   var conflictKeys = [];
   var editBases = {};
+  var editHashes = {};
+  var catalog = { model: '', pages: {}, counts: {}, summaries: [], hashes: {} };
   var lastSyncedAt = 0;
   var cloudIncomplete = false;
   var recoveryRows = [];
@@ -184,6 +186,8 @@
     recoverySource = saved.source || (saved === legacyState ? { id: legacyId, snapshotId: saved.snapshotId } : null);
     conflictKeys = saved.conflicts || [];
     editBases = saved.editBases || {};
+    editHashes = saved.editHashes || {};
+    catalog = saved.catalog || catalog;
     lastSyncedAt = saved.lastSyncedAt || 0;
     cloudIncomplete = !!saved.cloudIncomplete;
   }
@@ -251,7 +255,7 @@
     await storageReady;
     if (pending && !draftOwner) draftOwner = principal();
     var saved = { bundle: copy(bundle()), revision: cloudRevision, base: copy(cloudBase), pending: pending, owner: draftOwner, time: Date.now(),
-      snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2), source: recoverySource, conflicts: conflictKeys.slice(), editBases: copy(editBases), lastSyncedAt: lastSyncedAt, cloudIncomplete: cloudIncomplete };
+      snapshotId: Date.now() + ':' + Math.random().toString(36).slice(2), source: recoverySource, conflicts: conflictKeys.slice(), editBases: copy(editBases), editHashes: copy(editHashes), catalog: copy(catalog), lastSyncedAt: lastSyncedAt, cloudIncomplete: cloudIncomplete };
     var predecessor = { id: previousDraftId, snapshotId: previousSnapshotId };
     if (draftDb) {
       durableDraft = await new Promise(function (resolve) {
@@ -396,17 +400,22 @@
       window.dispatchEvent(new CustomEvent('admin-sync-status', { detail: syncStatus }));
     }
   }
-  async function cloudRequest(body, publicOnly, knownRevision) {
+  async function cloudRequest(body, publicOnly, knownRevision, query) {
     if (typeof fetch === 'undefined') throw new Error('当前环境不能连接管理服务器');
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, 60000);
     var session = publicOnly ? null : getSession();
     var headers = {};
+    var retryable = !body || ['update_content', 'store_media'].indexOf(body.action) >= 0 || (body.chunked === true && /^[a-f0-9]{64}$/.test(body.requestId || ''));
     if (session) headers.Authorization = 'Bearer ' + session.bearer;
     if (body) headers['Content-Type'] = 'application/json';
     try {
       var endpoint = getSyncEndpoint();
-      if (!body && knownRevision !== undefined) endpoint += '?revision=' + encodeURIComponent(knownRevision);
+      if (!body) {
+        var args = Object.assign({ format: 'pages' }, query || {});
+        if (knownRevision !== undefined) args.revision = knownRevision;
+        endpoint += '?' + Object.keys(args).map(function (key) { return encodeURIComponent(key) + '=' + encodeURIComponent(args[key]); }).join('&');
+      }
       var response;
       for (var attempt = 0; attempt < 3; attempt++) {
         try {
@@ -415,14 +424,14 @@
             body: body ? JSON.stringify(body) : undefined
           });
         } catch (error) {
-          if (error.name !== 'TypeError' || attempt >= 2 || controller.signal.aborted || (body && ['update_content', 'store_media'].indexOf(body.action) < 0)) throw error;
+          if (error.name !== 'TypeError' || attempt >= 2 || controller.signal.aborted || !retryable) throw error;
           await new Promise(function (resolve) { setTimeout(resolve, 300 * (attempt + 1)); });
           continue;
         }
         var jsonResponse = (response.headers.get('Content-Type') || '').includes('application/json');
         if (jsonResponse && response.status < 500) break;
         // Only content patches and reads are safe to retry after an ambiguous response.
-        if (attempt >= 2 || (body && ['update_content', 'store_media'].indexOf(body.action) < 0)) break;
+        if (attempt >= 2 || !retryable) break;
         if (response.body && response.body.cancel) await response.body.cancel();
         await new Promise(function (resolve) { setTimeout(resolve, 300 * (attempt + 1)); });
       }
@@ -454,6 +463,92 @@
     if (h && h.render) h.render();
     if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
     if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
+  }
+  async function expandCatalogSnapshot(data) {
+    if (data.model !== 'records-v1' || data.unchanged || (cloudRevision !== null && data.revision < cloudRevision)) return data;
+    var schema = globalThis.HeritageContent, remote = copy(cloudBase || schema.defaults);
+    var summaries = new Set(catalog.summaries || []), hashes = Object.assign({}, catalog.hashes), previous = schema.contentCells(cloudBase);
+    function accept(row) {
+      var keepFull = row.summary && hashes[row.key] === row.hash && !summaries.has(row.key) && previous.has(row.key);
+      schema.setContentCell(remote, row.key, keepFull ? previous.get(row.key) : row.value);
+      hashes[row.key] = row.hash;
+      if (row.summary && !keepFull) summaries.add(row.key); else summaries.delete(row.key);
+    }
+    if (cloudBase && cloudRevision !== null && data.revision > cloudRevision) {
+      var cursor = '';
+      do {
+        var page = await cloudRequest(null, false, undefined, { format: 'records', since: cloudRevision, summary: 1, cursor: cursor });
+        if (page.revision !== data.revision) throw Object.assign(new Error('内容正在更新，请重试同步；草稿已保留'), { code: 'PAGE_CHANGED' });
+        page.rows.forEach(accept); cursor = page.cursor;
+      } while (cursor);
+    }
+    schema.contentCells(data).forEach(function (value, key) { accept({ key: key, value: value, hash: data.hashes[key], summary: data.summaryKeys.indexOf(key) >= 0 }); });
+    catalog = { model: data.model, pages: data.pages, firstCursors: copy(data.pages), firstPageKeys: Array.from(schema.contentCells(data).keys()), counts: data.counts, summaries: Array.from(summaries), hashes: hashes, capabilities: data.capabilities || catalog.capabilities };
+    return Object.assign({}, data, remote);
+  }
+  async function loadRecord(type, id) {
+    var field = type.endsWith('Custom') || type.endsWith('Edited') ? type : type + (read(CONTENT_KEYS[type + 'Custom'], []).some(function (row) { return row.id === id; }) || type === 'dialect' ? 'Custom' : 'Edited');
+    var key = field + '/' + id, schema = globalThis.HeritageContent;
+    var local = schema.contentCells(bundle()).get(key);
+    if (catalog.model !== 'records-v1' || catalog.summaries.indexOf(key) < 0) return local || null;
+    var data = await cloudRequest(null, false, undefined, { format: 'record', key: key }), row = data.rows[0];
+    var remote = copy(cloudBase || schema.defaults); schema.setContentCell(remote, key, row.value);
+    remote.revision = cloudRevision;
+    catalog.hashes[key] = row.hash; catalog.summaries = catalog.summaries.filter(function (value) { return value !== key; });
+    if (data.revision !== cloudRevision) { cloudIncomplete = true; lastReadSession = null; }
+    await mergeCloudDraft(remote); await persistState();
+    return schema.contentCells(bundle()).get(key) || null;
+  }
+  async function loadContentPage(field, options) {
+    if (catalog.model !== 'records-v1') return null;
+    options = options || {};
+    var page = await cloudRequest(null, false, undefined, { format: 'records', field: field, summary: options.full ? 0 : 1, cursor: options.cursor || '', q: options.query || '', category: options.category || '', media: options.media || '' });
+    if (page.revision !== cloudRevision) { await syncWithCloud(); if (page.revision !== cloudRevision) throw new Error('内容已更新，请重试'); }
+    var remote = copy(cloudBase || globalThis.HeritageContent.defaults);
+    page.rows.forEach(function (row) {
+      var keep = row.summary && catalog.hashes[row.key] === row.hash && catalog.summaries.indexOf(row.key) < 0;
+      if (!keep) globalThis.HeritageContent.setContentCell(remote, row.key, row.value);
+      catalog.hashes[row.key] = row.hash;
+      catalog.summaries = catalog.summaries.filter(function (key) { return key !== row.key; });
+      if (row.summary && !keep) catalog.summaries.push(row.key);
+    });
+    remote.revision = cloudRevision;
+    await mergeCloudDraft(remote);
+    if (!options.query && !options.category && !options.media) catalog.pages[field] = page.cursor;
+    await persistState(); return page;
+  }
+  async function prepareExport(fields) {
+    if (catalog.model !== 'records-v1') return;
+    var schema = globalThis.HeritageContent, remote = copy(cloudBase || schema.defaults), startedRevision = cloudRevision;
+    fields = fields || Object.keys(CONTENT_KEYS);
+    if (fields.every(function (field) { return !catalog.pages[field] && !catalog.summaries.some(function (key) { return key.split('/')[0] === field; }); })) return;
+    var hashes = Object.assign({}, catalog.hashes), summaries = new Set(catalog.summaries);
+    for (var field of fields) {
+      var cursor = '';
+      do {
+        var page = await cloudRequest(null, false, undefined, { format: 'records', field: field, cursor: cursor });
+        if (page.revision !== startedRevision) throw new Error('读取备份期间有新内容，请同步后重新导出');
+        page.rows.forEach(function (row) {
+          schema.setContentCell(remote, row.key, row.value); hashes[row.key] = row.hash; summaries.delete(row.key);
+        });
+        cursor = page.cursor;
+      } while (cursor);
+    }
+    catalog.hashes = hashes; catalog.summaries = Array.from(summaries); fields.forEach(function (field) { catalog.pages[field] = ''; });
+    remote.revision = cloudRevision; await mergeCloudDraft(remote); await persistState();
+  }
+  async function searchKnowledge(query) {
+    if (!catalog.model || !(catalog.counts.kbCustom || catalog.counts.kbEdited)) return;
+    query = String(query || '').trim().slice(0, 500); if (!query) return;
+    var data = await cloudRequest(null, false, undefined, { format: 'search', q: query });
+    if (data.revision < cloudRevision) throw new Error('资料已更新，请重试');
+    var remote = copy(cloudBase || globalThis.HeritageContent.defaults);
+    data.rows.forEach(function (row) {
+      globalThis.HeritageContent.setContentCell(remote, row.key, row.value); catalog.hashes[row.key] = row.hash;
+      catalog.summaries = catalog.summaries.filter(function (key) { return key !== row.key; });
+    });
+    if (data.revision !== cloudRevision) { cloudIncomplete = true; lastReadSession = null; }
+    remote.revision = cloudRevision; await mergeCloudDraft(remote); await persistState();
   }
   async function applyCloud(data) {
     var startedGeneration = generation;
@@ -494,7 +589,7 @@
     if (Object.keys(editBases).length || acknowledged && acknowledged.length) {
       base = copy(cloudBase || globalThis.HeritageContent.defaults);
       Object.keys(editBases).forEach(function (key) { globalThis.HeritageContent.setContentCell(base, key, editBases[key]); });
-      (acknowledged || []).forEach(function (change) { globalThis.HeritageContent.setContentCell(base, change.key, change.value); delete editBases[change.key]; });
+      (acknowledged || []).forEach(function (change) { globalThis.HeritageContent.setContentCell(base, change.key, change.value); delete editBases[change.key]; delete editHashes[change.key]; });
     }
     await globalThis.HeritageContent.prepareMediaBundle(base);
     await globalThis.HeritageContent.prepareMediaBundle(latest);
@@ -516,7 +611,7 @@
     var schema = globalThis.HeritageContent, before = schema.contentCells(cloudBase), after = schema.contentCells(bundle());
     return Array.from(new Set(Array.from(before.keys()).concat(Array.from(after.keys())))).filter(function (key) {
       return schema.comparable(before.get(key)) !== schema.comparable(after.get(key));
-    }).map(function (key) { return { key: key, before: Object.prototype.hasOwnProperty.call(editBases, key) ? editBases[key] : before.get(key), value: after.get(key) === undefined ? null : after.get(key) }; });
+    }).map(function (key) { return { key: key, before: Object.prototype.hasOwnProperty.call(editBases, key) ? editBases[key] : before.get(key), baseHash: editHashes[key] || (catalog.model === 'records-v1' ? catalog.hashes[key] : undefined), value: after.get(key) === undefined ? null : after.get(key) }; });
   }
   function savedStatus() {
     if (pending && conflictKeys.length) setSyncStatus('conflict', conflictKeys.length + ' 条草稿需核对，其余内容已同步。');
@@ -579,31 +674,45 @@
           for (var change of sendable.slice(0, 8)) {
             await uploadRecordMedia(change.before, mediaCache);
             var value = await uploadRecordMedia(change.value, mediaCache);
-            var operation = { key: change.key, baseHash: await globalThis.HeritageContent.cellHash(change.before), value: value };
+            var operation = { key: change.key, baseHash: change.baseHash || await globalThis.HeritageContent.cellHash(change.before), value: value };
             var bytes = new TextEncoder().encode(JSON.stringify(operation)).length;
             if (changes.length && requestBytes + bytes > 4 * 1024 * 1024) break;
             changes.push(operation); requestBytes += bytes;
           }
-          var data = await cloudRequest({ action: 'update_content', revision: cloudRevision, changes: changes });
+          var operationId = await globalThis.HeritageContent.cellHash({ revision: cloudRevision, changes: changes }, true);
+          var data = await cloudRequest({ action: 'update_content', operationId: operationId, revision: cloudRevision, changes: changes });
           var acknowledged = changes.filter(function (change) { return data.accepted.indexOf(change.key) >= 0; });
           var latest = copy(cloudBase || globalThis.HeritageContent.defaults);
           if (cloudRevision === null || data.revision >= cloudRevision) {
-            acknowledged.forEach(function (change) {
+            for (var change of acknowledged) {
+              var previousValue = globalThis.HeritageContent.contentCells(latest).get(change.key);
               var receipt = data.receipts.find(function (row) { return row.key === change.key; });
               var value = change.value && typeof change.value === 'object' ? Object.assign({}, change.value, receipt.provenance) : change.value;
               globalThis.HeritageContent.setContentCell(latest, change.key, value);
-            });
-            data.updates.forEach(function (change) { globalThis.HeritageContent.setContentCell(latest, change.key, change.value); });
+              catalog.hashes[change.key] = await globalThis.HeritageContent.cellHash(value, true);
+              var field = change.key.split('/')[0];
+              if (catalog.counts[field] !== undefined) catalog.counts[field] += (change.value === null ? 0 : 1) - (previousValue == null ? 0 : 1);
+              catalog.summaries = catalog.summaries.filter(function (key) { return key !== change.key; });
+            }
+            for (var update of data.updates) {
+              globalThis.HeritageContent.setContentCell(latest, update.key, update.value);
+              if (catalog.model === 'records-v1') {
+                catalog.hashes[update.key] = await globalThis.HeritageContent.cellHash(update.value, true);
+                catalog.summaries = catalog.summaries.filter(function (key) { return key !== update.key; });
+              }
+            }
             if (data.baseRevision !== cloudRevision) { cloudIncomplete = true; refreshAfterUpload = true; }
           }
           latest.revision = cloudIncomplete ? cloudRevision : Math.max(cloudRevision || 0, data.revision);
           await mergeCloudDraft(latest, acknowledged);
+          if (data.counts) catalog.counts = data.counts;
           lastReadSession = null;
           if (data.content && Array.isArray(data.content.auditLogs)) write(LS.audit_logs, data.content.auditLogs);
           if (Array.isArray(data.auditLogs)) write(LS.audit_logs, data.auditLogs);
           if (Array.isArray(data.recovery)) recoveryRows = data.recovery;
           write('nfyj_cloud_revision', cloudRevision);
-          pending = changedCells().length > 0;
+          var remaining = changedCells(); pending = remaining.length > 0;
+          conflictKeys = Array.from(new Set(conflictKeys.concat(data.conflicts))).filter(function (key) { return remaining.some(function (change) { return change.key === key; }); });
           if (!pending) { draftOwner = ''; conflictKeys = []; write('nfyj_cloud_pending', false); }
           await persistState();
           if (conflictKeys.length && sentGeneration === generation) break;
@@ -643,10 +752,13 @@
         await storageReady;
         var uploaded = !pending || !getSession() || await uploadPending();
         var data = await cloudRequest(null, false, !pending && !cloudIncomplete && cloudBase && lastReadSession === bearer ? cloudRevision : undefined);
+        if (data.capabilities) catalog.capabilities = data.capabilities;
+        data = await expandCatalogSnapshot(data);
         if (Array.isArray(data.tokens)) write(LS.tokens, data.tokens);
         if (Array.isArray(data.lockouts)) write(LS.locked_clients, data.lockouts);
         if (Array.isArray(data.notifications)) write(LS.notifications, data.notifications);
         if (Array.isArray(data.contributions)) contributionRows = data.contributions;
+        if (Array.isArray(data.contributionCounts)) contributionCounts = data.contributionCounts;
         if (Array.isArray(data.recovery)) recoveryRows = data.recovery;
         if (data.unchanged) {
           if (!pending) savedStatus();
@@ -683,6 +795,7 @@
     if (uploadPromise) await uploadPromise;
     if (!(await persistState()) && pending) throw new Error('本机草稿备份失败，请先导出备份，再读取云端。');
     var data = await cloudRequest();
+    data = await expandCatalogSnapshot(data);
     if (generation !== startedGeneration) {
       await persistState();
       throw new Error('重新加载期间有新的编辑，已保留本机草稿。请核对并导出备份后重试。');
@@ -709,18 +822,23 @@
   }
   async function optimizeImageStorage() {
     if (pending && !(await uploadPending())) throw new Error('请先核对待上传草稿，再整理图片。');
-    var snapshot = await cloudRequest(), schema = globalThis.HeritageContent;
+    await prepareExport();
+    var snapshot = catalog.model ? bundle() : await cloudRequest(), schema = globalThis.HeritageContent;
     var records = Array.from(schema.contentCells(snapshot)).filter(function (entry) {
       var item = entry[1];
       return item && typeof item === 'object' && (/^data:image\//i.test(item.imageUrl || item.image || '') || item.item && /^data:image\//i.test(item.item.imageUrl || ''));
     });
-    var completed = 0;
+    var completed = 0, copied = 0;
     for (var entry of records) {
       var value = await uploadRecordMedia(entry[1], new Map());
       var result = await cloudRequest({ action: 'update_content', changes: [{ key: entry[0], baseHash: await schema.cellHash(entry[1]), value: value }] });
       completed += result.accepted.length;
     }
-    await syncWithCloud(); return { completed: completed, total: records.length };
+    if (catalog.capabilities && catalog.capabilities.mediaUploads) {
+      var cursor = '', batch;
+      do { batch = await cloudRequest({ action: 'migrate_media', cursor: cursor }); copied += batch.copied; cursor = batch.cursor; } while (batch.more);
+    }
+    await syncWithCloud(); return { completed: completed, copied: copied, total: records.length };
   }
   function getLockedClients() { return read(LS.locked_clients, []); }
   async function unlockClient(id) { await cloudRequest({ action: 'unlock', id: id }); return syncWithCloud(); }
@@ -759,6 +877,12 @@
       var kbCount = rows.filter(function (row) { return row.type === 'kb'; }).length;
       var kepuCount = rows.filter(function (row) { return row.type === 'kepu'; }).length;
       var dialectCount = rows.filter(function (row) { return row.type === 'dialect'; }).length;
+      if (catalog.model === 'records-v1') {
+        var counts = contributionCounts.filter(function (row) { return row.tokenId === item.id; });
+        kbCount = (counts.find(function (row) { return row.type === 'kb'; }) || {}).count || 0;
+        kepuCount = (counts.find(function (row) { return row.type === 'kepu'; }) || {}).count || 0;
+        dialectCount = (counts.find(function (row) { return row.type === 'dialect'; }) || {}).count || 0;
+      }
 
       return Object.assign({}, item, {
         isExpired: isExpired,
@@ -794,20 +918,41 @@
 
   async function moderate(body) {
     if (pending && !(await uploadPending())) throw new Error('请先上传或处理本机草稿：' + syncStatus.message);
-    var result = await cloudRequest(body);
-    await syncWithCloud();
-    return result;
+    var chunked = catalog.model === 'records-v1' && (body.action === 'rollback_token' || body.action === 'reject_item');
+    var result, removed = new Set(), skipped = new Set(), cursor = '', cutoff = Date.now(), round = 0;
+    try {
+      do {
+        var request = body;
+        if (chunked) {
+          request = Object.assign({}, body, { chunked: true, cursor: cursor, cutoff: cutoff });
+          request.requestId = await globalThis.HeritageContent.cellHash({ request: request, round: round++ }, true);
+        }
+        result = await cloudRequest(request);
+        (result.removedKeys || []).forEach(function (key) { removed.add(key); });
+        (result.skippedKeys || []).forEach(function (key) { skipped.add(key); });
+        cursor = result.cursor || '';
+      } while (chunked && result.more);
+    } catch (error) {
+      if (removed.size) throw new Error('已撤回 ' + removed.size + ' 项，其余未完成：' + error.message);
+      throw error;
+    } finally { await syncWithCloud(); }
+    return chunked ? Object.assign({}, result, { totalRemoved: removed.size, skipped: skipped.size }) : result;
   }
   function rollbackTokenChanges(tokenId) {
     return moderate({ action: 'rollback_token', tokenId: tokenId });
   }
-  var contributionRows = [];
-  function getTokenDetailedContributions(tokenId) {
+  var contributionRows = [], contributionCounts = [];
+  function getTokenDetailedContributions(tokenId, rows) {
     var token = read(LS.tokens, []).find(function (t) { return t.id === tokenId; });
-    return { token: token || { id: tokenId, name: '受邀管理员' }, items: contributionRows.filter(function (row) { return row.tokenId === tokenId; }).map(function (row) {
+    return { token: token || { id: tokenId, name: '受邀管理员' }, items: (rows || contributionRows).filter(function (row) { return row.tokenId === tokenId; }).map(function (row) {
       var names = { kb: ['知识库条目', '📚 知识库'], kepu: ['科普卡片', '🏮 科普卡片'], dialect: ['方言讲解', '🗣 方言讲解'] };
       return Object.assign({}, row, { typeName: names[row.type][0], typeBadge: names[row.type][1] });
     }) };
+  }
+  async function loadTokenContributions(tokenId, cursor) {
+    if (catalog.model !== 'records-v1') return getTokenDetailedContributions(tokenId);
+    var page = await cloudRequest(null, false, undefined, { format: 'contributions', tokenId: tokenId, cursor: cursor || '' });
+    return Object.assign(getTokenDetailedContributions(tokenId, page.rows), { cursor: page.cursor });
   }
   function rejectTokenItem(tokenId, itemId, itemType, reason) {
     return moderate({ action: 'reject_item', tokenId: tokenId, itemId: itemId, itemType: itemType, reason: reason });
@@ -844,6 +989,7 @@
     write(LS.notifications, []);
     write(LS.audit_logs, []);
     contributionRows = [];
+    contributionCounts = [];
     if (pending && cloudBase) publishedBundle = cloudBase;
   }
   async function logout() {
@@ -933,13 +1079,15 @@
     return true;
   }
 
-  function resetKB() {
+  async function resetKB() {
+    if (catalog.model) await prepareExport(['kbCustom', 'kbEdited', 'kbDeleted']);
     remove(LS.custom); remove(LS.deleted); remove(LS.edited);
     write(LS.custom, []); write(LS.deleted, []); write(LS.edited, {});
     syncCustomToCloud();
   }
 
   function exportKB() {
+    assertExportReady(['kbCustom', 'kbEdited', 'kbDeleted']);
     return JSON.stringify(getEntries(), null, 2);
   }
 
@@ -1061,10 +1209,11 @@
   function getEditVersion(type, id) {
     var custom = read(CONTENT_KEYS[type + 'Custom'], []), isCustom = custom.some(function (entry) { return entry && entry.id === id; });
     var key = type + (isCustom ? 'Custom/' : 'Edited/') + id;
-    return { key: key, value: copy(globalThis.HeritageContent.contentCells(bundle()).get(key) || null) };
+    return { key: key, value: copy(globalThis.HeritageContent.contentCells(bundle()).get(key) || null), hash: catalog.hashes[key] };
   }
   function rememberEditVersion(version) {
     if (version && typeof version.key === 'string' && !Object.prototype.hasOwnProperty.call(editBases, version.key)) editBases[version.key] = copy(version.value);
+    if (version && version.hash && !editHashes[version.key]) editHashes[version.key] = version.hash;
   }
 
   function addDialectTrack(track, creatorInfo) {
@@ -1155,7 +1304,14 @@
 
   /* ---------- 全站资产一键备份与恢复 ---------- */
 
+  function assertExportReady(fields) {
+    if (catalog.model === 'records-v1' && fields.some(function (field) { return catalog.pages[field] || catalog.summaries.some(function (key) { return key.split('/')[0] === field; }); })) throw new Error('请先完整读取资料再导出备份');
+  }
   function exportFullBundle() {
+    if (catalog.model === 'records-v1') {
+      assertExportReady(Object.keys(CONTENT_KEYS));
+      return JSON.stringify({ app: '龙南客家非遗数字助手', version: 'v4-records', cloudDraft: bundle(), exportedAt: new Date().toISOString() }, null, 2);
+    }
     var exported = {
       app: '龙南客家非遗数字助手',
       version: 'v3-cloud',
@@ -1171,7 +1327,9 @@
     return JSON.stringify(exported, null, 2);
   }
   async function exportFullBundleWithMedia() {
+    await prepareExport();
     var exported = JSON.parse(exportFullBundle()), memo = new Map();
+    var mediaBytes = 0;
     async function expand(value, field) {
       if (['image', 'imageUrl'].indexOf(field) >= 0 && globalThis.HeritageContent.mediaPath(value)) {
         if (!memo.has(value)) {
@@ -1179,6 +1337,8 @@
           var response = await fetch(/^https:/.test(value) ? value : origin + value, { cache: 'no-store' });
           if (!response.ok) throw new Error('备份图片读取失败，请联网后重试。草稿未改变。');
           var bytes = new Uint8Array(await response.arrayBuffer()), chunks = [];
+          mediaBytes += bytes.length;
+          if (mediaBytes > 64 * 1024 * 1024) throw new Error('图片总量超过浏览器单次打包预算，请使用分文件维护备份');
           for (var start = 0; start < bytes.length; start += 30000) chunks.push(String.fromCharCode.apply(null, bytes.subarray(start, start + 30000)));
           memo.set(value, 'data:' + response.headers.get('Content-Type').split(';')[0] + ';base64,' + btoa(chunks.join('')));
         }
@@ -1219,18 +1379,29 @@
     deleteInviteToken: deleteInviteToken,
     rollbackTokenChanges: rollbackTokenChanges,
     getTokenDetailedContributions: getTokenDetailedContributions,
+    loadTokenContributions: loadTokenContributions,
     rejectTokenItem: rejectTokenItem,
     verifyLogin: verifyLogin,
     saveSession: saveSession,
     getSession: getSession,
     clearSession: clearSession,
     logout: logout,
-    getSyncStatus: function () { return Object.assign({ pending: pending, revision: cloudRevision, cloudLoaded: !!cloudBase && !cloudIncomplete, cloudCustomCount: cloudBase ? (cloudBase.kepuCustom || []).length : null,
+    getSyncStatus: function () { return Object.assign({ pending: pending, revision: cloudRevision, cloudLoaded: !!cloudBase && !cloudIncomplete, cloudCustomCount: catalog.model ? catalog.counts.kepuCustom || 0 : cloudBase ? (cloudBase.kepuCustom || []).length : null,
       pendingCount: pending ? changedCells().length : 0, conflictCount: conflictKeys.length, lastSyncedAt: lastSyncedAt }, syncStatus); },
     isContentSaved: function (key) { return changedCells().every(function (change) { return change.key !== key; }); },
     getConflicts: getConflicts,
     resolveConflict: resolveConflict,
     getEditVersion: getEditVersion,
+    loadRecord: loadRecord,
+    loadContentPage: loadContentPage,
+    prepareExport: prepareExport,
+    searchKnowledge: searchKnowledge,
+    getCatalog: function () { return copy({ model: catalog.model, pages: catalog.pages, firstCursors: catalog.firstCursors, firstPageKeys: catalog.firstPageKeys, counts: catalog.counts, summaries: catalog.summaries, capabilities: catalog.capabilities }); },
+    getContentCount: function (field) {
+      var value = bundle()[field], count = catalog.model ? catalog.counts[field] || 0 : Array.isArray(value) ? value.length : Object.keys(value || {}).length;
+      if (catalog.model && pending) changedCells().forEach(function (change) { if (change.key.split('/')[0] === field) count += (change.value === null ? 0 : 1) - (change.before == null ? 0 : 1); });
+      return count;
+    },
     reloadCloudContent: reloadCloudContent,
     getRecoveryDrafts: getRecoveryDrafts,
     restoreRecoveryDraft: restoreRecoveryDraft,
@@ -1279,6 +1450,7 @@
     getRecoveryHistory: function () { return recoveryRows.slice(); },
     restoreOperation: function (id) { return moderate({ action: 'restore_operation', operationId: id }); },
     getStorageInfo: function () { return cloudRequest({ action: 'storage_info' }); },
+    archiveHistory: function () { return moderate({ action: 'archive_history' }); },
     optimizeImageStorage: optimizeImageStorage,
     importFullBundle: importFullBundle,
 

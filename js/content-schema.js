@@ -73,7 +73,6 @@
     });
     ['kb', 'kepu', 'dialect'].forEach(function (type) {
       var custom = result[type + 'Custom'], seen = new Set();
-      if (custom.length > 10000) fail(type + 'Custom 数量过多');
       custom.forEach(function (v, i) {
         record(v, type, type + 'Custom[' + i + ']', false);
         if (seen.has(v.id) || (reserved[type] || []).includes(v.id)) fail(type + 'Custom 重复或内置 ID：' + v.id);
@@ -163,7 +162,12 @@
     var cells = contentCells(value);
     for (var entry of cells.values()) await prepareMediaRecord(entry);
   }
+  function isAudioTrack(track) {
+    if (!track) return false;
+    if (track.mediaType === 'audio' || (track.item && (track.item.mediaType === 'audio' || track.item.audioUrl))) return true;
+    return /\.(mp3|wav|ogg|aac|m4a)(\?.*)?$/i.test(track.item && (track.item.videoUrl || track.item.audioUrl) || '');
+  }
   root.HeritageContent = { defaults: fields, validateBundle: validateBundle, record: record, safeUrl: safeUrl, reserved: reserved, canonical: canonical,
     comparable: comparable, rawComparable: rawComparable, contentCells: contentCells, setContentCell: setContentCell, cellHash: cellHash,
-    mediaIdentity: mediaIdentity, mediaPath: mediaPath, prepareMediaRecord: prepareMediaRecord, prepareMediaBundle: prepareMediaBundle };
+    mediaIdentity: mediaIdentity, mediaPath: mediaPath, prepareMediaRecord: prepareMediaRecord, prepareMediaBundle: prepareMediaBundle, isAudioTrack: isAudioTrack };
 })(globalThis);

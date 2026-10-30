@@ -32,7 +32,9 @@ export async function runCollaborationRegression({ page, Page, BASE, CDP_PORT, R
     check('三台独立设备共用同一邀请码，三条上传均保存', (await api()).kepuCustom.filter(c => c.id.startsWith('collab-')).length === 3);
     check('后台列表随云端更新，无需关闭重进', await until(a, "!!document.querySelector('[data-edit-kepu=\"collab-1\"]')"));
 
-    await a.evaluate("document.querySelector('[data-edit-kepu=\"collab-0\"]').click();document.getElementById('kpDetail').value='表单中的本机版本';document.getElementById('kpDetail').dispatchEvent(new Event('input',{bubbles:true}))");
+    await a.evaluate("document.querySelector('[data-edit-kepu=\"collab-0\"]').click()");
+    check('编辑前等待完整正文载入', await until(a, "!!document.getElementById('kpDetail')"));
+    await a.evaluate("document.getElementById('kpDetail').value='表单中的本机版本';document.getElementById('kpDetail').dispatchEvent(new Event('input',{bubbles:true}))");
     await b.evaluate("window.Store.updateHeritageCard('collab-0',{detail:'同事已保存的版本'});window.Store.flushPending()", true);
     await a.evaluate('window.Store.syncWithCloud()', true);
     check('后台同步保留当前正在编辑的表单', await a.evaluate("document.getElementById('kpDetail')?.value==='表单中的本机版本'"));

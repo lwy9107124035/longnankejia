@@ -1,0 +1,7 @@
+js-sha256 0.11.1, by Chen, Yi-Cyuan (emn178), MIT.
+Upstream: https://github.com/emn178/js-sha256
+Package: https://registry.npmjs.org/js-sha256/-/js-sha256-0.11.1.tgz
+Package SHA-512 (verified before extraction):
+o6WSo/LUvY2uC4j7mO50a2ms7E/EAdbP0swigLV+nzHKTTaYnaLIWJ02VdXrsJX0vGedDESQnLsOekr94ryfjg==
+sha256.min.js is the unchanged upstream build/sha256.min.js.
+Full license: sha256-LICENSE.txt.
