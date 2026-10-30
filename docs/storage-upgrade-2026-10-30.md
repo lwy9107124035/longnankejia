@@ -67,3 +67,9 @@ R2存在免费用量，也会按实际存储与操作超额计费；不是无限
 实际验收脚本的非产品失败也保留：预期HTTP503被curl的exit22误当网络失败、零计数字段未出现被当undefined、重跑结果文件禁止覆盖导致EEXIST；另有一次TLS35发生在只读预检。没有把这些脚本退出码冒充完整验收成功。已完成独立只读核对，证明临时内容及会话已清理、原数据未被改变；证据为`storage-preview-smoke-initial-result.json`、`storage-preview-post-cleanup-check.json`和上述最终核对报告。
 
 正式main仍revision385/188条，公开响应与发布前逐字相同，分支未推送本轮代码。codex使用独立测试库，未复制正式客户资料。稳定入口和`地址.html`中的链接继续有效：`https://codex.longnankejia-dev.pages.dev/`。
+
+最后补修提交 `476170914daec0884aeb1cd7c8fb4cdc6621ed82` 已仅推codex，[CI41079323877](https://github.com/lwy9107124035/longnankejia/actions/runs/41079323877)成功。`.cache/storage-final-verification-1793373697836.json`确认四关键前端与该提交相同、79原行及凭据不变、main公开响应未变，codex仍revision78/0条自定义科普。
+
+`.cache/storage-codex-health.json`确认正式预览JSON/no-store、逐页备份完整、无内容问题。Wrangler容量子进程一次未完成；独立只读API报告`storage-codex-capacity-20261030.json`随后核实实际库1,351,680 bytes，账户套餐额度仍未知，保留原始巡检警告，不修改原报告冒充当时成功。
+
+规模合成图片及运行时约5GB大文件完整转存到本机缓存，避免留在OneDrive工作区；报告、摘要清单、正文快照、样图保留。路径映射见`.cache/storage-synthetic-artifact-locations.json`，实际位置为`C:/Users/lwy/AppData/Local/CodexStorageTests/longnankejia-20261030/verified-backup-media`和`verified-runtime-r2`。客户资料备份未转移。需要复跑规模演练时先核对该缓存，不无故重新生成一万图。
