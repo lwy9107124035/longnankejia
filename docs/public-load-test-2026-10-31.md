@@ -105,3 +105,15 @@
 2026-10-31 16:19北京时间账户UTC当日统计为4,986,544读行/52,426写行，`.cache/account-read-budget-1793434756611.json`；已停止当天所有D1云端负载和夹具写入。新控制器实际运行已在创建会话前拒绝，`.cache/live-load-budget-refusal.txt`。免费日额度按00:00UTC重置，即北京时间次日08:00，重置后仍须重新核对余量；[官方D1额度](https://developers.cloudflare.com/d1/platform/pricing/)。未付费绕过额度。
 
 最后独立核验`.cache/storage-final-verification-1793437500514.json`：79原行及原凭据摘要不变，main385/188公开响应仍与原快照逐字相同，codex576/0。`.cache/registered-session-cleanup-final.json`再次确认活跃合成条目/维护会话均0。Windows微信已经进入本站，但停在平台安全提示页，须用户本人继续访问；未代理绕过。真实iPhone仍缺设备，未声称模拟已替代真机。
+
+## 四机静态校准已通过，D1综合仍待额度重置
+
+验收工具及索引定义提交`40888926af4b8462adb9b994972dfbad05bf7ae0`已仅推codex，[CI41188889701](https://github.com/lwy9107124035/longnankejia/actions/runs/41188889701)188/188通过且部署成功；`.cache/distributed-final-node.txt`本地亦188/188。索引没有随部署自动执行，仍待受保护综合入口应用。
+
+[四机静态41188908756](https://github.com/lwy9107124035/longnankejia/actions/runs/41188908756)四个生成器均完成：1004次总HTTP含预热、峰值1000次全部成功，**实际1000个请求同时在途，P95=1352ms、起点偏差1ms**。共同在途窗口09:31:40.993Z–09:31:42.168Z；每机CPU1709–1729ms、事件循环P95阻塞510–858ms，指标如实保留。零D1读取/写入、零AI请求。这只证明分布式生成器在本轮静态校准符合目标，不能代替数据库/峰值保存/移动网络验收。
+
+原始四份报告`.cache/static-four-41188908756/codex-read-load-report-{0..3}/storage-read-probe.json`，合并`.cache/distributed-read-summary-1793439139865.json`和`static-four-41188908756-summary.txt`。新的聚合负向测试也拒绝“总人数1000但只有750同时活跃”的静态报告，未因达到总请求数而放宽验收。
+
+09:31Z最新账户小时统计`.cache/account-read-budget-1793439102225.json`为4,986,854读行/52,426写行，仍禁止当天D1负载。09:34Z轻量收尾`.cache/distributed-deploy-final-readonly-1793439242625.json`四前端与Git原文一致、main385/188原响应逐字不变、codex576/0，无写入。首次比较误用了Windows工作区CRLF字节，已改按部署使用的Git原文核对，差异原因确认为本地换行，未当作线上错版。
+
+下一步仅在2026-11-01T00:00Z以后、新账户预算守卫通过时运行`node tests/live-codex-load.mjs --run`，使用已校准四机、应用codex两个索引并验证三会话服务器回执处于1000人共同活跃窗口。原automation-2每6小时在本聊天接续，电脑及应用须可用，不保证重置时刻立即运行。没有用户真机资源、微信手动继续或模型平台额度证据前，不宣称相应边界通过。main继续不发布，已知旧基线删除也不自动恢复。
