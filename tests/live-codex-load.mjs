@@ -5,11 +5,12 @@ import { spawn, spawnSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { getProjectAccount } from '../scripts/_lib/cloudflare-read.mjs';
 import { readD1Usage } from '../scripts/d1-usage.mjs';
-import { createRestDatabase, remoteRequest } from '../scripts/migrate-content-records.mjs';
+import { createRestDatabase, remoteRequest, TARGETS } from '../scripts/migrate-content-records.mjs';
+import { checkHealth } from '../scripts/maintenance-health.mjs';
 import '../js/content-schema.js';
-import { createLoadPermit } from './helpers/load-budget.mjs';
+import { createLoadPermit, assertLoadPermit, assertProductionReady } from './helpers/load-budget.mjs';
 import { aggregateReadLoads, confirmPeakWrites } from './helpers/read-load-reports.mjs';
-if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run\nCodex only. Requires Wrangler OAuth, gh login and a fresh account-wide D1 budget. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
+if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.deepEqual(process.argv.slice(2), ['--run'], 'Only --run or --help is supported');
 const account = await getProjectAccount();
 const origin = 'https://codex.longnankejia-dev.pages.dev', schema = globalThis.HeritageContent;
@@ -20,6 +21,13 @@ if (!cleanupOnly) {
   const usage = await readD1Usage(account); fs.mkdirSync('.cache', { recursive: true });
   fs.writeFileSync('.cache/load-budget-check-' + Date.now() + '.json', JSON.stringify(usage, null, 2), { flag: 'wx' });
   loadPermit = createLoadPermit(usage);
+  fs.mkdirSync('.cache/maintenance', {recursive:true});
+  const production = await checkHealth({ origin:'https://longnankejia.pages.dev', baseline:JSON.parse(fs.readFileSync('docs/production-baseline.json','utf8')),
+    snapshotDir:'.cache/maintenance/backups', databaseName:TARGETS.main.id });
+  fs.writeFileSync('.cache/maintenance/pre-load-' + Date.now() + '.json', JSON.stringify(production,null,2), {flag:'wx'});
+  const notification = fs.existsSync('.cache/maintenance/notification-state.json') ? JSON.parse(fs.readFileSync('.cache/maintenance/notification-state.json','utf8')) : {};
+  assertProductionReady(production, notification.pendingDeletionConfirmation || []);
+  assertLoadPermit(loadPermit, 15000);
 }
 const prefix = cleanupOnly || 'load-fixture-' + randomBytes(12).toString('hex');
 const actorBearers = Array.from({ length: cleanupOnly ? 1 : 3 }, () => randomBytes(32).toString('hex')), bearer = actorBearers[0];

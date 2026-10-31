@@ -133,3 +133,13 @@
 额外发现验收判定边界：`created_at`由Worker在提交batch前生成，单凭该时间戳在高峰内、或本机保存窗口与高峰部分重叠，不能证明保存确认在峰值结束前完成。`confirmPeakWrites`现同时要求全部保存请求从发起到确认的时间段完整位于1000人共同活跃窗口，另核对三条服务器时间和三独立会话/同条竞争结果。新增负向用例拒绝“时间戳在内但确认迟到”等情形，3秒标准不变；下一轮公网控制器使用此判定。
 
 监控用量查询对实际9109补有界恢复：复用只读容量info，让Wrangler在CI模式刷新现有OAuth一次后重查；持续失败或网络错误不循环、不弹窗。已有Wrangler4.137.0本地实现确认非交互/CI在无法刷新时直接返回未登录，不启动浏览器。16项维护及4项用量相关测试覆盖参数、一次恢复、持续拒绝和未知用量；没有强制实际令牌过期来做破坏性测试。所有桌面控制继续禁止。网站业务源码本轮未变，不再次部署；仅将维护/验收代码和证据记录提交codex，main不动。
+
+## 23:32巡检发现额度已影响正式接口
+
+原始`.cache/maintenance/report-20261031T153210Z.json`：正式内容HTTP503/JSON/no-store，本轮snapshotComplete=false，不能沿用旧备份成功状态。独立主站响应`api-failure-20261031T1533Z.{json,headers}`为STORAGE_UNAVAILABLE；codex`codex-failure-20261031T1536Z.{json,headers}`明确reason=storage_quota。最新账户小时统计`usage-20261031T1533Z.txt`为5,001,446读行/52,426写行，套餐查询权限仍不足；不能因REST简单查询成功就推断绑定API不受限制。
+
+仅必要的小查询诊断，没有加压或测试写入：codex `SELECT 1`仍成功，main精确读取版本标记仍385，物理34,340,864bytes与之前一致。证据`d1-quota-diagnosis-20261031T1534Z.json`、`main-marker-diagnosis-20261031T1535Z.json`。主站旧分支没有分类reason，配合测试站明确配额错误及账户日量，故障与共享日额度限制一致；没有证据据此宣称内容丢失或物理容量已满，也未完整读取当前私有数据。
+
+本地离线复用维护脚本重核最后完整备份，188条及181图摘要全部通过，原有两个基线删除告警保留。`.cache/maintenance/backup-integrity-offline-20261031T1540Z.json`标明offlineOnly/noNetwork，不当作实时线上健康报告，不覆盖故障报告或原快照。Cloudflare官方说明日限额会使查询失败，UTC午夜重置，存储数据不因此改变：[官方说明](https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/)。北京时间对应11月1日08:00，恢复须再实测。
+
+此前codex压测也消耗同一账户额度，较晚加入的预算保护未能防住这次正式访问受影响。所有云端D1负载仍停止。补充前置`assertProductionReady`：新日预算通过后，还须正式接口恢复、完整公开备份成功、容量测量完成且无新问题/预警，才能创建codex临时会话、188夹具或索引；备份耗时后再次验证许可未过期/跨日。已调查的两个原删除ID仅作为不变告警比对，不更新基线、不擅自恢复。新3项预算/帮助/正式前置及相关25项测试通过，`production-preflight-tests-20261031.txt`；未重复跑全量UI或云端负载。仅提交codex工具和记录，不推main、不改密码密钥、不开付费，不部署临时旧数据充当最新数据。

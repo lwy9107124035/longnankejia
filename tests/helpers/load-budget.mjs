@@ -20,3 +20,14 @@ export function assertLoadPermit(input, expectedRequests, now = Date.now()) {
   if (!Number.isSafeInteger(permit.readEstimate) || permit.readEstimate < 1 || !Number.isSafeInteger(permit.writeEstimate) || permit.writeEstimate < 0) throw Error('Load-test resource estimate is invalid');
   return permit;
 }
+
+export function assertProductionReady(report, alreadyReportedMissingIds = [], now = Date.now()) {
+  if (!report || !recent(report.checkedAt, now) || report.httpStatus !== 200 || report.snapshotComplete !== true || !report.databaseStorage
+      || !Array.isArray(report.warnings) || report.warnings.length || !Array.isArray(report.problems) || !Array.isArray(report.missingIds)) {
+    throw Error('Production health, capacity, or backup is incomplete; shared-account load must not start');
+  }
+  const unknownMissing = report.missingIds.some(id => !alreadyReportedMissingIds.includes(id));
+  if (unknownMissing || report.problems.some(problem => problem !== 'baseline IDs are missing' || !report.missingIds.length)) {
+    throw Error('Production has an unreviewed content problem; shared-account load must not start');
+  }
+}
