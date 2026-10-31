@@ -4,8 +4,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const origin = 'https://codex.longnankejia-dev.pages.dev';
 const report = { at: new Date().toISOString(), origin, purpose: 'anonymous catalog fault diagnosis; no fixtures or writes',
-  requestBudget: 601, realDevices: false, aiCalls: 0, phases: [] };
-for (const users of [1, 100, 500]) {
+  requestBudget: 1601, realDevices: false, aiCalls: 0, phases: [] };
+for (const users of [1, 100, 500, 1000]) {
   const samples = await Promise.all(Array.from({ length: users }, async () => {
     const started = performance.now();
     try {
@@ -24,6 +24,6 @@ for (const users of [1, 100, 500]) {
   if (phase.failures) break;
   await sleep(1000);
 }
-report.pass = report.phases.length === 3 && report.phases.every(p => p.failures === 0);
+report.pass = report.phases.length === 4 && report.phases.every(p => p.failures === 0);
 fs.mkdirSync('.cache', { recursive: true }); fs.writeFileSync('.cache/storage-read-probe.json', JSON.stringify(report, null, 2));
 if (!report.pass) process.exitCode = 1;
