@@ -2,6 +2,8 @@
 
 2026年10月31日，用户要求实际验证iPhone、微信和公众号高并发，随后明确目标约1000人同时使用。
 
+**验收结论：未通过1000人高峰目标，暂不合并main。** 已发布codex的读取和轮询修复，通过171项当前CI自动测试、19项相关管理员测试、8项公开浏览器测试；公网500阶段仍有503，1000阶段没有执行。真实iPhone/微信与真实AI峰值也未验收。失败证据保留，不能将常规回归通过写成全部上线条件通过。
+
 ## 真机条件
 
 本机未检测到连接的iPhone、已配置的真机云账户或可调用的真机工具。用户确认暂时没有设备或真机云账户。证据 `.cache/real-device-preflight-20261031.json`。真实Safari、iOS微信内嵌页和公众号入口仍未验收；WebKit模拟没有改名为真机测试，没有新注册收费服务。
@@ -23,7 +25,7 @@
 
 原始证据：`.cache/live-read-load-load-fixture-4eef32ea265b47c2324e490b.json`、`live-read-load-load-fixture-60f05d8f5643b3374ebcbfd7.json`、`live-read-load-load-fixture-987d81c6d7f173a9097885d1.json`；控制记录为对应`.cache/load-control-*.json`。
 
-## 当前验证及待收尾
+## 前一轮验证记录
 
 - Node208/208，包含访客轮询/重试5项和并发目录快照1项；`.cache/public-load-final-node.txt`。原快照测试修复前409、修复后200且版本/总数/行一致，`catalog-snapshot-before.txt`及`catalog-snapshot-after.txt`。
 - Chrome/WebKit公开读取8/8：短暂409恢复、持续冲突三次停止并显示离线提示、重新加载、手动刷新。`.cache/public-read-browser.txt`。WebKit首次断言早于状态提示刷新，改为等待隐藏完成，未修改业务断言。
@@ -51,3 +53,30 @@
 分页补修将5次串行D1往返减为3次；版本、行和筛选总数在同一batch内读取。多取一条键判断续页，超过字节预算的正文不返回；旧游标跨版本仍409，增量删除仍完整返回。新增2000条删除标记的真实SQLite计划测试发现原查询虽使用kind索引，仍扫描删除标记；增加`admin_content_live`部分索引，保留原索引给增量同步。真实codex空列表相同SELECT扫描1136→1行，SQL时间2.4456→0.5895ms（单次观察，不是性能保证）；证据 `live-index-cloud-{before,apply,after}.txt`。仅codex加索引，未改资料或revision。当前171项CI测试、8项公开浏览器、Functions构建通过，新增大正文逐页完整性断言；管理员相关回归与下一次公网诊断待收尾。
 
 2026-10-31 15:08北京时间查询账户全部D1的UTC当日小时统计：rowsRead=3,395,725、rowsWritten=33,570，统计有延迟，实际套餐未知；`load-account-daily-read-budget.json`。后续读取预算需保留余量，不因压测耗尽正常使用额度，不把滚动24h单库统计冒充账户当日总量。
+
+## 最终公网诊断与数据核对
+
+分页及索引补修业务提交6132dfad8a59446b659a6981c700595451c84a7b，[CI41179545419](https://github.com/lwy9107124035/longnankejia/actions/runs/41179545419)成功，仅部署codex。最终[诊断41179718777](https://github.com/lwy9107124035/longnankejia/actions/runs/41179718777)失败，结果如下；延迟为该阶段全部目标的单请求P95，单位ms。
+
+| HTTP虚拟用户 | 业务读取 | 实际失败 | 主动取消 | P95 | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 6 | 0 | 0 | 656 | 通过 |
+| 10 | 60 | 0 | 0 | 680 | 通过 |
+| 25 | 150 | 0 | 0 | 774 | 通过 |
+| 50 | 300 | 0 | 0 | 1262 | 通过 |
+| 100 | 600 | 0 | 0 | 1865 | 通过 |
+| 250 | 1500 | 0 | 0 | 3099 | 略超3秒目标 |
+| 500 | 1009 | 10 | 499 | 1421 | 目录HTTP503，停止；取消后的延迟不可当作性能通过 |
+| 1000 | 0 | — | — | — | 未执行 |
+
+共3625次业务/HTTP读取，全部来自LAX。没有500个真实服务器错误：10次非取消503、499次主动取消须分开。250阶段改善不代表500故障已解决，也不能将一个运行器的结果当作中国移动网络、真实浏览器渲染或公众号入口表现。原始报告 `.cache/remote-read-load-load-fixture-d218134630d1f7db52a53875/online-read-load-report.json`。
+
+本地写入控制器在该轮高峰中解析响应失败：curl内部重试把多个HTTP响应拼接，原异常与GitHub控制请求失败都保留；云端读取结果独立完整，不受本地断言替代。已将临时控制器GET重试改为逐次独立读取响应，修改不自动重试。本轮确有前期三路保存，但未完成1000峰值写入验证，不借用上轮结果声称本轮峰值协作通过。
+
+确认云端作业已失败结束后，仅清理唯一前缀d218134630d1f7db52a53875；`.cache/live-index-load-cleanup.txt`确认483/0、原凭据不变、会话删除。独立 `.cache/public-load-final-cleanup-check.json`确认所有load-fixture活记录0、测试会话0、live索引存在。
+
+最终 `.cache/storage-final-verification-1793431217694.json`：79个升级前原行digest、密码及邀请码摘要不变，四个关键前端与Git一致；main仍385/188，响应摘要480dc61d78e8b178cd41499cb05e6fe9bbba33436101801a990ed65d12aa4104与发布前逐字相同。main分支仍559ed098f3994eee926d7b5b28e0d6a27077cc3f，本轮无生产写入/DDL/发布，无付费开户或R2。
+
+预览 `.cache/public-load-preview-final-health.json`：200/JSON/no-store、483/0、problems/warnings为空、公开snapshotComplete=true；公开快照没有自定义图片，不能声称私有验收图全部已备份。正文D1实际19,918,848 bytes、图片D1 94,208 bytes。逻辑记录总字节12,616,556包含本轮保留的合成审计历史，不能当作首屏响应或客户正文大小；物理空间/逻辑字节/套餐额度分开判断，套餐仍未知。
+
+停止继续施压。当前可交付的是已验证的codex修复与真实失败报告，仍不满足千人公众号开放条件。下一阶段应先补可分类的服务端故障诊断、公开读取的削峰/缓存或读负载分流，再按原标准复测；管理请求、草稿、凭据和写入回执必须隔离于公开缓存。D1官方说明单库顺序处理查询，读复制需要Sessions API，不能只开选项就假定已扩展：[并发说明](https://developers.cloudflare.com/d1/platform/limits/)、[读复制说明](https://developers.cloudflare.com/d1/best-practices/read-replication/)。本轮没有实现或启用新的缓存、读副本、收费服务。

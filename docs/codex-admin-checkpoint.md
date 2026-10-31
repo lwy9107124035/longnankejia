@@ -352,7 +352,7 @@
 - 3图线上抽查、181个媒体备份摘要核对复用，snapshotComplete=true；无新warning。problems仍仅两个已通知的基线删除ID，退出码1保留旧提醒，不是备份失败。与lastNotified签名和前次内容摘要均一致，未改基线、恢复内容或部署main。
 - notification-state已更新lastObserved，并记录上一人工请求已交付的codex853385c/CI41159524515，避免重复通知同一修复。DONT_NOTIFY；本轮仅本地检查点更新，未提交、推送、变更凭据或运行无关回归。
 
-## 2026-10-31 真机与公众号并发实测（进行中）
+## 2026-10-31 真机与公众号并发实测（codex补修已交付，高峰验收未通过）
 
 - 用户要求实测，后确认目标约1000同时使用；明确暂时无设备/真机云账户。本机Pnp及环境/工具核验亦无可用真机，证据`.cache/real-device-preflight-20261031.json`。真实iPhone/微信/公众号入口未验收，不重复请求同一缺失资源，不把模拟说成真机。不新建聊天/代理、不联系第三方、不自动付费或推main。
 - 实际公网codex已做三轮188条合成资料压力验收，原图引用旧两张合成图，没有新图片写入。首轮308被误判，第二有效轮100并发叠加3写有6个409与99个主动取消（不能称服务器105次失败），第三轮1716次业务读取/1816实际HTTP全部成功，但100阶段P95=6.502s，未通过暂定3s目标。三路保存均成功、同条竞争1成功1冲突；每轮临时条目/会话精确清理，凭据摘要不变，codex最终236/0。全部前缀控制报告保留，main不写。
@@ -367,3 +367,9 @@
 - 初次清理因TLS35未确认成功，单独只读确认本轮188活条目/会话0后，`.cache/detail-load-cleanup-retry.txt`实际全部清理，codex429/0、凭据不变、临时会话移除；没有盲目重放不确定写入。`.cache/live-load-control.mjs`现在GET/SELECT可短重试，修改不自动重试；支持明确前缀CLEANUP_LOAD_PREFIX，清理日志单独保存。main仍200/385/188。
 - 分页进一步改为原子batch并用多一条键检测续页，5→3次D1往返，保留字节限额/旧游标冲突/增量删除；171当前CI Node、公开8项、Functions构建通过，针对管理员回归进行中。新增真实SQLite2000删除标记查询计划测试，旧索引需扫描删除标记，新增live部分索引；codex已经只执行CREATE INDEX，真实同SELECT扫描1136→1行，SQL2.4456→0.5895ms，原记录/历史/revision没有修改。证据live-index-cloud三文件。索引定义加入既有幂等0002迁移，后续main须明确升级时按文件创建，当前main无DDL。
 - 全账户UTC当日小时D1统计`.cache/load-account-daily-read-budget.json`为读取3,395,725/写33,570（15:08北京时间，可能延迟、套餐未知），不是CLI单库24h统计。预计live索引后完整阶梯约数十万行读取；下一轮仍15k HTTP硬预算并故障停止，保留免费5M/日余量，不连续无上限重试。等管理员通过后显式提交分页补修、codex CI和一次云端诊断，最后完整只读核验收尾。
+- 实际分页补修6132dfad8a59446b659a6981c700595451c84a7b已只推codex，[CI41179545419成功](https://github.com/lwy9107124035/longnankejia/actions/runs/41179545419)。当前CI171项、公开浏览器8项、相关管理员19项（含知识/科普/方言、角色、桌面及WebKit冲突、历史分页）、大正文完整逐页断言及Functions构建通过。
+- 最终云端[41179718777](https://github.com/lwy9107124035/longnankejia/actions/runs/41179718777)仍失败，不能合格交付1000目标：1/10/25/50/100并发零失败，P95=656/680/774/1262/1865ms；250零失败但P95=3099ms略超3秒；500在目录发生10次503、499主动取消，自动停止；1000未执行。3625业务/HTTP请求，LAX，原报告`.cache/remote-read-load-load-fixture-d218134630d1f7db52a53875/online-read-load-report.json`。不把主动取消/低延迟误称通过，不继续加压或假定单次结果为服务硬上限。
+- 本地控制器该轮遇curl重试响应拼接JSON失败、GitHub取消控制请求失败，原日志`.cache/live-index-remote-load-run.txt`保留。已确认云端实际结束失败后再清理，临时控制器改为逐次独立GET重试，POST不自动重试。该轮前期独立写入成功，未验证1000峰值协作，不借其他轮结果冒充。本机网络和控制面错误不归因资料丢失。
+- `.cache/live-index-load-cleanup.txt`实际完成唯一前缀清理483/0、凭据不变、会话移除；独立`.cache/public-load-final-cleanup-check.json`确认全部load-fixture活条目0/合成维护会话0/live索引1。保留合成审计/回执/删除标记，没有清空原历史。
+- 最终`.cache/storage-final-verification-1793431217694.json`：79原行digest和password/tokens摘要与最初备份相同，4关键源码匹配；main385/188与原响应逐字相同，main分支559ed098未动。`.cache/public-load-preview-final-health.json`为200/JSON/no-store、483/0、公开snapshotComplete=true、problems/warnings空，正文D1 19,918,848bytes/图片94,208bytes，套餐仍未知。逻辑记录12,616,556bytes含保留的合成审计，不是首屏元数据大小。公开无自定义图，不声称私有合成图完整备份。
+- 本轮停止施压并交付真实未通过结论。仅文档skip ci收尾；不自动推main或开通付费。后续高峰工作先诊断可分类服务端错误，再考虑公开读取削峰/缓存或读负载分流并复测，管理员/草稿/凭据/回执不进公开缓存。真机设备、微信入口和真实AI1000峰值仍缺条件，未验收；不重复询问已确认缺失的设备。详见`docs/public-load-test-2026-10-31.md`。
