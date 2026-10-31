@@ -27,19 +27,25 @@ function cells(content) {
 function setCell(content, key, value) {
   globalThis.HeritageContent.setContentCell(content, key, clone(value));
 }
-export async function applyChanges(current, changes, user, tokens, legacyValue, normalizeValue) {
+export function validateChanges(changes, user) {
   if (!Array.isArray(changes) || !changes.length || changes.length > 10000) throw new Error('请选择需要保存的内容');
-  const next = safeContent(current, tokens), before = globalThis.HeritageContent.contentCells(next);
-  const conflicts = [], accepted = [], seen = new Set();
-  let changed = false;
+  const seen = new Set();
   for (const change of changes) {
-    if (!change || typeof change.key !== 'string' || seen.has(change.key) || !/^[a-f0-9]{64}$/.test(change.baseHash) || !Object.hasOwn(change, 'value')) throw new Error('保存内容格式不正确');
+    if (!change || typeof change.key !== 'string' || seen.has(change.key) || typeof change.baseHash !== 'string' || !/^[a-f0-9]{64}$/.test(change.baseHash) || !Object.hasOwn(change, 'value')) throw new Error('保存内容格式不正确');
     seen.add(change.key);
     if (!change.key.includes('/') && user.role !== 'super_admin') throw new Error('仅管理员可修改设置');
     // Validate the cell key and candidate even when its precondition will conflict.
     const candidate = clone(DEFAULTS);
     globalThis.HeritageContent.setContentCell(candidate, change.key, change.value);
     validateContent(candidate);
+  }
+}
+export async function applyChanges(current, changes, user, tokens, legacyValue, normalizeValue) {
+  validateChanges(changes, user);
+  const next = safeContent(current, tokens), before = globalThis.HeritageContent.contentCells(next);
+  const conflicts = [], accepted = [];
+  let changed = false;
+  for (const change of changes) {
     const value = normalizeValue ? await normalizeValue(change.value) : change.value;
     const actual = before.get(change.key) ?? null;
     await globalThis.HeritageContent.prepareMediaRecord(actual);

@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createAdminBackend } from './helpers/admin-harness.mjs';
+import { createAdminBackend, recoveryFixture } from './helpers/admin-harness.mjs';
 import { startSiteServer } from './helpers/site-server.mjs';
+import { migrateRecordStorage } from '../functions/_lib/admin-records.js';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const playwrightModule = process.env.PLAYWRIGHT_MODULE
@@ -12,7 +13,10 @@ const playwrightModule = process.env.PLAYWRIGHT_MODULE
   : 'playwright';
 const { chromium, webkit } = await import(playwrightModule);
 const chromePath = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const outPath = path.join(root, '.cache/admin-browser-comprehensive-results.json');
+const records = process.argv.includes('--records');
+const separateMedia = process.argv.includes('--separate-media');
+const mode = records ? 'records' + (separateMedia ? '-split-media' : '') : 'snapshot';
+const outPath = path.join(root, '.cache/admin-browser-comprehensive-' + mode + '-results.json');
 const shots = path.join(root, '.cache/test-shots/admin-browser-comprehensive');
 fs.mkdirSync(shots, { recursive: true });
 const only = new Set(process.argv.find(a => a.startsWith('--only='))?.slice(7).split(',').filter(Boolean) || []);
@@ -23,9 +27,10 @@ const groups = [
   ['review-notify-chrome', 'chromium'], ['review-notify-phone', 'webkit'],
   ['lockouts-chrome', 'chromium'], ['lockouts-phone', 'webkit'],
   ['sync-conflict-chrome', 'chromium'], ['sync-conflict-phone', 'webkit'],
-  ['form-conflict-kb', 'chromium'], ['form-conflict-kepu', 'webkit'], ['form-conflict-dialect', 'chromium']
+  ['form-conflict-kb', 'chromium'], ['form-conflict-kepu', 'webkit'], ['form-conflict-dialect', 'chromium'],
+  ...(records ? [['history-pages', 'chromium'], ['system-controls-chrome', 'chromium'], ['system-controls-phone', 'webkit']] : [])
 ].filter(([name]) => !only.size || only.has(name));
-const results = { startedAt: new Date().toISOString(), groups: [], passed: 0, failed: 0 };
+const results = { startedAt: new Date().toISOString(), mode, groups: [], passed: 0, failed: 0 };
 
 async function freePort() {
   const s = net.createServer();
@@ -46,6 +51,12 @@ async function runGroup(name, engineName) {
   results.groups.push(group);
   const password = 'Synthetic-Admin-2026!';
   const backend = createAdminBackend({ password });
+  const images = separateMedia ? createAdminBackend({ schema: 'media' }) : null;
+  if (images) backend.env.ADMIN_MEDIA_DB = images.db;
+  if (records) {
+    backend.sqlite.exec(fs.readFileSync(path.join(root, 'migrations/admin/0002_content_records.sql'), 'utf8'));
+    await migrateRecordStorage(backend.db, { value: name === 'history-pages' ? await recoveryFixture() : structuredClone(globalThis.HeritageContent.defaults), revision: 0 });
+  }
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
   const server = await startSiteServer({ root, port, base, backend });
   let browser, context, page;
@@ -217,6 +228,55 @@ async function runGroup(name, engineName) {
       await page.locator('[data-tab="kb"]').click(); await page.locator('#kbAddBtn').click(); await page.locator('#kbTitle').fill('找回草稿项'); await page.locator('#kbKeywords').fill('draft'); await page.locator('#kbAnswer').fill('draft-answer'); await page.locator('#backupDraftBtn').click();
       await page.locator('#kbCancelBtn').click(); await page.locator('#recoverDraftBtn').click();
       await check('表单草稿找回恢复录入值', async () => assert.equal(await page.locator('#kbTitle').inputValue(), '找回草稿项'));
+    } else if (scenario === 'system-controls') {
+      await page.evaluate(async () => {
+        for (var i = 0; i < 65; i++) window.Store.addEntry({ id: 'reset-fixture-' + i, title: '重置验收' + i, answer: '正文' });
+        window.Store.addHeritageCard({ id: 'reset-keep-card', name: '重置知识库时保留科普' });
+        if (!(await window.Store.flushPending())) throw Error('fixture upload failed');
+      });
+      await page.reload(); await page.waitForFunction(() => window.Store?.getSyncStatus().cloudLoaded); await page.evaluate(() => window.Admin.open());
+      await page.locator('[data-tab="sys"]').click();
+      await page.locator('#resetKBBtn').click();
+      await page.waitForFunction(() => !document.querySelector('#resetKBBtn').disabled && document.querySelector('#adminToast')?.textContent.includes('知识库已重置')); await idle();
+      await check('重置知识库覆盖首屏外65条知识，保留科普', async () => {
+        const state = await actualState(backend, page); assert.equal(state.kbCustom.length, 0);
+        assert.equal(state.kepuCustom.find(row => row.id === 'reset-keep-card').name, '重置知识库时保留科普');
+      });
+      await page.locator('#storageInfoBtn').click(); await page.waitForFunction(() => document.querySelector('#storageInfoText').textContent.includes('独立图片库'));
+      await page.locator('#optimizeImagesBtn').click(); await page.waitForFunction(() => !document.querySelector('#optimizeImagesBtn').disabled && document.querySelector('#adminToast')?.textContent.includes('已整理'));
+      assert.equal(await page.locator('#archiveHistoryBtn').isDisabled(), true);
+      assert.match(await page.locator('#adminBody').textContent(), /当前未启用历史归档，原记录仍保留/);
+      await check('容量与图片整理可用，未启用历史归档时按钮禁用并说明记录保留', async () => {});
+      const peer = (await backend.call({ action: 'login', credential: password, clientId: 'password-peer' })).data;
+      const changedPassword = 'Synthetic-New-Password-2026!';
+      await page.locator('#newPw1').fill(changedPassword); await page.locator('#newPw2').fill(changedPassword);
+      await context.route('**/api/admin/sync', async route => {
+        if (route.request().method() === 'POST' && route.request().postDataJSON().action === 'update_password') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, code: 'STORAGE_UNAVAILABLE', error: 'Synthetic password storage failure' }) });
+        await route.continue();
+      });
+      const failedPassword = page.waitForEvent('dialog', { predicate: dialog => dialog.message().includes('Synthetic password storage failure') });
+      await page.locator('#pwSaveBtn').click(); await failedPassword;
+      assert.equal((await backend.call(null, peer.bearer)).status, 200); assert.equal(await page.locator('#newPw1').inputValue(), changedPassword);
+      await check('修改密码503时旧登录继续有效，表单保留新输入', async () => {});
+      await context.unroute('**/api/admin/sync'); await page.locator('#pwSaveBtn').click();
+      await page.waitForFunction(() => document.querySelector('#newPw1').value === '');
+      assert.equal((await backend.call(null, peer.bearer)).status, 401);
+      assert.equal((await backend.call({ action: 'login', credential: password, clientId: 'old-password' })).status, 401);
+      assert.equal((await backend.call({ action: 'login', credential: changedPassword, clientId: 'new-password' })).status, 200);
+      await check('实际改密后新密码可登录，旧密码与其他超管会话失效', async () => {});
+    } else if (scenario === 'history-pages') {
+      await page.locator('[data-tab="sys"]').click();
+      assert.equal(await page.locator('[data-restore-operation]').count(), 20);
+      await page.locator('#historyNext').click(); await page.waitForFunction(() => document.querySelector('#historyPageText')?.textContent === '第 1 页');
+      assert.equal(await page.locator('[data-restore-operation]').count(), 50);
+      await page.locator('#historyNext').click(); await page.locator('[data-restore-operation="history-op-0"]').waitFor();
+      assert.equal(await page.locator('[data-restore-operation]').count(), 20); assert.equal(await page.locator('#historyNext').isDisabled(), true);
+      await check('历史超过50项时仍可翻到最早记录', async () => {});
+      await page.locator('#historyPrev').click(); await page.waitForFunction(() => document.querySelector('#historyPageText')?.textContent === '第 1 页');
+      assert.equal(await page.locator('[data-restore-operation]').count(), 50);
+      await page.locator('#historyNext').click(); await page.locator('[data-restore-operation="history-op-0"]').click(); await idle();
+      assert.equal((await actualState(backend, page)).kepuCustom.find(row => row.id === 'history-fixture-0').detail, '旧正文');
+      await check('历史上一页可返回，最早记录可通过真实按钮恢复', async () => {});
     } else if (scenario === 'editor-role') {
       // Issue an editor invite through root UI, then redeem through actual invitation flow.
       await page.locator('[data-tab="token"]').click(); await page.locator('#tokName').fill('Synthetic editor'); await page.locator('#tokGenBtn').click();
@@ -235,8 +295,9 @@ async function runGroup(name, engineName) {
         const rootState = await actualState(backend, page);
         const content = Object.fromEntries(['kbCustom','kbEdited','kbDeleted','kepuCustom','kepuEdited','kepuDeleted','dialectCustom','dialectDeleted','apiConfig','workflowConfig'].map(k => [k, rootState[k]]));
         content.workflowConfig = { ...content.workflowConfig, systemPrompt: 'editor attempted' };
-        const denied = await backend.call({ action: 'update_custom_bundle', revision: rootState.revision, ...content }, editorToken);
-        assert.ok(denied.status === 403 || denied.status === 401);
+        const denied = await backend.call(records ? { action: 'update_content', changes: [{ key: 'workflowConfig', value: content.workflowConfig }] }
+          : { action: 'update_custom_bundle', revision: rootState.revision, ...content }, editorToken);
+        assert.equal(denied.status, 403);
         const state = await actualState(backend, editor); assert.notEqual(state.workflowConfig?.systemPrompt, 'editor attempted');
         await check('编辑员UI隐藏超管Tab且AI写入未越权', async () => {});
       } finally { await editorContext.close(); }
@@ -388,6 +449,7 @@ async function runGroup(name, engineName) {
     try { await context?.close(); } catch {}
     try { await browser?.close(); } catch {}
     await new Promise(resolve => server.close(resolve));
+    images?.close();
   }
 }
 

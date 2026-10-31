@@ -4,6 +4,17 @@ import { onRequestGet, onRequestPost, onRequestOptions } from '../../functions/a
 import { onRequestGet as onMedia, onRequestHead as onMediaHead } from '../../functions/api/media/[id].js';
 import { onRequestPost as onUploads } from '../../functions/api/admin/uploads.js';
 
+export async function recoveryFixture(count = 70) {
+  const content = structuredClone(globalThis.HeritageContent.defaults); content._history = [];
+  for (let i = 0; i < count; i++) {
+    const row = { id: 'history-fixture-' + i, name: '历史资料' + i, detail: '新正文' };
+    content.kepuCustom.push(row);
+    content._history.push({ id: 'history-op-' + i, key: 'kepuCustom/' + row.id, title: row.name, kind: '编辑内容', time: i + 1,
+      before: { ...row, detail: '旧正文' }, afterHash: await globalThis.HeritageContent.cellHash(row, true) });
+  }
+  return content;
+}
+
 // Executes the actual migration and handler SQL, rather than replacing SQL with canned results.
 export function createAdminBackend({ password = 'admin123', filename = ':memory:', maxRowBytes = 2000000, schema = 'admin' } = {}) {
   if (!['admin', 'media'].includes(schema)) throw new TypeError('Unknown test database schema');

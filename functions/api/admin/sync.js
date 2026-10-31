@@ -1,8 +1,8 @@
 // Credentials and shared state belong in D1, never in a Worker isolate.
-import { DEFAULTS, validateContent, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
+import { DEFAULTS, validateContent, validateChanges, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 import { storeMedia, migrateD1Media, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
-import { recordsManifest, readRecordState, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
+import { recordsManifest, readRecordState, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
 import { archiveHistoryBefore, expandArchivedHistory } from '../../_lib/admin-history-archive.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
@@ -188,6 +188,12 @@ async function getData(db, request, env) {
   const params = new URL(request.url).searchParams;
   const since = params.get('revision');
   const manifest = await recordsManifest(db);
+  if (manifest && params.get('format') === 'history') {
+    requireSuper(user);
+    const page = await pageRecoveryHistory(db, manifest, params.get('cursor') || '');
+    if ((await recordsManifest(db)).revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请重新打开历史列表');
+    return page;
+  }
   if (manifest && params.get('format') === 'contributions') {
     requireSuper(user);
     return pageContributions(db, manifest, { tokenId: (params.get('tokenId') || '').slice(0, 200), cursor: params.get('cursor') || '' });
@@ -303,6 +309,8 @@ async function postData(db, env, request, body) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const manifest = await recordsManifest(db);
         if (manifest && (!Array.isArray(body.changes) || body.changes.length > 16)) throw new ApiError(400, 'TOO_MANY_CHANGES', '每批最多保存16条，请分批提交');
+        try { validateChanges(body.changes, user); }
+        catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
         const current = manifest ? await readRecordState(db, manifest, body.changes.map(change => change.key)) : await state(db, 'content', DEFAULTS);
         let operation;
         if (manifest && body.operationId) {

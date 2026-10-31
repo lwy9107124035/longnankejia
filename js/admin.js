@@ -2253,6 +2253,12 @@
   function renderSys(body) {
     var isSuper = currentUser && currentUser.role === 'super_admin';
     var history = isSuper ? window.Store.getRecoveryHistory() : [];
+    var mediaReady = !!(window.Store.getCatalog().capabilities || {}).mediaUploads;
+    function historyRows(rows) {
+      return rows.length ? rows.map(function (op) {
+        return '<div class="admin-form-row" style="margin-top:6px"><span style="flex:1">' + esc(op.title) + ' · ' + esc(op.kind) + '</span><button class="admin-btn-sm" data-restore-operation="' + esc(op.id) + '">恢复</button></div>';
+      }).join('') : '<div class="admin-hint">暂无可恢复的历史记录</div>';
+    }
     body.innerHTML =
       (isSuper ?
       '<div class="admin-form-box">' +
@@ -2279,13 +2285,13 @@
 
       (isSuper ? '<div class="admin-form-box" style="margin-top:12px"><div class="admin-form-title">云端历史</div>' +
         '<div class="admin-hint">可恢复有前值的修改和删除；后续已有修改时不会覆盖。</div>' +
-        (history.length ? history.slice(0, 20).map(function (op) {
-          return '<div class="admin-form-row" style="margin-top:6px"><span style="flex:1">' + esc(op.title) + ' · ' + esc(op.kind) + '</span><button class="admin-btn-sm" data-restore-operation="' + esc(op.id) + '">恢复</button></div>';
-        }).join('') : '<div class="admin-hint">暂无可恢复的历史记录</div>') + '</div>' : '') +
+        '<div id="recoveryList">' + historyRows(history.slice(0, 20)) + '</div>' +
+        (window.Store.getCatalog().model === 'records-v1' ? '<div class="admin-form-row" style="margin-top:8px"><button class="admin-btn-sm" id="historyPrev" disabled>上一页</button><span id="historyPageText">最近20项</span><button class="admin-btn-sm" id="historyNext">查看全部历史</button></div>' : '') + '</div>' : '') +
 
       (isSuper ? '<div class="admin-form-box" style="margin-top:12px"><div class="admin-form-title">存储空间</div>' +
-        '<div class="admin-hint">图片独立保存。单张图片、正文快照和服务器套餐仍有容量保护。</div><p id="storageInfoText"></p>' +
-        '<button class="admin-btn-sm" id="storageInfoBtn">查看容量</button> <button class="admin-btn-sm" id="optimizeImagesBtn">整理旧图片</button> <button class="admin-btn-sm" id="archiveHistoryBtn">归档30天前历史</button></div>' : '') +
+        '<div class="admin-hint">图片独立保存，单条内容和总空间仍有上限。</div><p id="storageInfoText"></p>' +
+        '<button class="admin-btn-sm" id="storageInfoBtn">查看容量</button> <button class="admin-btn-sm" id="optimizeImagesBtn">整理旧图片</button> <button class="admin-btn-sm" id="archiveHistoryBtn"' + (mediaReady ? '' : ' disabled') + '>归档30天前历史</button>' +
+        (mediaReady ? '' : '<div class="admin-hint">当前未启用历史归档，原记录仍保留。</div>') + '</div>' : '') +
 
       (isSuper ?
       '<div class="admin-form-box" style="margin-top:12px">' +
@@ -2334,12 +2340,31 @@
         adminAction(async function () { try { var result = await window.Store.archiveHistory(); showAdminToast('本批已归档 ' + result.archived + ' 项，历史仍可恢复'); } finally { button.disabled = false; } });
       });
     }
-    body.querySelectorAll('[data-restore-operation]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        if (!confirm('恢复这项修改之前的版本？已有后续修改时将停止恢复。')) return;
-        adminAction(async function () { await window.Store.restoreOperation(button.dataset.restoreOperation); showAdminToast('已恢复'); renderTab(); });
+    function bindHistoryButtons() {
+      body.querySelectorAll('[data-restore-operation]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          if (!confirm('恢复这项修改之前的版本？已有后续修改时将停止恢复。')) return;
+          adminAction(async function () { await window.Store.restoreOperation(button.dataset.restoreOperation); showAdminToast('已恢复'); renderTab(); });
+        });
       });
-    });
+    }
+    bindHistoryButtons();
+    if ($('#historyNext')) {
+      var historyCursors = [''], historyIndex = -1, historyMore = true;
+      async function openHistoryPage(index) {
+        $('#historyNext').disabled = true; $('#historyPrev').disabled = true;
+        try {
+          var page = await window.Store.loadRecoveryHistoryPage(historyCursors[index]);
+          if (!body.querySelector('#recoveryList')) return;
+          historyIndex = index; historyMore = !!page.cursor; historyCursors[index + 1] = page.cursor;
+          $('#recoveryList').innerHTML = historyRows(page.rows); bindHistoryButtons();
+          $('#historyPageText').textContent = '第 ' + (index + 1) + ' 页'; $('#historyNext').textContent = '下一页';
+        } catch (error) { showAdminToast(error.message); }
+        finally { if (body.querySelector('#historyNext')) { $('#historyNext').disabled = !historyMore; $('#historyPrev').disabled = historyIndex <= 0; } }
+      }
+      $('#historyNext').addEventListener('click', function () { openHistoryPage(historyIndex + 1); });
+      $('#historyPrev').addEventListener('click', function () { openHistoryPage(historyIndex - 1); });
+    }
 
     $('#importBundleBtn').addEventListener('click', function () {
       $('#bundleFileInput').click();

@@ -81,6 +81,21 @@ export async function recordSummaries(db, manifest, tokens) {
   return { auditLogs: safeAudit({ auditLogs: logs.results.map(row => JSON.parse(row.value)) }, tokens), recovery: history.results };
 }
 
+export async function pageRecoveryHistory(db, manifest, cursor = '') {
+  let before = Number.MAX_SAFE_INTEGER;
+  if (cursor) {
+    const parts = cursor.split('.');
+    if (cursor.length > 200 || parts.length !== 3 || !/^\d+$/.test(parts[1]) || !/^\d+$/.test(parts[2]) || !Number.isSafeInteger(Number(parts[2]))) throw new RecordError(400, 'INVALID_CURSOR', '历史分页标记不正确');
+    if (parts[0] !== manifest.generation || Number(parts[1]) !== manifest.revision) throw new RecordError(409, 'PAGE_CHANGED', '内容已更新，请重新打开历史列表');
+    before = Number(parts[2]);
+  }
+  const { results } = await db.prepare("SELECT rowid AS position,json_extract(value,'$.id') AS id,json_extract(value,'$.title') AS title,json_extract(value,'$.kind') AS kind,json_extract(value,'$.time') AS time FROM admin_content_items WHERE generation=? AND kind='_history' AND COALESCE(json_extract(value,'$.undone'),0)=0 AND json_type(value,'$.before') IS NOT NULL AND json_type(value,'$.before')!='null' AND rowid<? ORDER BY rowid DESC LIMIT 51")
+    .bind(manifest.generation, before).all();
+  const rows = results.slice(0, 50);
+  return { ok: true, revision: manifest.revision, rows: rows.map(({ position, ...row }) => row),
+    cursor: results.length > 50 ? manifest.generation + '.' + manifest.revision + '.' + rows.at(-1).position : '' };
+}
+
 export async function recordMetadata(db, manifest, user, tokens) {
   if (!user) return {};
   const root = user.role === 'super_admin';

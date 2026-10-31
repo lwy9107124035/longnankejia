@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { startSiteServer } from './helpers/site-server.mjs';
 import { runSecurityRegression } from './helpers/browser-security.mjs';
 import { runCollaborationRegression } from './helpers/browser-collaboration.mjs';
+import { createAdminBackend } from './helpers/admin-harness.mjs';
+import { migrateRecordStorage } from '../functions/_lib/admin-records.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = path.join(ROOT, '.cache', 'test-shots');
@@ -43,7 +45,15 @@ function check(name, ok, detail = '') {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ------------------------------------------------------------------ server */
-function startServer() { return startSiteServer({ root: ROOT, port: PORT, base: BASE }); }
+async function startServer() {
+  if (!process.argv.includes('--current-storage')) return startSiteServer({ root: ROOT, port: PORT, base: BASE });
+  const backend = createAdminBackend(), images = createAdminBackend({ schema: 'media' });
+  backend.env.ADMIN_MEDIA_DB = images.db;
+  backend.sqlite.exec(fs.readFileSync(path.join(ROOT, 'migrations/admin/0002_content_records.sql'), 'utf8'));
+  await migrateRecordStorage(backend.db, { value: structuredClone(globalThis.HeritageContent.defaults), revision: 0 });
+  const server = await startSiteServer({ root: ROOT, port: PORT, base: BASE, backend });
+  server.on('close', () => images.close()); return server;
+}
 
 /* --------------------------------------------------------------------- cdp */
 class Page {

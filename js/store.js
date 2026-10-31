@@ -494,7 +494,9 @@
     var key = field + '/' + id, schema = globalThis.HeritageContent;
     var local = schema.contentCells(bundle()).get(key);
     if (catalog.model !== 'records-v1' || catalog.summaries.indexOf(key) < 0) return local || null;
+    var startedGeneration = generation;
     var data = await cloudRequest(null, false, undefined, { format: 'record', key: key }), row = data.rows[0];
+    if (generation !== startedGeneration || data.revision < cloudRevision) throw new Error('资料已更新，请重新打开；本机草稿已保留');
     var remote = copy(cloudBase || schema.defaults); schema.setContentCell(remote, key, row.value);
     remote.revision = cloudRevision;
     catalog.hashes[key] = row.hash; catalog.summaries = catalog.summaries.filter(function (value) { return value !== key; });
@@ -522,7 +524,7 @@
   }
   async function prepareExport(fields) {
     if (catalog.model !== 'records-v1') return;
-    var schema = globalThis.HeritageContent, remote = copy(cloudBase || schema.defaults), startedRevision = cloudRevision;
+    var schema = globalThis.HeritageContent, remote = copy(cloudBase || schema.defaults), startedRevision = cloudRevision, startedGeneration = generation;
     fields = fields || Object.keys(CONTENT_KEYS);
     if (fields.every(function (field) { return !catalog.pages[field] && !catalog.summaries.some(function (key) { return key.split('/')[0] === field; }); })) return;
     var hashes = Object.assign({}, catalog.hashes), summaries = new Set(catalog.summaries);
@@ -530,7 +532,7 @@
       var cursor = '';
       do {
         var page = await cloudRequest(null, false, undefined, { format: 'records', field: field, cursor: cursor });
-        if (page.revision !== startedRevision) throw new Error('读取备份期间有新内容，请同步后重新导出');
+        if (page.revision !== startedRevision || cloudRevision !== startedRevision || generation !== startedGeneration) throw new Error('读取备份期间有新内容，请同步后重新导出');
         page.rows.forEach(function (row) {
           schema.setContentCell(remote, row.key, row.value); hashes[row.key] = row.hash; summaries.delete(row.key);
         });
@@ -601,6 +603,7 @@
       startedGeneration = generation; local = bundle();
       await globalThis.HeritageContent.prepareMediaBundle(local);
     } while (generation !== startedGeneration);
+    if (cloudRevision !== null && latest.revision < cloudRevision) throw new Error('资料已更新，旧响应已忽略，请重新同步');
     var merged = mergeBundles(base, local, latest, conflicts);
     Object.keys(CONTENT_KEYS).forEach(function (key) { write(CONTENT_KEYS[key], merged[key]); });
     cloudBase = copy(Object.fromEntries(Object.keys(CONTENT_KEYS).map(function (key) { return [key, latest[key] || (OBJECT_KEYS.indexOf(key) >= 0 ? {} : [])]; })));
@@ -614,7 +617,12 @@
     var schema = globalThis.HeritageContent, before = schema.contentCells(cloudBase), after = schema.contentCells(bundle());
     return Array.from(new Set(Array.from(before.keys()).concat(Array.from(after.keys())))).filter(function (key) {
       return schema.comparable(before.get(key)) !== schema.comparable(after.get(key));
-    }).map(function (key) { return { key: key, before: Object.prototype.hasOwnProperty.call(editBases, key) ? editBases[key] : before.get(key), baseHash: editHashes[key] || (catalog.model === 'records-v1' ? catalog.hashes[key] : undefined), value: after.get(key) === undefined ? null : after.get(key) }; });
+    }).map(function (key) {
+      var explicitBase = Object.prototype.hasOwnProperty.call(editBases, key);
+      return { key: key, before: explicitBase ? editBases[key] : before.get(key),
+        baseHash: editHashes[key] || (catalog.model === 'records-v1' && !explicitBase ? catalog.hashes[key] : undefined),
+        value: after.get(key) === undefined ? null : after.get(key) };
+    });
   }
   function savedStatus() {
     if (pending && conflictKeys.length) setSyncStatus('conflict', conflictKeys.length + ' 条草稿需核对，其余内容已同步。');
@@ -1462,6 +1470,7 @@
     exportFullBundle: exportFullBundle,
     exportFullBundleWithMedia: exportFullBundleWithMedia,
     getRecoveryHistory: function () { return recoveryRows.slice(); },
+    loadRecoveryHistoryPage: function (cursor) { return cloudRequest(null, false, undefined, { format: 'history', cursor: cursor || '' }); },
     restoreOperation: function (id) { return moderate({ action: 'restore_operation', operationId: id }); },
     getStorageInfo: function () { return cloudRequest({ action: 'storage_info' }); },
     archiveHistory: function () { return moderate({ action: 'archive_history' }); },

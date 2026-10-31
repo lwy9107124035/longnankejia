@@ -78,6 +78,7 @@ export async function runCollaborationRegression({ page, Page, BASE, CDP_PORT, R
     await migration.send('Page.navigate', { url: BASE + '/index.html' });
     await until(migration, 'document.readyState==="complete"&&!!window.Store');
     await migration.evaluate('window.Store.syncWithCloud()', true);
+    await migration.evaluate('window.Store.prepareExport()', true);
     await migration.evaluate("(()=>{const current=JSON.parse(window.Store.exportFullBundle()).cloudDraft;for(const [field,key] of Object.entries({kbCustom:'nfyj_kb_custom',kbEdited:'nfyj_kb_edited',kbDeleted:'nfyj_kb_deleted',kepuCustom:'nfyj_kepu_custom',kepuEdited:'nfyj_kepu_edited',kepuDeleted:'nfyj_kepu_deleted',dialectCustom:'nfyj_dialect_custom',dialectDeleted:'nfyj_dialect_deleted',apiConfig:'nfyj_api_config',workflowConfig:'nfyj_workflow_config'}))localStorage.setItem(key,JSON.stringify(current[field]));localStorage.setItem('nfyj_cloud_base',JSON.stringify(current));localStorage.setItem('nfyj_kepu_custom',JSON.stringify(current.kepuCustom.concat([{id:'legacy-unsent',name:'旧版从未上传的资料'}])));localStorage.setItem('nfyj_cloud_revision',JSON.stringify(window.Store.getSyncStatus().revision));localStorage.setItem('nfyj_cloud_pending','true');sessionStorage.removeItem('nfyj_draft_pointer');})()");
     await migration.send('Page.addScriptToEvaluateOnNewDocument', { source: offline });
     await reloadPage(migration); await migration.evaluate('window.Store.ready', true);

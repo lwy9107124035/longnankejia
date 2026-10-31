@@ -329,3 +329,15 @@
 - 最终独立只读`.cache/free-media-final-readonly-1793411401034.json`：79原行digest及原password/tokens摘要和revision一致，temporaryRecords/maintenanceSessions均0；Pages实际绑定ADMIN_DB=f5原库、ADMIN_MEDIA_DB=7704新库，main=317原库且无新媒体库绑定。账户现3个D1库；仅保守按免费每库500MB/账户5GB规划，实际套餐仍未知，不把清单file_size刷新延迟当精确合计。
 - `.cache/free-media-data-verification.txt`验证四关键前端源码与已部署提交一致，main385/188公开响应与发布前逐字一致。该检查并发于临时验收，codex80/1为过程值，不能当最终内容；后续稳定巡检`.cache/free-media-preview-health.json`为82/0、31,772元数据bytes、正文库1,433,600bytes、图片库94,208bytes，HTTP200/JSON/no-store、problems/warnings空、snapshotComplete=true。公开备份不包含私有合成图片历史，未声称全库私有备份完成。
 - 本轮免费升级已发布并验收，仅补充文档skip ci推codex收尾；main仍559ed098f3994eee926d7b5b28e0d6a27077cc3f，未改正式内容、密码、邀请码、API密钥、账单或订阅。R2继续关闭；真实iOS/微信、公网峰值、大音视频上传仍不是本次验收范围，不重复运行无关规模回归。用户可从原地址.html进入codex，链接无需因本次升级修改。
+
+## 2026-10-31 客户与测试工程师双视角复查（codex收尾中）
+
+- 用户要求详细审查后再自行决定提交main。本轮仍主代理完成，未启用子代理、未创建新聊天或联系第三方。起点codex34f4945，main559ed09；原用户未跟踪材料未动。
+- 基线195项与完整前台320项先通过，但将管理员套件切换当前records-v1＋独立图片库后，实际捕获P1旧新建表单清理失败再恢复会借新目录hash覆盖同事，三类型均复现。changedCells明确旧表单基准，无hash时不借新目录hash；3类Node和浏览器复验通过。
+- 主动慢网测试又捕获迟到的详情/导出响应覆盖本机新正文、媒体hash等待中的合并使已确认revision2→1。修复前失败日志分别`release-audit-read-races-before.txt`、`release-audit-merge-race-before.txt`；已在读入和合并阶段防旧响应，新增3项均通过。未把服务器仍存新值的缓存问题说成服务器丢失。
+- 其余修复：畸形批次SQL前复用validateChanges，400且原内容/版本/图片不变；历史分页越过原20/50界限，70条无重复、最早可恢复、旧分页409，匿名/编辑员403、不输出before；未启用R2时归档按钮禁用并说明原历史保留。新增`tests/release-readiness.test.mjs`7项加入CI，不改真实凭据。
+- 当前最终Node202/202（`.cache/release-audit-final-node.txt`）、最终前台320/320、当前模式管理员46项（新增系统按钮8项也通过，完整54项仍在最后一次运行）、同邀请码三人当前模式17/17、双库页面10/10、真实客户副本页面6/6通过；静态、3负向、Functions构建通过。真实失败及夹具原因见`docs/release-review-2026-10-31.md`。
+- main只读迁移预检`.cache/release-audit-main-dryrun.txt`：385/chunks-v1、767行。私有内容与凭据摘要备份`.cache/release-audit-main-backup/records-main-readonly-rev385-1793412062378-b34c63f0-9849-42ea-8bd3-6fa438c6b712.json`，不含密码/tokens明文行。本地副本受版本保护迁移767行、公开188条/181图（24,620,629bytes）便携备份→另一空双库恢复逐项核对通过；`.cache/release-audit-production-rehearsal.json`。源main没有写入；public恢复不声称包含私有历史。
+- 客户副本浏览器Chrome/WebKit统计188、两页各50不重复、矮守围搜索/正文/旧图/后台表单全通过；截图`release-customer-chromium.png`、`release-customer-webkit.png`目视通过，非真实苹果设备。初次截图淡入未结束，已等动画结束重拍。
+- 下一步：等当前管理员全54项结果；显式stage本轮修复/测试/报告与检查点，只推codex；确认CI后核对部署源码，临时会话只读历史/恶意输入400拒绝（不改内容），会话精确删除；再核对原79行与凭据、codex82/0、main385/188与原响应、双库容量。不要重跑真实图片写入或一万图规模测试。main升级仍需单独媒体库配置及按新revision迁移，不能直接复制codex库；本轮不自动执行。
+- 最终完整当前模式管理员已54/54通过（`.cache/release-audit-admin-final.txt`），双库页面10/10通过。最后补严baseHash只允许字符串（数组隐式转换不接受），属于同一非法批次校验；CI及最终Node再验证，其他已通过的完整前台/客户副本流程不重复运行。
