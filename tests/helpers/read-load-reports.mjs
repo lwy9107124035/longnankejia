@@ -6,6 +6,13 @@ function peakCount(intervals) {
   const events = intervals.flatMap(([start, end]) => [[start, 1], [end, -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   let active = 0, peak = 0; for (const [, delta] of events) { active += delta; peak = Math.max(peak, active); } return peak;
 }
+export function confirmPeakWrites(report, windows, serverTimes) {
+  const start = Date.parse(report.allUsersActiveFrom), end = Date.parse(report.allUsersActiveUntil), window = windows[0];
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start && windows.length === 1
+    && window.actors === 3 && window.accepted === 3 && window.sameRecordAccepted === 1 && window.sameRecordConflict === 1
+    && Date.parse(window.startedAt) >= start && Date.parse(window.finishedAt) <= end && Date.parse(window.finishedAt) >= Date.parse(window.startedAt)
+    && serverTimes.length === 3 && serverTimes.every(time => Date.parse(time) >= start && Date.parse(time) <= end);
+}
 export function aggregateReadLoads(reports, { staticOnly = false } = {}) {
   assert.equal(reports.length, 4, 'all four generators are required');
   assert.deepEqual(reports.map(r => r.shard).sort(), [0, 1, 2, 3]);

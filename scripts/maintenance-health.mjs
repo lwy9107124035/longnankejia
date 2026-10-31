@@ -33,7 +33,8 @@ export async function readDatabaseCapacity(database, { run = executeFile } = {})
   const args = windows ? ['/d', '/s', '/c', `wrangler d1 info ${database} --json`] : ['d1', 'info', database, '--json'];
   let stdout;
   try {
-    ({ stdout } = await run(command, args, { timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true }));
+    ({ stdout } = await run(command, args, { timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true,
+      env: { ...process.env, CI: 'true', BROWSER: 'none', WRANGLER_SEND_METRICS: 'false' } }));
   } catch {
     throw new Error('D1 capacity unavailable; check Wrangler installation and authorization');
   }

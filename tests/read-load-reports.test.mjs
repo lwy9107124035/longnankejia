@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateReadLoads } from './helpers/read-load-reports.mjs';
+import { aggregateReadLoads, confirmPeakWrites } from './helpers/read-load-reports.mjs';
 
 test('distributed acceptance requires complete synchronized journeys, matching images and all reports without relaxing latency', () => {
   const start = '2026-10-31T08:00:00.000Z', end = '2026-10-31T08:00:01.000Z';
@@ -25,4 +25,16 @@ test('distributed acceptance requires complete synchronized journeys, matching i
     startedAt: '2026-10-31T08:00:00.200Z', finishedAt: '2026-10-31T08:00:00.300Z' }));
   const staggered = aggregateReadLoads(staticReports, { staticOnly: true });
   assert.equal(staggered.concurrentUsers, 750); assert.equal(staggered.pass, false);
+});
+
+test('peak saves require confirmed responses within the full overlap, not just timestamps prepared before committing', () => {
+  const report = { allUsersActiveFrom: '2026-11-01T00:00:00.000Z', allUsersActiveUntil: '2026-11-01T00:00:01.000Z' };
+  const window = { startedAt: '2026-11-01T00:00:00.100Z', finishedAt: '2026-11-01T00:00:00.900Z', actors: 3, accepted: 3, sameRecordAccepted: 1, sameRecordConflict: 1 };
+  const times = ['2026-11-01T00:00:00.200Z', '2026-11-01T00:00:00.300Z', '2026-11-01T00:00:00.400Z'];
+  assert.equal(confirmPeakWrites(report, [window], times), true);
+  for (const change of [{ finishedAt: '2026-11-01T00:00:01.001Z' }, { startedAt: '2026-10-31T23:59:59.999Z' }, { finishedAt: '2026-11-01T00:00:00.099Z' }, { finishedAt: 'invalid' }, { actors: 2 }]) {
+    assert.equal(confirmPeakWrites(report, [{ ...window, ...change }], times), false);
+  }
+  assert.equal(confirmPeakWrites(report, [window], times.slice(1)), false);
+  assert.equal(confirmPeakWrites(report, [window], [...times.slice(1), '2026-11-01T00:00:01.001Z']), false);
 });

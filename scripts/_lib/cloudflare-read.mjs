@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { curlConfiguration, readWranglerToken, TARGETS } from '../migrate-content-records.mjs';
+import { readDatabaseCapacity } from '../maintenance-health.mjs';
 
 export async function cloudflareRead(apiPath, body) {
   if (!apiPath.startsWith('/') || body && (apiPath !== '/graphql' || !/^query\b/.test(body.query || ''))) throw Error('Only Cloudflare metadata GETs and analytics queries are allowed');
@@ -19,12 +20,21 @@ export async function cloudflareRead(apiPath, body) {
   return body ? result : result.result;
 }
 
-export async function getProjectAccount({ accountId = process.env.CLOUDFLARE_ACCOUNT_ID, read = cloudflareRead } = {}) {
-  const accounts = accountId ? [{ id: accountId }] : await read('/accounts');
-  for (const account of accounts) {
-    if (!/^[a-f0-9]{32}$/i.test(account.id || '')) throw Error('Cloudflare account identifier is invalid');
-    try { const database = await read('/accounts/' + account.id + '/d1/database/' + TARGETS.codex.id); if (database.uuid === TARGETS.codex.id) return account.id; }
-    catch (error) { if (!/10000|7404/.test(error.message)) throw error; }
+export async function getProjectAccount({ accountId = process.env.CLOUDFLARE_ACCOUNT_ID, read = cloudflareRead, refresh = readDatabaseCapacity } = {}) {
+  async function locate() {
+    const accounts = accountId ? [{ id: accountId }] : await read('/accounts');
+    for (const account of accounts) {
+      if (!/^[a-f0-9]{32}$/i.test(account.id || '')) throw Error('Cloudflare account identifier is invalid');
+      try { const database = await read('/accounts/' + account.id + '/d1/database/' + TARGETS.codex.id); if (database.uuid === TARGETS.codex.id) return account.id; }
+      catch (error) { if (!/10000|7404/.test(error.message)) throw error; }
+    }
+    throw Error('Cloudflare authorization for the codex database is unavailable');
   }
-  throw Error('Cloudflare authorization for the codex database is unavailable');
+  try { return await locate(); }
+  catch (error) {
+    if (!/^Cloudflare read rejected: (?:\d+,)*9109(?:,\d+)*$/.test(error.message)) throw error;
+    // Wrangler can refresh existing OAuth in CI mode; it must never start a browser login.
+    await refresh(TARGETS.codex.id);
+    return locate();
+  }
 }

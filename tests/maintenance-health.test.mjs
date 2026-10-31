@@ -187,6 +187,7 @@ test('physical D1 size uses read-only info and does not claim an account quota',
   const capacity = await readDatabaseCapacity('synthetic-db', { run: async (command, args, options) => {
     assert.ok([command, ...args].join(' ').includes('d1 info synthetic-db --json'));
     assert.equal(options.windowsHide, true);
+    assert.equal(options.env.CI, 'true'); assert.equal(options.env.BROWSER, 'none'); assert.equal(options.env.WRANGLER_SEND_METRICS, 'false');
     return { stdout: JSON.stringify({ name: 'synthetic-db', database_size: 17_000_000 }) };
   } });
   assert.equal(capacity.sizeBytes, 17_000_000); assert.equal(capacity.planLimitBytes, null);

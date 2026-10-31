@@ -140,3 +140,60 @@ test('real Worker contexts can share parsed catalog data without sharing request
     assert.equal(Object.hasOwn(data, 'tokens'), false);
   }
 });
+
+test('one thousand isolated Worker reads preserve three same-invitation editors saves and conflicting-operation receipts', { timeout: 60000 }, async t => {
+  const runtime = await createMediaRuntime(t, { api: true }), schema = globalThis.HeritageContent;
+  const content = structuredClone(schema.defaults);
+  content.kepuCustom = Array.from({ length: 188 }, (_, i) => ({ id: 'local-peak-' + i, name: '隔离资料' + i, detail: '合成正文\n'.repeat(350) }));
+  const manifest = await migrateRecordStorage(runtime.db, { value: content, revision: 0 });
+  async function call(body, bearer) {
+    const response = await runtime.fetch('http://localhost/api/admin/sync', { method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(bearer && { Authorization: 'Bearer ' + bearer }) }, body: JSON.stringify(body) });
+    assert.equal(response.status, 200); return response.json();
+  }
+  const root = await call({ action: 'login', credential: 'admin123', clientId: 'local-peak-root' });
+  const invite = (await call({ action: 'create_token', name: '隔离三人同邀请码', days: 1 }, root.bearer)).token;
+  const editors = [];
+  for (let i = 0; i < 3; i++) editors.push(await call({ action: 'login', credential: invite.token, clientId: 'local-peak-editor-' + i }));
+  assert.equal(new Set(editors.map(editor => editor.bearer)).size, 3); assert.ok(editors.every(editor => editor.role === 'editor' && editor.tokenId === invite.id));
+  const originalHashes = await Promise.all(content.kepuCustom.slice(0, 4).map(row => schema.cellHash(row)));
+  const bodies = Array.from({ length: 5 }, (_, i) => {
+    const index = Math.min(i, 3), row = content.kepuCustom[index];
+    return { action: 'update_content', operationId: 'local-peak-operation-' + i,
+      changes: [{ key: 'kepuCustom/' + row.id, baseHash: originalHashes[index], value: { ...row, tag: '同邀请码并发保存' + i } }] };
+  });
+  let finishedReads = 0, privacyChecks = 0, lastReadFinishedAt;
+  const firstReadStartedAt = Date.now();
+  const reads = Array.from({ length: 1000 }, async () => {
+    const response = await runtime.fetch('http://localhost' + catalog); assert.equal(response.status, 200);
+    const data = await response.json(); assert.equal(data.counts.kepuCustom, 188); assert.equal(new Set(data.kepuCustom.map(row => row.id)).size, 50);
+    for (const field of ['tokens', 'session', 'auditLogs', 'recovery', 'notifications']) assert.equal(Object.hasOwn(data, field), false);
+    privacyChecks++; finishedReads++; lastReadFinishedAt = Date.now();
+  });
+  const unfinishedAtWriteStart = 1000 - finishedReads; assert.ok(unfinishedAtWriteStart > 0);
+  let writesAcknowledgedAt;
+  const saving = Promise.all(bodies.map((body, i) => call(body, editors[i % 3].bearer))).then(replies => { writesAcknowledgedAt = Date.now(); return replies; });
+  const [saved] = await Promise.all([saving, Promise.all(reads)]);
+  assert.equal(privacyChecks, 1000);
+  assert.ok(saved.slice(0, 3).every(reply => reply.accepted.length === 1));
+  assert.equal(saved.slice(3).reduce((n, reply) => n + reply.accepted.length, 0), 1); assert.equal(saved.slice(3).reduce((n, reply) => n + reply.conflicts.length, 0), 1);
+  const confirmations = await runtime.db.prepare('SELECT owner,value,created_at FROM admin_content_receipts WHERE generation=? ORDER BY id').bind(manifest.generation).all();
+  assert.equal(confirmations.results.length, 5); assert.ok(confirmations.results.every(row => row.owner === invite.id));
+  const serverWritesDuringReadWindow = confirmations.results.slice(0, 3).filter(row => row.created_at >= firstReadStartedAt && row.created_at <= lastReadFinishedAt).length;
+  assert.equal(serverWritesDuringReadWindow, 3); assert.ok(writesAcknowledgedAt <= lastReadFinishedAt, 'all five save responses must arrive while reads are still in progress');
+  for (const [i, body] of bodies.entries()) {
+    const replay = await call(body, editors[i % 3].bearer); assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.accepted, saved[i].accepted); assert.deepEqual(replay.conflicts, saved[i].conflicts);
+  }
+  const final = await (await runtime.fetch('http://localhost' + catalog + '&revision=1')).json();
+  for (let i = 0; i < 3; i++) {
+    const response = await runtime.fetch('http://localhost/api/admin/sync?format=record&key=kepuCustom/local-peak-' + i);
+    assert.equal(response.status, 200); const detail = await response.json();
+    assert.equal(detail.rows[0].value.tag, '同邀请码并发保存' + i); assert.equal(detail.rows[0].value.detail, content.kepuCustom[i].detail);
+  }
+  assert.equal(final.counts.kepuCustom, 188);
+  assert.equal((await runtime.db.prepare("SELECT COUNT(*) AS count FROM admin_content_items WHERE generation=? AND kind='_history'").bind(manifest.generation).first()).count, 4);
+  t.diagnostic(JSON.stringify({ localOnly: true, realWorkerRuntime: true, reads: finishedReads, unfinishedAtWriteStart, independentEditorSessions: 3, invitationCount: 1,
+    independentSaves: 3, conflictAccepted: 1, conflictRejected: 1, receiptReplays: 5,
+    serverWritesDuringReadWindow, saveAcknowledgementsDuringReads: writesAcknowledgedAt <= lastReadFinishedAt }));
+});

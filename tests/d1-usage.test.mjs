@@ -25,3 +25,20 @@ test('the usage account must contain the codex database instead of selecting the
   const config = curlConfiguration('https://api.cloudflare.com/client/v4/accounts', 'synthetic-auth', undefined, 'GET');
   assert.match(config, /request = "GET"/); assert.doesNotMatch(config, /\ndata =/);
 });
+
+test('expired monitoring authorization refreshes once through read-only Wrangler info before retrying account discovery', async () => {
+  const account = 'b'.repeat(32); let refreshed = 0, checks = 0;
+  const result = await getProjectAccount({ accountId: '', read: async path => {
+    if (path === '/accounts') { checks++; if (!refreshed) throw Error('Cloudflare read rejected: 9109'); return [{ id: account }]; }
+    return { uuid: TARGETS.codex.id };
+  }, refresh: async id => { assert.equal(id, TARGETS.codex.id); refreshed++; } });
+  assert.equal(result, account); assert.equal(refreshed, 1); assert.equal(checks, 2);
+});
+
+test('unrecoverable or unrelated monitoring failures stop instead of repeatedly refreshing or starting login', async () => {
+  for (const message of ['Cloudflare read rejected: 9109', 'Cloudflare read transport was not confirmed']) {
+    let refreshed = 0, checks = 0;
+    await assert.rejects(getProjectAccount({ accountId: '', read: async () => { checks++; throw Error(message); }, refresh: async () => { refreshed++; } }), error => error.message === message);
+    assert.equal(refreshed, message.endsWith('9109') ? 1 : 0); assert.equal(checks, refreshed + 1);
+  }
+});

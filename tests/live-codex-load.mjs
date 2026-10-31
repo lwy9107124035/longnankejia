@@ -8,7 +8,7 @@ import { readD1Usage } from '../scripts/d1-usage.mjs';
 import { createRestDatabase, remoteRequest } from '../scripts/migrate-content-records.mjs';
 import '../js/content-schema.js';
 import { createLoadPermit } from './helpers/load-budget.mjs';
-import { aggregateReadLoads } from './helpers/read-load-reports.mjs';
+import { aggregateReadLoads, confirmPeakWrites } from './helpers/read-load-reports.mjs';
 if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run\nCodex only. Requires Wrangler OAuth, gh login and a fresh account-wide D1 budget. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.deepEqual(process.argv.slice(2), ['--run'], 'Only --run or --help is supported');
 const account = await getProjectAccount();
@@ -144,10 +144,10 @@ async function remoteLoad(revision, initial) {
   const confirmations = await db.prepare("SELECT created_at FROM admin_content_receipts WHERE generation=(SELECT json_extract(value,'$.generation') FROM admin_state WHERE key='content') AND id IN (?,?,?)").bind(...operations).all();
   result.concurrentWrites.serverWriteTimes = confirmations.results.map(row => new Date(row.created_at).toISOString());
   assert.equal(result.concurrentWrites.serverWriteTimes.length, 3);
-  const writesInsidePeak = result.concurrentWrites.serverWriteTimes.every(time => time >= report.allUsersActiveFrom && time <= report.allUsersActiveUntil);
+  result.concurrentWrites.confirmedDuringFullPeak = confirmPeakWrites(report, writes, result.concurrentWrites.serverWriteTimes);
   const persisted = new Map((await rows()).map(row => [row.key, row]));
   assert.ok(ids.slice(0, 3).every(id => persisted.get('kepuCustom/' + id)?.value.tag === '三会话峰值写入'));
-  report.pass &&= result.concurrentWrites.peakOverlaps === 1 && writesInsidePeak;
+  report.pass &&= result.concurrentWrites.confirmedDuringFullPeak;
   report.requests = reports.reduce((total, r) => total + r.requests, 0);
   report.phases = [{ users: 1000, requests: report.peakRequests, failures: report.failures, p95Ms: report.p95Ms, pass: report.pass }];
   report.concurrentWrites = result.concurrentWrites;
