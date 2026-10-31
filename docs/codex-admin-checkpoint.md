@@ -409,3 +409,9 @@
 - 新UUID巡检命令暴露本地容量校验器仍以`info.name`匹配输入UUID，产生误报，不是D1容量或授权故障。已新增有效UUID/大小写/错库拒绝回归，修复前红、后16/16（`uuid-capacity-{before,after}.txt`）；仅改维护CLI及测试。实际Wrangler UUID响应已独立核验物理34,340,864bytes、套餐仍未知，原始`capacity-uuid-20261031T0938Z.json`及修复后`capacity-uuid-fixed-20261031T0939Z.json`，不再重复请求整站。
 - 完整原始健康报告未改写；追加`report-20261031T093653Z-capacity-verified.json`补充真实容量验证时间和来源，同时更新latest。warnings清空、problems仍只有两个已通知缺条，通知签名与lastNotified一致；notification-state更新lastObserved并记录已交付4088892/CI41188889701/静态41188908756，避免重复通知。无数据库负载、fixture、索引、凭据或main修改，不重跑无关全量测试。
 - 当前综合验收仍待**2026-11-01T00:00Z后**新日预算：先`node scripts/d1-usage.mjs`，再受保护`node tests/live-codex-load.mjs --run`，完整下一步及禁令沿用上一节。静态四机已通过不再重复跑；微信安全提示待用户本人继续、真实iPhone无设备和真实AI额度未确认不能冒称通过。本次仅维护脚本修复/测试/检查点skip ci推codex，网站不重新部署。业务无新可操作变化，DONT_NOTIFY。
+
+## 2026-10-31 用户禁止操作电脑（持续生效）
+
+- 用户反馈找不到之前“继续访问”。重新list_apps/list_windows只见微信主窗口，原WeChatAppEx网页窗口已经关闭。单次尝试启动已安装的原组件路径后工具报`launched app did not expose a targetable window`，再次列窗仍只见微信主窗口；没有进一步点击/键入/安全绕过。随后用户截图显示WeChatAppEx缺少`xweb_elf.dll`系统弹窗，属于本次单独启动组件触发的本地启动失败，不能当作网站服务器异常或微信整体损坏证据。已向用户说明并为打断致歉，不下载DLL、不改动或重装微信，弹窗由用户手动关闭。
+- **用户最新明确禁令：禁止使用“操作电脑”功能。** 已立即停止computer-use/Sky等全部桌面控制，不启动或操纵微信/浏览器窗口，不抓屏、不点击、不键入；不得通过命令行或其他工具变相控制桌面。后续仅代码、CLI、HTTP与隔离测试。真实iPhone及微信界面验收仍未完成，不再自动恢复或催问微信按钮。该禁令已写维护手册并更新原automation-2，6小时计划/聊天和其他授权不变。
+- 代码当前1542801，维护容量UUID补修16/16通过，正式385/188和完整公开备份未变。**继续任务仍须等2026-11-01T00:00Z后**，只读`node scripts/d1-usage.mjs`确认全账户新日余量，再受保护`node tests/live-codex-load.mjs --run`执行codex双索引/188合成资料/四机同步/三会话峰值写/精确清理及原摘要核验；不得今天重做D1负载、推main、改凭据、付费或用GUI绕过限制。静态四机已过，不重复测试。本次只记录用户限制和真实启动失败，不改网站业务代码。
