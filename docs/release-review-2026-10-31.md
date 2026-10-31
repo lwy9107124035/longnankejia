@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | 接口及数据层 | 202/202。权限、登录锁定、邀请有效期、归属、三类增改删、通知、回滚、历史、导入、重复ID、XSS、上传流、双库配额故障、回执重放 | `.cache/release-audit-final-node.txt` |
 | 前台整体 | 最终320/320。问答分流、检索、科普、3D、典藏、家乡、方言、录音、字幕、跳转；未捕获异常及子资源失败均0 | `.cache/release-audit-full-site-final.txt` |
-| 当前模式管理员 | Chrome/WebKit在逐条存储＋独立图片库运行完整流程；新增真实改密、65条跨页重置、容量、可选归档状态 | `.cache/release-audit-admin-final.txt`及相应JSON，最终结果见检查点 |
+| 当前模式管理员 | 54/54。Chrome/WebKit在逐条存储＋独立图片库运行完整流程；新增真实改密、65条跨页重置、容量、可选归档状态 | `.cache/release-audit-admin-final.txt`、`.cache/admin-browser-comprehensive-records-split-media-results.json` |
 | 三人协作 | 17/17。三个独立浏览器环境共用一邀请码，新增、同条冲突、后台列表更新、未上传表单恢复、同源多页、IndexedDB受限降级 | `.cache/release-audit-collaboration-current.txt` |
 | 双库图片 | 10/10。Chrome/WebKit真实文件上传、旧图、新图、刷新、导出、空库恢复及字节一致 | `.cache/release-audit-media-browser.txt` |
 | 客户数据页面 | 6/6。隔离的真实188条资料，两页各50且不重复；矮守围可检索，正文、旧图与编辑表单完整；桌面与手机截图目视核对 | `.cache/release-audit-customer-browser.json`、`.cache/test-shots/release-customer-{chromium,webkit}.png` |
@@ -47,6 +47,17 @@
 - 当前数百条图文容量充足；实际套餐尚未确认，按免费每库500MB保守规划。单库、账户总存储与每日读写额度分别受限；容量350MiB提前预警不是免费额度保证。大音视频继续使用已有链接。
 - 浏览器内单包图片备份有64MiB预算；超出时导出文字与图片链接并明确说明缺图，完整媒体应使用已经验证的分文件维护备份。两者不能混称“完整图片备份”。
 - 公开巡检不包含私有审计历史与外站媒体；私有迁移备份由维护人员另存。无服务器保存证据、无设备草稿/备份的历史内容不能凭空恢复。
+- 早前两个基线缺条已有受邀管理员删除记录，是否误删尚未确认。本轮未自动恢复，也未通过修改基线消除该提醒；这与本轮软件修复验收分开记录。
 - WebKit模拟和本机SQLite测试不等于真实iPhone/微信或线上峰值负载验收。公众号接入属于下一阶段发布验收；本轮不模拟扣费或把本地规模演练当真实云端额度。
 
-发布提交、CI和最终只读核对统一记录在 `docs/codex-admin-checkpoint.md`。
+## 已部署结果
+
+修复提交 `853385c5bfb959b6b66222f85cae85cb7074dcd8` 已仅推codex，[CI41159524515](https://github.com/lwy9107124035/longnankejia/actions/runs/41159524515)成功，[codex预览](https://codex.longnankejia-dev.pages.dev/)已更新。
+
+线上 `.cache/release-audit-live-result-1793413289517.json`：历史接口仅给超管摘要，匿名403，三种非法保存包400；正文未写，版本82→82、科普0→0；临时会话已精确删除，原凭据摘要不变。
+
+`.cache/storage-final-verification-1793413320635.json` 独立核对79原行digest及原凭据一致、四关键前端与部署提交一致。main仍385/188，公开响应与审查前逐字一致；本轮没有推main。
+
+最终 `.cache/release-audit-preview-health.json` 为HTTP200/JSON/no-store、problems/warnings均空、公开备份完整；正文库1,433,600bytes、图片库94,208bytes、元数据31,772bytes，低于维护预警。实际套餐仍未知，不把测试通过解释为无限容量。
+
+本轮已验证范围内未发现剩余阻断代码合并的问题；正式站扩容仍按上面的独立发布条件执行。后续工作继续使用共同检查点 `docs/codex-admin-checkpoint.md`。

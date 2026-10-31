@@ -330,7 +330,7 @@
 - `.cache/free-media-data-verification.txt`验证四关键前端源码与已部署提交一致，main385/188公开响应与发布前逐字一致。该检查并发于临时验收，codex80/1为过程值，不能当最终内容；后续稳定巡检`.cache/free-media-preview-health.json`为82/0、31,772元数据bytes、正文库1,433,600bytes、图片库94,208bytes，HTTP200/JSON/no-store、problems/warnings空、snapshotComplete=true。公开备份不包含私有合成图片历史，未声称全库私有备份完成。
 - 本轮免费升级已发布并验收，仅补充文档skip ci推codex收尾；main仍559ed098f3994eee926d7b5b28e0d6a27077cc3f，未改正式内容、密码、邀请码、API密钥、账单或订阅。R2继续关闭；真实iOS/微信、公网峰值、大音视频上传仍不是本次验收范围，不重复运行无关规模回归。用户可从原地址.html进入codex，链接无需因本次升级修改。
 
-## 2026-10-31 客户与测试工程师双视角复查（codex收尾中）
+## 2026-10-31 客户与测试工程师双视角复查（codex已完成）
 
 - 用户要求详细审查后再自行决定提交main。本轮仍主代理完成，未启用子代理、未创建新聊天或联系第三方。起点codex34f4945，main559ed09；原用户未跟踪材料未动。
 - 基线195项与完整前台320项先通过，但将管理员套件切换当前records-v1＋独立图片库后，实际捕获P1旧新建表单清理失败再恢复会借新目录hash覆盖同事，三类型均复现。changedCells明确旧表单基准，无hash时不借新目录hash；3类Node和浏览器复验通过。
@@ -341,3 +341,7 @@
 - 客户副本浏览器Chrome/WebKit统计188、两页各50不重复、矮守围搜索/正文/旧图/后台表单全通过；截图`release-customer-chromium.png`、`release-customer-webkit.png`目视通过，非真实苹果设备。初次截图淡入未结束，已等动画结束重拍。
 - 下一步：等当前管理员全54项结果；显式stage本轮修复/测试/报告与检查点，只推codex；确认CI后核对部署源码，临时会话只读历史/恶意输入400拒绝（不改内容），会话精确删除；再核对原79行与凭据、codex82/0、main385/188与原响应、双库容量。不要重跑真实图片写入或一万图规模测试。main升级仍需单独媒体库配置及按新revision迁移，不能直接复制codex库；本轮不自动执行。
 - 最终完整当前模式管理员已54/54通过（`.cache/release-audit-admin-final.txt`），双库页面10/10通过。最后补严baseHash只允许字符串（数组隐式转换不接受），属于同一非法批次校验；CI及最终Node再验证，其他已通过的完整前台/客户副本流程不重复运行。
+- 实际完成：最终Node202/202。修复提交853385c5bfb959b6b66222f85cae85cb7074dcd8仅推codex，[CI41159524515](https://github.com/lwy9107124035/longnankejia/actions/runs/41159524515)成功；main仍559ed098f3994eee926d7b5b28e0d6a27077cc3f。没有生产写入、main发布或新增收费资源。
+- 线上 `.cache/release-audit-live-result-1793413289517.json`：仅临时维护会话验证历史摘要权限（匿名403）和三种非法请求400；未写正文，82/0→82/0、凭据摘要一致，会话精确删除。没重跑上轮真实图片写入，也没新增测试图片。
+- 独立 `.cache/storage-final-verification-1793413320635.json`：79原行digest与原password/tokens摘要不变、四关键前端与当前部署提交一致；main385/188公开响应与发布前逐字一致。最终`.cache/release-audit-preview-health.json`为200/JSON/no-store，82/0、31,772元数据bytes、正文库1,433,600bytes/图片库94,208bytes；problems/warnings空、公开snapshotComplete=true，套餐限额仍未知。公开无自定义图，mediaArchived=0不声称私有验收图片已备份。
+- 复查与codex修复已交付。只补文档skip ci推codex收尾，不继续无目的回归。用户将决定main合并；main同样扩容需其独立图片库变量与按发布时新revision迁移，不能直接复用codex库或此刻硬编码385。两个已有删除审计的基线缺条未擅自恢复/改基线。本地无真实iPhone/微信和公网峰值验证，完整边界已写报告；不宣称绝对零故障。
