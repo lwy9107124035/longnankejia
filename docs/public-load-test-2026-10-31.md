@@ -114,6 +114,6 @@
 
 原始四份报告`.cache/static-four-41188908756/codex-read-load-report-{0..3}/storage-read-probe.json`，合并`.cache/distributed-read-summary-1793439139865.json`和`static-four-41188908756-summary.txt`。新的聚合负向测试也拒绝“总人数1000但只有750同时活跃”的静态报告，未因达到总请求数而放宽验收。
 
-09:31Z最新账户小时统计`.cache/account-read-budget-1793439102225.json`为4,986,854读行/52,426写行，仍禁止当天D1负载。09:34Z轻量收尾`.cache/distributed-deploy-final-readonly-1793439242625.json`四前端与Git原文一致、main385/188原响应逐字不变、codex576/0，无写入。首次比较误用了Windows工作区CRLF字节，已改按部署使用的Git原文核对，差异原因确认为本地换行，未当作线上错版。
+09:31Z最新账户小时统计`.cache/account-read-budget-1793439103754.json`为4,986,854读行/52,426写行，仍禁止当天D1负载。09:34Z轻量收尾`.cache/distributed-deploy-final-readonly-1793439242625.json`四前端与Git原文一致、main385/188原响应逐字不变、codex576/0，无写入。首次比较误用了Windows工作区CRLF字节，已改按部署使用的Git原文核对，差异原因确认为本地换行，未当作线上错版。
 
 下一步仅在2026-11-01T00:00Z以后、新账户预算守卫通过时运行`node tests/live-codex-load.mjs --run`，使用已校准四机、应用codex两个索引并验证三会话服务器回执处于1000人共同活跃窗口。原automation-2每6小时在本聊天接续，电脑及应用须可用，不保证重置时刻立即运行。没有用户真机资源、微信手动继续或模型平台额度证据前，不宣称相应边界通过。main继续不发布，已知旧基线删除也不自动恢复。
