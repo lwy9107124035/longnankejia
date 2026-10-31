@@ -94,6 +94,22 @@ test('a rejected public read does not leave a rejected promise for subsequent vi
   assert.equal((await recovered.json()).kepuCustom[0].name, '旧内容');
 });
 
+test('conditional refresh reads independently after another isolate writes without a local invalidation', async t => {
+  const { backend, content } = await fixture(t);
+  const held = holdFirstRead(backend.db, (sql, params) => sql.includes('admin_state') && params[0] === 'tokens'); t.after(held.release);
+  const pending = backend.fetchApi(catalog + '&revision=1'); await held.started;
+  const changed = { ...content.kepuCustom[0], name: '另一实例更新' }, hash = await globalThis.HeritageContent.cellHash(changed, true);
+  backend.sqlite.exec('BEGIN');
+  backend.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,revision=2 WHERE key=?').run(JSON.stringify(changed), hash, 'kepuCustom/' + changed.id);
+  backend.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'; COMMIT");
+  let timer;
+  try {
+    const response = await Promise.race([backend.fetchApi(catalog + '&revision=1'), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('conditional refresh joined an old read')), 3000); })]);
+    const current = await response.json(); assert.equal(current.revision, 2); assert.equal(current.kepuCustom[0].name, changed.name);
+  } finally { clearTimeout(timer); held.release(); }
+  assert.equal((await (await pending).json()).unchanged, true);
+});
+
 for (const params of [
   { format: 'records', field: 'kepuCustom', summary: '1' },
   { format: 'record', key: 'kepuCustom/public-catalog-row' },

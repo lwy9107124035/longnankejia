@@ -186,7 +186,7 @@ function contentPayload(body) {
 }
 async function getData(db, request, env, context) {
   const url = new URL(request.url);
-  if (request.headers.has('Authorization') || !['pages', 'records', 'record', 'search'].includes(url.searchParams.get('format'))) return readData(db, request, env);
+  if (request.headers.has('Authorization') || url.searchParams.has('revision') || !['pages', 'records', 'record', 'search'].includes(url.searchParams.get('format'))) return readData(db, request, env);
   url.searchParams.sort();
   const key = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB;
   let reads = publicContentReads.get(db);
