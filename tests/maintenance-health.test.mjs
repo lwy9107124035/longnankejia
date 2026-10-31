@@ -194,6 +194,18 @@ test('physical D1 size uses read-only info and does not claim an account quota',
   await assert.rejects(readDatabaseCapacity('synthetic-db', { run: async () => ({ stdout: '{}' }) }), /invalid database or size/);
 });
 
+test('capacity lookup by UUID checks the returned UUID instead of confusing it with the database name', async () => {
+  const uuid = '31744e43-aed6-4440-a551-21c35054b89d';
+  const info = { uuid, name: 'longnankejia-admin-main', database_size: 34340864 };
+  const read = result => ({ run: async () => ({ stdout: JSON.stringify(result) }) });
+  const capacity = await readDatabaseCapacity(uuid, read(info));
+  assert.equal(capacity.database, uuid); assert.equal(capacity.sizeBytes, 34340864); assert.equal(capacity.planLimitBytes, null);
+  assert.equal((await readDatabaseCapacity(uuid.toUpperCase(), read(info))).sizeBytes, capacity.sizeBytes);
+  for (const wrong of [{ ...info, uuid: 'f5a18460-1926-4c5f-846e-fbb11d686bd0' }, { ...info, uuid: undefined, name: uuid }, { ...info, database_size: -1 }]) {
+    await assert.rejects(readDatabaseCapacity(uuid, read(wrong)), /invalid database or size/);
+  }
+});
+
 test('D1 capacity pre-warning preserves a complete content backup', async t => {
   const site = await serve(t, () => jsonResponse(content()));
   const snapshotDir = await fs.mkdtemp(path.join(os.tmpdir(), 'maintenance-d1-capacity-'));

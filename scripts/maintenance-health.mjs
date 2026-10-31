@@ -39,7 +39,9 @@ export async function readDatabaseCapacity(database, { run = executeFile } = {})
   }
   let info;
   try { info = JSON.parse(stdout); } catch { throw new Error('D1 capacity response is not JSON'); }
-  if (info.name !== database || !Number.isSafeInteger(info.database_size) || info.database_size < 0) {
+  const byUuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(database);
+  const matchesDatabase = byUuid ? typeof info?.uuid === 'string' && info.uuid.toLowerCase() === database.toLowerCase() : info?.name === database;
+  if (!matchesDatabase || !Number.isSafeInteger(info.database_size) || info.database_size < 0) {
     throw new Error('D1 capacity response has an invalid database or size');
   }
   return { database, sizeBytes: info.database_size, warningBytes: DATABASE_WARNING_BYTES, planLimitBytes: null };
