@@ -1,5 +1,5 @@
 name: Deploy to Cloudflare Pages
-run-name: ${{ inputs.mode == 'read-load' && format('Read load {0}', inputs.load_prefix) || format('Deploy {0}', github.ref_name) }}
+run-name: ${{ startsWith(inputs.mode, 'read-') && format('{0} {1}', inputs.mode, inputs.load_prefix) || format('Deploy {0}', github.ref_name) }}
 
 # 固定入口：main → longnankejia；其余工作分支 → longnankejia-dev。
 # API 密钥仅作为 Pages Functions 的服务端 secret binding 使用，不写入静态 JS。
@@ -11,7 +11,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [deploy, read-load]
+        options: [deploy, read-load, read-probe]
         default: deploy
       load_prefix:
         type: string
@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   read_load:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'read-load' && github.ref_name == 'codex'
+    if: github.event_name == 'workflow_dispatch' && startsWith(inputs.mode, 'read-') && github.ref_name == 'codex'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -39,15 +39,23 @@ jobs:
         env:
           LOAD_PREFIX: ${{ inputs.load_prefix }}
           LOAD_REVISION: ${{ inputs.load_revision }}
-        run: node tests/ci-read-load.mjs
+          READ_MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$READ_MODE" = read-probe ]; then
+            node tests/ci-storage-probe.mjs
+          else
+            node tests/ci-read-load.mjs
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: codex-read-load-report
-          path: .cache/online-read-load-report.json
+          path: |
+            .cache/online-read-load-report.json
+            .cache/storage-read-probe.json
           retention-days: 7
   deploy:
-    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'read-load'
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'deploy'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
