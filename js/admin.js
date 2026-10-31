@@ -2317,6 +2317,10 @@
     if (isSuper) {
       $('#storageInfoBtn').addEventListener('click', function () { adminAction(async function () {
         var info = await window.Store.getStorageInfo(), mb = function (bytes) { return (bytes / 1048576).toFixed(1); };
+        if (info.separateImageDatabase) {
+          document.getElementById('storageInfoText').textContent = '正文和历史 ' + mb(info.metadataBytes) + ' MB；独立图片库 ' + mb(info.imageDatabaseBytes) + ' MB；原库旧图片 ' + mb(info.legacyImageBytes) + ' MB。';
+          return;
+        }
         if (info.model === "records-v1") {
           document.getElementById("storageInfoText").textContent = "逐条存储：正文及历史 " + mb(info.metadataBytes) + " MB；数据库旧图片 " + mb(info.mediaBytes) + " MB；媒体存储" + (info.r2Enabled ? "已接入 R2" : "尚未接入 R2") + "。";
           return;

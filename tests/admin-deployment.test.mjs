@@ -16,6 +16,7 @@ function run(t, branch, extra = {}) {
   const result = spawnSync(process.execPath, [script], {
     cwd, encoding: 'utf8', env: {
       ...process.env, BRANCH: branch, CODEX_ADMIN_D1_ID: preview, MAIN_ADMIN_D1_ID: production,
+      CODEX_MEDIA_D1_ID: '', MAIN_MEDIA_D1_ID: '',
       ADMIN_BOOTSTRAP_PASSWORD: '', CLOUDFLARE_ACCOUNT_ID: '', CLOUDFLARE_API_TOKEN: '', ...extra
     }
   });
@@ -58,6 +59,20 @@ test('optional R2 bindings use existing separate buckets without changing D1 or 
   const absent = run(t, 'codex', { CODEX_ADMIN_R2_BUCKET: '', MAIN_ADMIN_R2_BUCKET: '' });
   assert.equal(absent.config.r2_buckets, undefined);
   for (const extra of [{ CODEX_ADMIN_R2_BUCKET: 'Invalid bucket' }, { CODEX_ADMIN_R2_BUCKET: 'same-media', MAIN_ADMIN_R2_BUCKET: 'same-media' }]) {
+    const rejected = run(t, 'codex', extra); assert.notEqual(rejected.status, 0); assert.equal(rejected.config, null);
+  }
+});
+
+test('optional image D1 binds an existing independent database without altering the administrator binding', t => {
+  const media = '33333333-3333-4333-8333-333333333333';
+  const result = run(t, 'codex', { CODEX_MEDIA_D1_ID: media });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.config.d1_databases, [
+    { binding: 'ADMIN_DB', database_name: 'longnankejia-admin-codex', database_id: preview },
+    { binding: 'ADMIN_MEDIA_DB', database_name: 'longnankejia-media-codex', database_id: media }
+  ]);
+  assert.equal(run(t, 'main', { CODEX_MEDIA_D1_ID: media }).config.d1_databases.length, 1);
+  for (const extra of [{ CODEX_MEDIA_D1_ID: 'invalid' }, { CODEX_MEDIA_D1_ID: preview }, { CODEX_MEDIA_D1_ID: production }, { CODEX_MEDIA_D1_ID: media, MAIN_MEDIA_D1_ID: media }]) {
     const rejected = run(t, 'codex', extra); assert.notEqual(rejected.status, 0); assert.equal(rejected.config, null);
   }
 });

@@ -227,7 +227,7 @@ async function getData(db, request, env) {
     if (latest.revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
   } else content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
   const tokens = await state(db, 'tokens', []);
-  const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), ...paging, capabilities: { mediaUploads: !!env.ADMIN_MEDIA }, revision: content.revision, ...(unchanged && { unchanged: true }) };
+  const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), ...paging, capabilities: { mediaUploads: !!env.ADMIN_MEDIA, separateImageDatabase: !!env.ADMIN_MEDIA_DB }, revision: content.revision, ...(unchanged && { unchanged: true }) };
   if (!unchanged) result.storage = { metadataBytes: content.bytes, metadataLimit: manifest ? null : MAX_CONTENT_BYTES, ...(manifest && { model: 'records-v1', maxRecordBytes: MAX_RECORD_BYTES }) };
   if (user) {
     result.session = { role: user.role, name: user.name, tokenId: user.tokenId, expiresAt: user.expiresAt };
@@ -248,6 +248,7 @@ async function getData(db, request, env) {
   return result;
 }
 async function postData(db, env, request, body) {
+  const mediaDb = env.ADMIN_MEDIA_DB || db;
   if (body.action === 'login') return login(db, env, request, body);
   const user = await session(db, request);
   switch (body.action) {
@@ -255,7 +256,10 @@ async function postData(db, env, request, body) {
       requireSuper(user);
       const manifest = await recordsManifest(db);
       const row = await db.prepare("SELECT SUM(CASE WHEN key LIKE 'media:%' THEN length(CAST(value AS BLOB)) ELSE 0 END) AS mediaBytes, SUM(CASE WHEN key='content' OR key GLOB 'content:chunk:*' THEN length(CAST(value AS BLOB)) ELSE 0 END) AS metadataBytes FROM admin_state").first();
-      return { ok: true, model: manifest ? 'records-v1' : 'snapshot', r2Enabled: !!env.ADMIN_MEDIA, mediaBytes: row.mediaBytes || 0, metadataBytes: manifest ? manifest.bytes : row.metadataBytes || 0, metadataLimit: manifest ? null : MAX_CONTENT_BYTES, maxRecordBytes: MAX_RECORD_BYTES, imageLimit: 5000000 };
+      const separate = mediaDb !== db;
+      const images = separate ? await mediaDb.prepare("SELECT SUM(length(CAST(value AS BLOB))) AS bytes FROM admin_state WHERE key LIKE 'media:%'").first() : { bytes: 0 };
+      return { ok: true, model: manifest ? 'records-v1' : 'snapshot', r2Enabled: !!env.ADMIN_MEDIA, separateImageDatabase: separate,
+        imageDatabaseBytes: images.bytes || 0, legacyImageBytes: row.mediaBytes || 0, mediaBytes: (row.mediaBytes || 0) + (images.bytes || 0), metadataBytes: manifest ? manifest.bytes : row.metadataBytes || 0, metadataLimit: manifest ? null : MAX_CONTENT_BYTES, maxRecordBytes: MAX_RECORD_BYTES, imageLimit: 5000000 };
     }
     case 'archive_history': {
       requireSuper(user);
@@ -264,12 +268,13 @@ async function postData(db, env, request, body) {
       return archiveHistoryBefore(db, manifest, env.ADMIN_MEDIA, user);
     }
     case 'store_media': {
-      try { return { ok: true, ...await storeMedia(db, body.dataUrl, env.ADMIN_MEDIA) }; }
+      try { return { ok: true, ...await storeMedia(mediaDb, body.dataUrl, env.ADMIN_MEDIA) }; }
       catch (error) { if (error instanceof TypeError) throw new ApiError(400, 'INVALID_IMAGE', error.message); throw error; }
     }
     case 'migrate_media': {
       requireSuper(user);
-      try { return await migrateD1Media(db, env.ADMIN_MEDIA, body.cursor || ''); }
+      if (body.source && !['images', 'legacy'].includes(body.source)) throw new ApiError(400, 'INVALID_MEDIA_SOURCE', '图片来源不正确');
+      try { return await migrateD1Media(body.source === 'legacy' ? db : mediaDb, env.ADMIN_MEDIA, body.cursor || ''); }
       catch (error) { if (error.code && [400, 503].includes(error.status)) throw new ApiError(error.status, error.code, error.message); throw error; }
     }
     case 'restore_operation': {
@@ -283,7 +288,7 @@ async function postData(db, env, request, body) {
         current = await readRecordState(db, manifest, ['_history/' + body.operationId, JSON.parse(row.value).key]);
       } else current = await state(db, 'content', DEFAULTS);
       let restored;
-      try { restored = await restoreOperation(current.value, body.operationId, user, tokens.value, async value => expandHistoryMedia(db, await expandArchivedHistory(value, env.ADMIN_MEDIA), env.ADMIN_MEDIA), value => storeRecordMedia(db, value, new Map(), env.ADMIN_MEDIA), value => expandRecordMedia(db, value, env.ADMIN_MEDIA)); }
+      try { restored = await restoreOperation(current.value, body.operationId, user, tokens.value, async value => expandHistoryMedia(mediaDb, await expandArchivedHistory(value, env.ADMIN_MEDIA), env.ADMIN_MEDIA, db), value => storeRecordMedia(mediaDb, value, new Map(), env.ADMIN_MEDIA), value => expandRecordMedia(mediaDb, value, env.ADMIN_MEDIA, db)); }
       catch (error) { if (error.status >= 500) throw error; throw new ApiError(409, 'RESTORE_CONFLICT', error.message); }
       const revision = manifest ? await writeRecordState(db, manifest, current.value, restored.next) : await saveState(db, 'content', restored.next, current.revision);
       return { ok: true, revision, title: restored.title };
@@ -311,12 +316,12 @@ async function postData(db, env, request, body) {
           }
         }
         let result;
-        try { result = await applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(db, value, env.ADMIN_MEDIA), async value => {
-          try { return await storeRecordMedia(db, value, mediaCache, env.ADMIN_MEDIA); }
+        try { result = await applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(mediaDb, value, env.ADMIN_MEDIA, db), async value => {
+          try { return await storeRecordMedia(mediaDb, value, mediaCache, env.ADMIN_MEDIA); }
           catch (error) { if (error instanceof TypeError) throw error; throw new ApiError(503, 'MEDIA_UNAVAILABLE', '图片存储暂不可用，草稿已保留'); }
         }); }
         catch (error) { if (error.status) throw error; throw new ApiError(400, 'INVALID_CONTENT', error.message); }
-        if (result.changed) result.next = await archiveHistoryMedia(db, result.next, (current.value._history || []).length, env.ADMIN_MEDIA);
+        if (result.changed) result.next = await archiveHistoryMedia(mediaDb, result.next, (current.value._history || []).length, env.ADMIN_MEDIA);
         const values = globalThis.HeritageContent.contentCells(safeContent(result.next, tokens.value));
         const reply = { ok: true, baseRevision: current.revision, accepted: result.accepted, conflicts: result.conflicts,
           receipts: result.accepted.map(key => {
@@ -352,7 +357,7 @@ async function postData(db, env, request, body) {
         if (JSON.stringify(submitted[key]) !== JSON.stringify(current.value[key])) requireSuper(user);
       }
       const tokens = await state(db, 'tokens', []);
-      const next = await archiveHistoryMedia(db, await updatedContent(current.value, submitted, user, tokens.value), (current.value._history || []).length, env.ADMIN_MEDIA);
+      const next = await archiveHistoryMedia(mediaDb, await updatedContent(current.value, submitted, user, tokens.value), (current.value._history || []).length, env.ADMIN_MEDIA);
       const revision = await saveState(db, 'content', next, body.revision);
       return { ok: true, revision, content: { ...safeContent(next, tokens.value), auditLogs: user.role === 'super_admin' ? safeAudit(next, tokens.value) : [] } };
     }
@@ -389,7 +394,7 @@ async function postData(db, env, request, body) {
           if (!row) throw new ApiError(409, 'SYNC_CONFLICT', '历史已更新，请重试');
           Object.assign(op, JSON.parse(row.value));
         } : undefined,
-        expand: async value => expandHistoryMedia(db, await expandArchivedHistory(value, env.ADMIN_MEDIA), env.ADMIN_MEDIA), normalize: value => storeRecordMedia(db, value, new Map(), env.ADMIN_MEDIA), legacyCurrent: value => expandRecordMedia(db, value, env.ADMIN_MEDIA)
+        expand: async value => expandHistoryMedia(mediaDb, await expandArchivedHistory(value, env.ADMIN_MEDIA), env.ADMIN_MEDIA, db), normalize: value => storeRecordMedia(mediaDb, value, new Map(), env.ADMIN_MEDIA), legacyCurrent: value => expandRecordMedia(mediaDb, value, env.ADMIN_MEDIA, db)
       });
       validateContent(result.next);
       const reply = { ok: true, revision: current.revision + 1, totalRemoved: result.totalRemoved, skipped: result.skipped, removedKeys: result.removedKeys, skippedKeys: result.skippedKeys, tokenName: token.name, itemTitle: item?.title,

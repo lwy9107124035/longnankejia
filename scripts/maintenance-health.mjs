@@ -179,6 +179,7 @@ export async function checkHealth({
   now = () => new Date().toISOString(),
   snapshotDir,
   databaseName,
+  mediaDatabaseName,
   readCapacity = readDatabaseCapacity
 } = {}) {
   const startedAt = now();
@@ -201,6 +202,7 @@ export async function checkHealth({
     mediaReused: 0,
     storage: null,
     databaseStorage: null,
+    imageDatabaseStorage: null,
     warnings: [],
     problems: []
   };
@@ -309,16 +311,18 @@ export async function checkHealth({
     }
   }
 
-  if (databaseName) {
+  for (const [name, field, label] of [[databaseName, 'databaseStorage', 'D1'], [mediaDatabaseName, 'imageDatabaseStorage', 'Image D1']]) {
+    if (!name) continue;
     try {
-      result.databaseStorage = await readCapacity(databaseName);
-      if (result.databaseStorage.sizeBytes >= result.databaseStorage.warningBytes) {
-        result.warnings.push('D1 database has reached the 350 MiB maintenance budget; review growth and the account quota');
+      result[field] = await readCapacity(name);
+      if (result[field].sizeBytes >= result[field].warningBytes) {
+        result.warnings.push(label + ' database has reached the 350 MiB maintenance budget; review growth and the account quota');
       }
     } catch (error) {
-      result.warnings.push(`D1 capacity check incomplete: ${error.message}`);
+      result.warnings.push(`${label} capacity check incomplete: ${error.message}`);
     }
   }
+  if (payload.capabilities?.separateImageDatabase && !mediaDatabaseName) result.warnings.push('Image D1 capacity unknown; configure --media-d1-database');
   const fetchedMedia = new Map();
   try {
     for (const url of publicMediaUrls(payload)) {
@@ -361,10 +365,10 @@ function cliOptions(args) {
   const options = {};
   for (let i = 0; i < args.length; i += 1) {
     const key = args[i];
-    if (!['--baseline', '--origin', '--report', '--snapshot-dir', '--d1-database'].includes(key) || !args[i + 1] || args[i + 1].startsWith('--')) {
+    if (!['--baseline', '--origin', '--report', '--snapshot-dir', '--d1-database', '--media-d1-database'].includes(key) || !args[i + 1] || args[i + 1].startsWith('--')) {
       throw new Error(`Invalid or incomplete argument: ${key}`);
     }
-    const name = { '--baseline': 'baselinePath', '--origin': 'origin', '--report': 'reportPath', '--snapshot-dir': 'snapshotDir', '--d1-database': 'databaseName' }[key];
+    const name = { '--baseline': 'baselinePath', '--origin': 'origin', '--report': 'reportPath', '--snapshot-dir': 'snapshotDir', '--d1-database': 'databaseName', '--media-d1-database': 'mediaDatabaseName' }[key];
     options[name] = args[++i];
   }
   if (!options.baselinePath) throw new Error('--baseline is required');
@@ -375,7 +379,7 @@ async function main() {
   try {
     const options = cliOptions(process.argv.slice(2));
     const baseline = parseBaseline(JSON.parse(await fs.readFile(options.baselinePath, 'utf8')));
-    const report = await checkHealth({ origin: options.origin || DEFAULT_ORIGIN, baseline, snapshotDir: options.snapshotDir, databaseName: options.databaseName });
+    const report = await checkHealth({ origin: options.origin || DEFAULT_ORIGIN, baseline, snapshotDir: options.snapshotDir, databaseName: options.databaseName, mediaDatabaseName: options.mediaDatabaseName });
     if (options.reportPath) {
       await fs.mkdir(path.dirname(path.resolve(options.reportPath)), { recursive: true });
       await fs.writeFile(options.reportPath, JSON.stringify(report, null, 2) + '\n');

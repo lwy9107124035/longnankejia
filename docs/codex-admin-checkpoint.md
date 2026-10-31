@@ -303,3 +303,24 @@
 - 预览完整分页巡检`.cache/storage-codex-health.json`：HTTP200/JSON/no-store、无缺条/重复/格式问题、公开备份完整、元数据29,331 bytes；Wrangler容量子进程一次失败的原始warning保留。随后`.cache/storage-codex-capacity-20261030.json`通过独立只读API核实D1实际1,351,680 bytes，低于350MiB预算，套餐配额未知。不是容量无限，也不是生产main的库大小。
 - 规模测试已退出成功。为避免OneDrive工作区长期占用约5GB，完整转存生成的合成媒体到`C:/Users/lwy/AppData/Local/CodexStorageTests/longnankejia-20261030/{verified-backup-media,verified-runtime-r2}`，没有删除文件；映射`.cache/storage-synthetic-artifact-locations.json`。报告/10000项摘要清单/正文快照/样图仍在.cache，客户维护备份未移动。未来复跑先核对缓存路径，不无故重新生成一万图。
 - 本轮D1已完成发布及验收。用户选择不开通R2，相关云端接入、250MiB影音云端与真实iOS/微信/公开峰值负载未验收，不作为后台待自动收费/重试事项。main不动；继续原有生产只读巡检，两个已知有删除记录的基线ID仍待用户确认是否误删，状态相同不要重复通知。仅补文档skip ci推codex，不再重复部署已验证代码。
+
+## 2026-10-31 04:24 例行只读巡检（状态未变，安静）
+
+- 先读上一节、维护手册及Git状态；codex与origin/codex同步，开始时无已跟踪文件修改。本轮无发布、迁移、生产写入、凭据变更或收费服务操作，不重跑功能回归。
+- 原始报告`.cache/maintenance/report-20261030T202418Z.json`及latest：main仍revision385/188个唯一科普ID，内容摘要6b10a9b2232400d0c927c25658032f0967a14a296de99298050bf453728c4b02不变；HTTP200/JSON/no-store，元数据711,723 bytes，D1实际34,340,864 bytes，均低于维护预警，套餐上限仍未知。
+- 3图线上抽查、181个已归档媒体逐个校验复用，公开快照完整，snapshotComplete=true。warnings为空；problems仍是已通知的两个基线删除ID，未新增缺条、未改基线或擅自恢复。退出码1保留已知告警，不代表本次备份失败。
+- 新报告和运行前原始报告均追加保留，notification-state记录lastObserved；与lastNotified签名一致，DONT_NOTIFY，不重复提醒删除确认或已经交付的codex升级。本节仅本地记录，未提交或推送。
+
+## 2026-10-31 客户容量适配询问（仅只读核验）
+
+- 用户询问codex现有容量及是否符合客户要求。Wrangler最新实际文件仍1,351,680 bytes；公开接口revision78/records-v1、0条自定义科普、元数据29,331 bytes、mediaUploads=false。证据`.cache/codex-capacity-info-20261031.txt`和`codex-capacity-public-20261031.json`。不是新增客户资料丢失，codex是独立测试库。
+- 官方当天D1限制仍为免费档单库500MB、付费档单库10GB，账户免费总存储5GB不能当作单库额度；账户实际套餐尚未确认，不擅自开通或声称已获得扩容。按免费单库500MB保守规划；250000B/图的Base64约333336B，仅图片理论约1500张，索引/正文/历史另占空间，不能承诺实际1500篇或无限上传。
+- 容量层面可支撑目前数百条图文规模（正式库上次巡检188条/34,340,864 bytes）；长期大量媒体、直接大文件上传、公众号公开峰值稳定性不据此判定全部验收达标。本地一万图/2.5GB演练不代表已开通相应云容量。本轮无业务代码修改、发布或套餐变更。
+
+## 2026-10-31 免费额度内继续升级（进行中，仅codex）
+
+- 用户问还能否在免费额度升级。已核对当前实现已有1200px/JPEG压缩及图片去重，不把旧功能说成新增。账户只读清单确认仅2库、合计35,692,544 bytes，未存在`longnankejia-media-codex`；证据`.cache/free-upgrade-account-preflight-20261031.json`，符合免费档最多10库/账户5GB的资源数量和存储范围，实际套餐仍不擅自猜测。
+- 选最小改造：在codex新增一个独立D1图片库（ADMIN_MEDIA_DB可选绑定），正文/历史沿用原f5库；新图片写独立库，旧图片按原路径回退读取，保持画质、摘要及链接。R2继续关闭；不自行开任何收费服务、不改main/密码/邀请码/密钥，不复制正式资料。非无限容量，仍受单库、账户及每日请求/读写限额约束。
+- 待完成：媒体helpers兼容独立库与旧库回退、存储统计和部署可选绑定、隔离双库故障/恢复测试；相关回归后再创建/绑定预览图片库并只推codex。不得先创建未验证架构、清理旧图或改写正式数据库。旧巡检记录的未提交文档修改继续保留。
+- 本地实现与验证已完成：Node195/195、相关37/37、Chrome/WebKit双库上传/刷新/导出/空库恢复10/10，静态/3负向/Functions构建通过。新增双库独立容量检查；图片库故障不回写正文库，原链接回退仅在新库无该图时进行。真实失败与边界见`docs/free-storage-upgrade-2026-10-31.md`，未复跑一万图演练。
+- 已创建独立预览图片库`longnankejia-media-codex`，APAC，ID7704b0bf-1598-44cb-9cb6-28e9c1281557，证据`.cache/free-media-create.txt`；只应用media表结构，不放凭据或默认内容。下一步核验schema后配置CODEX_MEDIA_D1_ID、只推codex，待CI成功做真实新图上传及旧图读取/精确清理验收。main没有图片库变量，不部署或修改正式内容。

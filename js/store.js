@@ -838,8 +838,11 @@
       completed += result.accepted.length;
     }
     if (catalog.capabilities && catalog.capabilities.mediaUploads) {
-      var cursor = '', batch;
-      do { batch = await cloudRequest({ action: 'migrate_media', cursor: cursor }); copied += batch.copied; cursor = batch.cursor; } while (batch.more);
+      var sources = catalog.capabilities.separateImageDatabase ? ['images', 'legacy'] : ['legacy'];
+      for (var source of sources) {
+        var cursor = '', batch;
+        do { batch = await cloudRequest({ action: 'migrate_media', source: source, cursor: cursor }); copied += batch.copied; cursor = batch.cursor; } while (batch.more);
+      }
     }
     await syncWithCloud(); return { completed: completed, copied: copied, total: records.length };
   }

@@ -63,7 +63,7 @@ function byteRange(header, length) {
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= length) return null;
   return { offset: start, length: end - start + 1 };
 }
-export async function readMedia(db, id, bucket, rangeHeader) {
+export async function readMedia(db, id, bucket, rangeHeader, legacyDb) {
   if (!ID.test(id)) return null;
   if (bucket) {
     let range;
@@ -82,7 +82,7 @@ export async function readMedia(db, id, bucket, rangeHeader) {
   const prefix = 'media:' + id + ':';
   const { results } = await db.prepare('SELECT key,value FROM admin_state WHERE key >= ? AND key < ?').bind(prefix, prefix + '~').all();
   const row = results.find(row => row.key === prefix + 'manifest');
-  if (!row) return null;
+  if (!row) return legacyDb && legacyDb !== db ? readMedia(legacyDb, id, undefined, rangeHeader) : null;
   const info = JSON.parse(row.value), values = new Map(results.map(row => [row.key, row.value]));
   const parts = [];
   for (let i = 0; i < info.count; i++) {
@@ -133,9 +133,9 @@ export async function archiveHistoryMedia(db, content, from, bucket) {
   return { ...content, _history: history };
 }
 
-export async function expandHistoryMedia(db, value, bucket) {
+export async function expandHistoryMedia(db, value, bucket, legacyDb) {
   if (value && typeof value === 'object' && ID.test(value.$image || '')) {
-    const media = await readMedia(db, value.$image, bucket);
+    const media = await readMedia(db, value.$image, bucket, undefined, legacyDb);
     if (!media) throw new Error('历史图片暂时无法读取，请稍后重试');
     if (!media.body) return 'data:' + media.type + ';base64,' + media.parts.join('');
     const data = mediaDataUrl(media.type, new Uint8Array(await new Response(media.body).arrayBuffer()));
@@ -143,22 +143,22 @@ export async function expandHistoryMedia(db, value, bucket) {
     const prefixLength = ('data:' + media.type + ';base64,').length;
     return data.slice(0, prefixLength + media.base64Length - media.base64Tail.length) + media.base64Tail;
   }
-  if (Array.isArray(value)) return Promise.all(value.map(child => expandHistoryMedia(db, child, bucket)));
+  if (Array.isArray(value)) return Promise.all(value.map(child => expandHistoryMedia(db, child, bucket, legacyDb)));
   if (value && typeof value === 'object') {
     const result = {};
-    for (const [key, child] of Object.entries(value)) result[key] = await expandHistoryMedia(db, child, bucket);
+    for (const [key, child] of Object.entries(value)) result[key] = await expandHistoryMedia(db, child, bucket, legacyDb);
     return result;
   }
   return value;
 }
-export async function expandRecordMedia(db, value, bucket) {
+export async function expandRecordMedia(db, value, bucket, legacyDb) {
   if (!value || typeof value !== 'object') return value;
   const result = { ...value };
   for (const field of ['image', 'imageUrl']) {
     const id = rawReference(result[field]);
-    if (id) result[field] = await expandHistoryMedia(db, { $image: id }, bucket);
+    if (id) result[field] = await expandHistoryMedia(db, { $image: id }, bucket, legacyDb);
   }
-  if (result.item && rawReference(result.item.imageUrl)) result.item = { ...result.item, imageUrl: await expandHistoryMedia(db, { $image: rawReference(result.item.imageUrl) }, bucket) };
+  if (result.item && rawReference(result.item.imageUrl)) result.item = { ...result.item, imageUrl: await expandHistoryMedia(db, { $image: rawReference(result.item.imageUrl) }, bucket, legacyDb) };
   return result;
 }
 export async function storeRecordMedia(db, value, cache = new Map(), bucket) {

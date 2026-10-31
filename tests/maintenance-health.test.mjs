@@ -215,6 +215,27 @@ test('unavailable D1 authorization is explicit and does not block the public bac
   await assert.rejects(readDatabaseCapacity('synthetic-db', { run: async () => { throw new Error('secret stderr'); } }), /^Error: D1 capacity unavailable;/);
 });
 
+test('separate image capacity is monitored independently and an unmeasured pool remains unknown', async t => {
+  const site = await serve(t, () => jsonResponse({ ...content(), capabilities: { separateImageDatabase: true } }));
+  const snapshotDir = await fs.mkdtemp(path.join(os.tmpdir(), 'maintenance-image-capacity-'));
+  t.after(() => fs.rm(snapshotDir, { recursive: true, force: true }));
+  const options = { origin: site.origin, baseline, snapshotDir, databaseName: 'content-db', mediaDatabaseName: 'image-db', readCapacity: async database => ({
+    database, sizeBytes: (database === 'image-db' ? 351 : 1) * 1024 * 1024, warningBytes: 350 * 1024 * 1024, planLimitBytes: null
+  }) };
+  const report = await checkHealth(options);
+  assert.deepEqual(report.problems, []); assert.equal(report.snapshotComplete, true);
+  assert.equal(report.databaseStorage.database, 'content-db'); assert.equal(report.imageDatabaseStorage.database, 'image-db');
+  assert.equal(report.warnings.length, 1); assert.match(report.warnings[0], /^Image D1 database has reached/);
+  const unknown = await checkHealth({ ...options, mediaDatabaseName: undefined });
+  assert.equal(unknown.imageDatabaseStorage, null); assert.match(unknown.warnings[0], /Image D1 capacity unknown/);
+  const unavailable = await checkHealth({ ...options, readCapacity: async database => {
+    if (database === 'image-db') throw Error('authorization unavailable');
+    return options.readCapacity(database);
+  } });
+  assert.equal(unavailable.snapshotComplete, true); assert.equal(unavailable.imageDatabaseStorage, null);
+  assert.match(unavailable.warnings[0], /Image D1 capacity check incomplete/);
+});
+
 test('row storage backs up every detail page and streams binary audio/video to a verified reusable file', async t => {
   const bytes = Buffer.alloc(1200000, 37), hash = createHash('sha256').update(bytes).digest('hex');
   const full = content({ records: [{ id: 'existing-1', name: '已有内容', detail: '完整正文', videoUrl: '/api/media/' + hash }, { id: 'new-1', name: '第二页内容', detail: '不能遗漏' }] });

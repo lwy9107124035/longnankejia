@@ -5,9 +5,10 @@ import { onRequestGet as onMedia, onRequestHead as onMediaHead } from '../../fun
 import { onRequestPost as onUploads } from '../../functions/api/admin/uploads.js';
 
 // Executes the actual migration and handler SQL, rather than replacing SQL with canned results.
-export function createAdminBackend({ password = 'admin123', filename = ':memory:', maxRowBytes = 2000000 } = {}) {
+export function createAdminBackend({ password = 'admin123', filename = ':memory:', maxRowBytes = 2000000, schema = 'admin' } = {}) {
+  if (!['admin', 'media'].includes(schema)) throw new TypeError('Unknown test database schema');
   const sqlite = new DatabaseSync(filename);
-  sqlite.exec(fs.readFileSync(new URL('../../migrations/admin/0001_admin.sql', import.meta.url), 'utf8'));
+  sqlite.exec(fs.readFileSync(new URL(schema === 'media' ? '../../migrations/media/0001_media.sql' : '../../migrations/admin/0001_admin.sql', import.meta.url), 'utf8'));
   const db = {
     prepare(sql) {
       let params = [];
