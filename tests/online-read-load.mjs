@@ -8,7 +8,8 @@ const phases = [1, 10, 25, 50, 100, 250, 500, 1000].map(users => ({ users, itera
 const percentile = (values, p) => values.length ? [...values].sort((a, b) => a - b)[Math.ceil(values.length * p) - 1] : null;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
-export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, reportPath, duringPeak }) {
+export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, reportPath, duringPeak,
+  generator = 'single Windows host via configured proxy; HTTP virtual users, not physical phones', peakPauseMs = 0 }) {
   assert.match(prefix, /^load-fixture-[a-f0-9]{24}$/); assert.ok(detailKey.startsWith('kepuCustom/' + prefix + '-'));
   const targets = [
     { name: 'html', path: '/', type: 'text/html' },
@@ -18,7 +19,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
     { name: 'legacy-image', path: '/api/media/a5de70330e575fa03c530091f07430a2d959b70aa3df14b8804e7a3c4e2c5a6a', type: 'image/jpeg' },
     { name: 'new-image', path: '/api/media/a80e375c338e604e10af745832bcd141b155c762adf56fefe58799175a372825', type: 'image/jpeg' }
   ];
-  const report = { startedAt: new Date().toISOString(), origin, generator: 'single Windows host via configured proxy; HTTP virtual users, not physical phones',
+  const report = { startedAt: new Date().toISOString(), origin, generator,
     realIphone: false, realWechat: false, realOfficialAccount: false, paidAiCalls: 0, fixtureCount, fixtureRevision: revision,
     requestBudget: 15000, requestTimeoutMs: 10000, proposedRequestP95Ms: 3000, targetUsersConfirmed: true, targetUsers: 1000, phases: [], samples: [] };
   let inFlight = 0, nextRequest = 0, stopped = false;
@@ -59,7 +60,8 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
   }
   for (const spec of phases) {
     if (stopped) break;
-    const phase = { ...spec, samples: [], peakInFlight: 0 }, controller = new AbortController(), started = performance.now();
+    if (spec.users === 1000 && peakPauseMs) await sleep(peakPauseMs);
+    const phase = { ...spec, startedAt: new Date().toISOString(), samples: [], peakInFlight: 0 }, controller = new AbortController(), started = performance.now();
     report.phases.push(phase);
     const failures = () => phase.samples.filter(sample => !sample.ok && !sample.cancelled).length;
     let peakWork;
@@ -78,6 +80,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
     }));
     if (peakWork) { const outcome = await peakWork; if (outcome.error) report.concurrentWriteError = outcome.error; else report.concurrentWrites = outcome.value; }
     phase.durationMs = Math.round(performance.now() - started); phase.requests = phase.samples.length;
+    phase.finishedAt = new Date().toISOString();
     phase.failures = failures(); phase.cancelled = phase.samples.filter(sample => sample.cancelled).length;
     phase.versionRetries = phase.samples.reduce((sum, sample) => sum + (sample.statuses || []).filter(status => status === 409).length, 0);
     phase.failureRate = phase.failures / (phase.requests - phase.cancelled);
