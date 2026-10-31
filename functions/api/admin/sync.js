@@ -504,8 +504,14 @@ async function handle({ request, env = {} }) {
     return json(200, result, request);
   } catch (error) {
     if (error instanceof ApiError || error instanceof RecordError) return json(error.status, { ok: false, code: error.code, error: error.message, ...error.extra }, request);
-    console.error('Admin storage request failed:', error.name);
-    return json(503, { ok: false, code: 'STORAGE_UNAVAILABLE', error: '云端数据库暂时不可用，请稍后重试。本机编辑不会因此删除。' }, request);
+    const detail = [error.message, error.cause?.message].join(' ');
+    const reason = /overload|too many (?:requests|concurrent)|busy|queue.*full/i.test(detail) ? 'storage_busy'
+      : /quota|daily.*limit|rows (?:read|written).*limit/i.test(detail) ? 'storage_quota'
+      : /too many (?:subrequests|api requests)|subrequest.*limit/i.test(detail) ? 'request_limit'
+      : /timeout|timed out/i.test(detail) ? 'storage_timeout'
+      : /exceed.*size|too (?:large|big)|SQLITE_TOOBIG/i.test(detail) ? 'storage_size' : 'unknown';
+    console.error('Admin storage request failed:', reason, error.name);
+    return json(503, { ok: false, code: 'STORAGE_UNAVAILABLE', reason, error: '云端数据库暂时不可用，请稍后重试。本机编辑不会因此删除。' }, request);
   }
 }
 export const onRequestGet = handle;

@@ -70,7 +70,7 @@ jobs:
 
       - name: Verify administrator API and multi-device synchronization
         if: github.ref_name == 'codex' || github.ref_name == 'main'
-        run: node --test tests/admin-deployment.test.mjs tests/admin-sync.test.mjs tests/admin-security.test.mjs tests/admin-comprehensive.test.mjs tests/content-collaboration.test.mjs tests/collaboration-recheck.test.mjs tests/media-storage.test.mjs tests/media-database.test.mjs tests/maintenance-health.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs tests/content-records.test.mjs tests/migrate-content-records.test.mjs tests/media-r2.test.mjs tests/media-uploads.test.mjs tests/history-archive.test.mjs tests/release-readiness.test.mjs tests/visitor-polling.test.mjs tests/catalog-snapshot.test.mjs
+        run: node --test tests/admin-deployment.test.mjs tests/admin-sync.test.mjs tests/admin-security.test.mjs tests/admin-comprehensive.test.mjs tests/content-collaboration.test.mjs tests/collaboration-recheck.test.mjs tests/media-storage.test.mjs tests/media-database.test.mjs tests/maintenance-health.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs tests/content-records.test.mjs tests/migrate-content-records.test.mjs tests/media-r2.test.mjs tests/media-uploads.test.mjs tests/history-archive.test.mjs tests/release-readiness.test.mjs tests/visitor-polling.test.mjs tests/catalog-snapshot.test.mjs tests/storage-failures.test.mjs
 
       - name: Bind persistent administrator storage
         if: github.ref_name == 'codex' || github.ref_name == 'main'

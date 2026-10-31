@@ -373,3 +373,9 @@
 - `.cache/live-index-load-cleanup.txt`实际完成唯一前缀清理483/0、凭据不变、会话移除；独立`.cache/public-load-final-cleanup-check.json`确认全部load-fixture活条目0/合成维护会话0/live索引1。保留合成审计/回执/删除标记，没有清空原历史。
 - 最终`.cache/storage-final-verification-1793431217694.json`：79原行digest和password/tokens摘要与最初备份相同，4关键源码匹配；main385/188与原响应逐字相同，main分支559ed098未动。`.cache/public-load-preview-final-health.json`为200/JSON/no-store、483/0、公开snapshotComplete=true、problems/warnings空，正文D1 19,918,848bytes/图片94,208bytes，套餐仍未知。逻辑记录12,616,556bytes含保留的合成审计，不是首屏元数据大小。公开无自定义图，不声称私有合成图完整备份。
 - 本轮停止施压并交付真实未通过结论。仅文档skip ci收尾；不自动推main或开通付费。后续高峰工作先诊断可分类服务端错误，再考虑公开读取削峰/缓存或读负载分流并复测，管理员/草稿/凭据/回执不进公开缓存。真机设备、微信入口和真实AI1000峰值仍缺条件，未验收；不重复询问已确认缺失的设备。详见`docs/public-load-test-2026-10-31.md`。
+
+## 2026-10-31 用户要求持续修复高峰故障（进行中）
+
+- 用户明确“不停工作，直到能宣布全部修复”。继续在codex诊断/修复，不推main、不改原凭据、不付费；缺少真实设备仍不能虚报实测。主代理独立处理，不新建聊天/代理。
+- 新增仅codex、GET目录、601次硬预算的`tests/ci-storage-probe.mjs`及read-probe手动workflow，提交a0aff0b仅测试skip ci。无需写入/清理fixture。[41180641337](https://github.com/lwy9107124035/longnankejia/actions/runs/41180641337)实际601读取，1/100成功，500中492次503，响应为应用STORAGE_UNAVAILABLE（不是浏览器TLS/图片/客户资料大小）；原始响应保留`.cache/storage-probe-41180641337/storage-read-probe.json`。未据此认定唯一根因。
+- 原服务端只记录Error名称，无法区分D1排队/额度/超时等。现加固定枚举reason并仅记录枚举+异常类，不回显原SQL/参数/凭据；17项相关API与分类安全测试通过。准备只推codex诊断补修，等CI后再运行601请求探针分类，不重复大规模fixture或无关全量回归。
