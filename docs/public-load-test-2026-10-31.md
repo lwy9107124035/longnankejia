@@ -43,3 +43,11 @@
 详情接口原需4次串行D1往返，读完后若有其他保存还会返回409。现用原有D1 batch机制，同时读版本、所选单条和脱敏映射，保留私有字段过滤；总计2次往返。并发测试修复前409、修复后同版本正文200，并核验公开响应不含合成邀请码。证据 `.cache/detail-snapshot-before.txt`、`detail-snapshot-tests.txt`。
 
 下一轮云端为容量诊断：允许延迟超过5秒后继续逐级到1000，3秒P95验收目标保持不变，超时、限流、错误停止规则和15000次HTTP预算不变。报告明确 `latencyDiagnostic=true`，性能超标仍判失败，不能用达到1000阶段冒充全部通过。这是有限突发读取测试，不是长时稳定性或1000并发真实AI答复验收。
+
+详情修复67ea266部署[41178276974](https://github.com/lwy9107124035/longnankejia/actions/runs/41178276974)成功；169项当前CI测试、17项管理员、8项公开浏览器通过。随后的[41178560400](https://github.com/lwy9107124035/longnankejia/actions/runs/41178560400)仍失败：500阶段分页10次HTTP503，499次测试器主动取消，合计4125次业务读取；没有1000阶段。1/10/25/50阶段P95为1234/1240/1438/1926ms，100/250阶段4902/4136ms。保留原始artifact `.cache/remote-read-load-load-fixture-5e83b33beb26894c18db7708/online-read-load-report.json`。
+
+清理遇本机TLS35中断，初次失败报告没有改写为成功。只读确认188条本轮合成记录仍在、测试会话为0后，用新临时会话按当时单条hash再次清理；`.cache/detail-load-cleanup-retry.txt`确认429/0、凭据不变、会话移除。正常main385/188仍返回200。
+
+分页补修将5次串行D1往返减为3次；版本、行和筛选总数在同一batch内读取。多取一条键判断续页，超过字节预算的正文不返回；旧游标跨版本仍409，增量删除仍完整返回。新增2000条删除标记的真实SQLite计划测试发现原查询虽使用kind索引，仍扫描删除标记；增加`admin_content_live`部分索引，保留原索引给增量同步。真实codex空列表相同SELECT扫描1136→1行，SQL时间2.4456→0.5895ms（单次观察，不是性能保证）；证据 `live-index-cloud-{before,apply,after}.txt`。仅codex加索引，未改资料或revision。当前171项CI测试、8项公开浏览器、Functions构建通过，新增大正文逐页完整性断言；管理员相关回归与下一次公网诊断待收尾。
+
+2026-10-31 15:08北京时间查询账户全部D1的UTC当日小时统计：rowsRead=3,395,725、rowsWritten=33,570，统计有延迟，实际套餐未知；`load-account-daily-read-budget.json`。后续读取预算需保留余量，不因压测耗尽正常使用额度，不把滚动24h单库统计冒充账户当日总量。

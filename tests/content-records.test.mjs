@@ -143,6 +143,14 @@ test('Chinese query cursors, byte-bounded detail pages and ranked knowledge outs
   assert.equal(second.status, 200); assert.equal(second.data.rows.length, 50); assert.notEqual(first.data.rows[0].key, second.data.rows[0].key);
   const large = await read(backend, 'format=records&field=kepuCustom');
   assert.equal(large.status, 200); assert.equal(large.data.rows.length, 1); assert.ok(large.data.cursor);
+  const largeRows = [...large.data.rows]; let largeCursor = large.data.cursor;
+  while (largeCursor) {
+    assert.ok(largeRows.length < 3, 'byte-bounded paging must make progress');
+    const next = await read(backend, 'format=records&field=kepuCustom&cursor=' + encodeURIComponent(largeCursor));
+    assert.equal(next.status, 200); largeRows.push(...next.data.rows); largeCursor = next.data.cursor;
+  }
+  assert.deepEqual(largeRows.map(row => row.value.id), ['large-0', 'large-1', 'large-2']);
+  assert.ok(largeRows.every(row => row.value.detail.length === 900000));
   const search = await read(backend, 'format=search&q=' + encodeURIComponent('请讲讲青石围说明'));
   assert.equal(search.status, 200); assert.equal(search.data.rows[0].value.id, 'zz-target'); assert.ok(search.data.rows.length <= 20);
   const device = setupEnvironment(backend); await device.store.syncWithCloud();

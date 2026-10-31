@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS admin_content_items (
   PRIMARY KEY (generation, key)
 );
 CREATE INDEX IF NOT EXISTS admin_content_kind ON admin_content_items (generation, kind, key);
+CREATE INDEX IF NOT EXISTS admin_content_live ON admin_content_items (generation, kind, key) WHERE value!='null';
 CREATE INDEX IF NOT EXISTS admin_content_changes ON admin_content_items (generation, revision, key);
 CREATE INDEX IF NOT EXISTS admin_content_owner ON admin_content_items (generation, owner, kind);
 CREATE INDEX IF NOT EXISTS admin_content_media ON admin_content_items (generation, kind, media_type, key);

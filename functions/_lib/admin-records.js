@@ -227,8 +227,10 @@ export async function migrateRecordStorage(db, current, { generation = crypto.ra
 
 function pageStatement(db, clause, params, after, limit, summary) {
   const selector = summary ? "CASE WHEN kind IN ('kbCustom','kbEdited','kepuCustom','kepuEdited') THEN json_remove(value,'$.detail','$.answer') ELSE value END" : 'value';
-  return db.prepare('SELECT key,kind,digest,value FROM (SELECT *,SUM(length(CAST(value AS BLOB))) OVER (ORDER BY key) AS runningBytes,ROW_NUMBER() OVER (ORDER BY key) AS position FROM (SELECT key,kind,digest,' + selector + ' AS value FROM admin_content_items WHERE ' + clause + ' AND key>? ORDER BY key LIMIT ?)) WHERE runningBytes<=1800000 OR position=1').bind(...params, after, limit);
+  // Keep one extra key to detect continuation without returning another large value.
+  return db.prepare('SELECT key,kind,digest,CASE WHEN runningBytes<=1800000 OR position=1 THEN value ELSE NULL END AS value FROM (SELECT *,SUM(length(CAST(value AS BLOB))) OVER (ORDER BY key) AS runningBytes,ROW_NUMBER() OVER (ORDER BY key) AS position FROM (SELECT key,kind,digest,' + selector + ' AS value FROM admin_content_items WHERE ' + clause + ' AND key>? ORDER BY key LIMIT ?))').bind(...params, after, limit + 1);
 }
+const boundedPage = (rows, limit) => rows.filter(row => row.value !== null).slice(0, limit);
 function encodeRecordCursor(value) {
   return btoa(Array.from(encoder.encode(JSON.stringify(value)), value => String.fromCharCode(value)).join('')).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
@@ -260,7 +262,7 @@ export async function initialRecordPages(db, manifest) {
   const current = snapshotManifest(result[0].results[0], manifest);
   const pages = {};
   for (const [index, field] of fields.entries()) {
-    const rows = result[index + 1].results, total = current.counts[field] || 0;
+    const rows = boundedPage(result[index + 1].results, 50), total = current.counts[field] || 0;
     const value = { generation: current.generation, revision: current.revision, key: rows.at(-1)?.key || '', field, query: '', category: '', media: '', since: null };
     pages[field] = { rows: pageRows(rows, true), cursor: rows.length && total > rows.length ? encodeRecordCursor(value) : '' };
   }
@@ -297,10 +299,17 @@ export async function pageRecords(db, manifest, { field, cursor = '', limit = 50
     if (field !== 'dialectCustom' || !['audio', 'video'].includes(media)) throw new RecordError(400, 'INVALID_MEDIA_FILTER', '媒体分类不正确');
     clause += ' AND media_type=?'; params.push(media);
   }
-  const total = !query && !category && since === undefined && manifest.counts ? field ? manifest.counts[field + (media ? '/media/' + media : '')] || 0 : fields.reduce((sum, kind) => sum + (manifest.counts[kind] || 0), 0)
-    : (await db.prepare('SELECT COUNT(*) AS count FROM admin_content_items WHERE ' + clause).bind(...params).first()).count;
-  const { results: rows } = await pageStatement(db, clause, params, after, limit, summary).all();
-  const more = rows.length && await db.prepare('SELECT 1 AS found FROM admin_content_items WHERE ' + clause + ' AND key>? LIMIT 1').bind(...params, rows.at(-1).key).first();
+  const counted = !query && !category && since === undefined && manifest.counts;
+  const result = await db.batch([
+    db.prepare("SELECT value,revision FROM admin_state WHERE key='content'"),
+    pageStatement(db, clause, params, after, limit, summary),
+    ...(!counted ? [db.prepare('SELECT COUNT(*) AS count FROM admin_content_items WHERE ' + clause).bind(...params)] : [])
+  ]);
+  const current = snapshotManifest(result[0].results[0], manifest);
+  if (cursor && current.revision !== manifest.revision) throw new RecordError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
+  manifest = current;
+  const total = counted ? field ? manifest.counts[field + (media ? '/media/' + media : '')] || 0 : fields.reduce((sum, kind) => sum + (manifest.counts[kind] || 0), 0) : result[2].results[0].count;
+  const candidates = result[1].results, rows = boundedPage(candidates, limit), more = candidates.length > rows.length;
   const cursorValue = { generation: manifest.generation, revision: manifest.revision, key: rows.at(-1)?.key || '', field: field || '', query, category, media, since: since ?? null };
   const nextCursor = more ? encodeRecordCursor(cursorValue) : '';
   return { ok: true, model: 'records-v1', revision: manifest.revision, total, rows: pageRows(rows, summary), cursor: nextCursor };

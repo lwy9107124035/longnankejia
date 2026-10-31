@@ -4,18 +4,19 @@ import fs from 'node:fs';
 import { createAdminBackend } from './helpers/admin-harness.mjs';
 import { migrateRecordStorage } from '../functions/_lib/admin-records.js';
 
-test('a concurrent save cannot mix catalog counts and page rows or invalidate an already coherent snapshot', async t => {
+for (const format of ['pages', 'records']) test(`a concurrent save cannot mix ${format} counts and page rows or invalidate an already coherent snapshot`, async t => {
   const backend = createAdminBackend(); t.after(() => backend.close());
   backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql', import.meta.url), 'utf8'));
   const content = structuredClone(globalThis.HeritageContent.defaults);
   content.kepuCustom = Array.from({ length: 70 }, (_, i) => ({ id: 'snapshot-' + String(i).padStart(3, '0'), name: '快照资料' + i, detail: '完整正文' }));
   await migrateRecordStorage(backend.db, { value: content, revision: 0 });
   const root = (await backend.call({ action: 'login', credential: 'admin123', clientId: 'snapshot-reader' })).data;
-  const prepare = backend.db.prepare.bind(backend.db), batch = backend.db.batch.bind(backend.db); let written = false;
+  const prepare = backend.db.prepare.bind(backend.db), batch = backend.db.batch.bind(backend.db); let written = false, writes = 0;
   async function writeDuringRead() {
     if (written) return; written = true;
-    const saved = await backend.call({ action: 'update_content', changes: [{ key: 'kepuCustom/snapshot-new', baseHash: await globalThis.HeritageContent.cellHash(null), value: { id: 'snapshot-new', name: '并发新增', detail: '新正文' } }] }, root.bearer);
-    assert.equal(saved.status, 200);
+    const id = 'snapshot-new-' + ++writes;
+    const saved = await backend.call({ action: 'update_content', changes: [{ key: 'kepuCustom/' + id, baseHash: await globalThis.HeritageContent.cellHash(null), value: { id, name: '并发新增', detail: '新正文' } }] }, root.bearer);
+    assert.equal(saved.status, 200); assert.equal(saved.data.accepted.length, 1);
   }
   backend.db.prepare = sql => {
     const statement = prepare(sql), all = statement.all.bind(statement);
@@ -23,13 +24,19 @@ test('a concurrent save cannot mix catalog counts and page rows or invalidate an
     return statement;
   };
   backend.db.batch = async statements => { await writeDuringRead(); return batch(statements); };
-  const response = await backend.fetchApi('/api/admin/sync?format=pages');
+  const response = await backend.fetchApi('/api/admin/sync?format=' + format + '&field=kepuCustom&summary=1');
   assert.equal(response.status, 200);
-  const data = await response.json(); assert.equal(written, true); assert.equal(data.revision, 2); assert.equal(data.counts.kepuCustom, 71);
-  assert.equal(data.kepuCustom.length, 50); assert.ok(data.pages.kepuCustom);
-  assert.ok(data.kepuCustom.every(row => row.detail === undefined));
-  const cursor = JSON.parse(Buffer.from(data.pages.kepuCustom.replaceAll('-', '+').replaceAll('_', '/'), 'base64').toString());
+  const data = await response.json(); assert.equal(written, true); assert.equal(data.revision, 2);
+  const rows = format === 'pages' ? data.kepuCustom : data.rows.map(row => row.value), marker = format === 'pages' ? data.pages.kepuCustom : data.cursor;
+  assert.equal(format === 'pages' ? data.counts.kepuCustom : data.total, 71);
+  assert.equal(rows.length, 50); assert.ok(marker); assert.ok(rows.every(row => row.detail === undefined));
+  const cursor = JSON.parse(Buffer.from(marker.replaceAll('-', '+').replaceAll('_', '/'), 'base64').toString());
   assert.equal(cursor.revision, data.revision);
+  if (format === 'records') {
+    written = false;
+    const stale = await backend.fetchApi('/api/admin/sync?format=records&field=kepuCustom&summary=1&cursor=' + encodeURIComponent(marker));
+    assert.equal(stale.status, 409); assert.equal((await stale.json()).code, 'PAGE_CHANGED');
+  }
 });
 
 test('record detail reads its value and revision together while redacting legacy invitation credentials', async t => {
@@ -62,4 +69,31 @@ test('record detail reads its value and revision together while redacting legacy
   assert.equal(data.rows[0].hash, await globalThis.HeritageContent.cellHash(data.rows[0].value, true));
   assert.equal((await backend.fetchApi('/api/admin/sync?format=record&key=auditLogs/private')).status, 400);
   assert.equal((await backend.fetchApi('/api/admin/sync?format=record&key=_history/private')).status, 400);
+});
+
+test('live pages skip retained deletion markers while incremental synchronization still returns deletions', async t => {
+  const backend = createAdminBackend(); t.after(() => backend.close());
+  backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql', import.meta.url), 'utf8'));
+  const content = structuredClone(globalThis.HeritageContent.defaults);
+  content.kepuCustom = Array.from({ length: 50 }, (_, i) => ({ id: 'z-live-' + i, name: '有效资料' + i, detail: '完整正文' }));
+  const manifest = await migrateRecordStorage(backend.db, { value: content, revision: 0 });
+  const insert = backend.sqlite.prepare("INSERT INTO admin_content_items(generation,key,kind,value,digest,revision) VALUES(?,?,'kepuCustom','null','synthetic-null',1)");
+  backend.sqlite.exec('BEGIN');
+  for (let i = 0; i < 2000; i++) insert.run(manifest.generation, 'kepuCustom/a-deleted-' + i);
+  backend.sqlite.exec('COMMIT');
+  const prepare = backend.db.prepare.bind(backend.db), plans = [];
+  backend.db.prepare = sql => {
+    const statement = prepare(sql), bind = statement.bind.bind(statement);
+    statement.bind = (...values) => {
+      if (sql.includes('AS runningBytes')) plans.push(backend.sqlite.prepare('EXPLAIN QUERY PLAN ' + sql).all(...values).map(row => row.detail).join('\n'));
+      return bind(...values);
+    };
+    return statement;
+  };
+  const live = await (await backend.fetchApi('/api/admin/sync?format=records&field=kepuCustom&summary=1')).json();
+  assert.equal(live.rows.length, 50); assert.equal(live.total, 50); assert.equal(live.cursor, '');
+  assert.match(plans.at(-1), /admin_content_live/);
+  const changes = await (await backend.fetchApi('/api/admin/sync?format=records&field=kepuCustom&since=0')).json();
+  assert.equal(changes.rows.length, 50); assert.ok(changes.rows.every(row => row.value === null)); assert.ok(changes.cursor);
+  assert.doesNotMatch(plans.at(-1), /admin_content_live/);
 });

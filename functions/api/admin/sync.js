@@ -216,7 +216,7 @@ async function getData(db, request, env) {
     for (const row of result.rows) globalThis.HeritageContent.setContentCell(pageContent, row.key, row.value);
     const redacted = globalThis.HeritageContent.contentCells(safeContent(pageContent, tokens.value));
     result.rows = await Promise.all(result.rows.map(async row => ({ ...row, value: redacted.get(row.key) ?? null, hash: row.hash || await globalThis.HeritageContent.cellHash(row.value, true) })));
-    if (params.get('format') !== 'record' && (await recordsManifest(db)).revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
+    if (params.get('format') === 'search' && (await recordsManifest(db)).revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
     return result;
   }
   const known = since !== null && await db.prepare("SELECT revision FROM admin_state WHERE key = 'content'").first();
