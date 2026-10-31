@@ -700,6 +700,11 @@
       }
       window.addEventListener('admin-sync-status', updateSyncNotice);
       document.getElementById('heritageSyncRetry').addEventListener('click', function () { window.Store.syncWithCloud(); });
+      document.getElementById('heritageRefresh').addEventListener('click', async function () {
+        var button = this; button.disabled = true; button.textContent = '刷新中…';
+        try { await window.Store.syncWithCloud(); }
+        finally { button.disabled = false; button.textContent = '刷新内容'; }
+      });
       updateSyncNotice();
       var sInput = document.getElementById('heritageSearch');
       var sClear = document.getElementById('heritageSearchClear');

@@ -225,6 +225,33 @@ export async function migrateRecordStorage(db, current, { generation = crypto.ra
   return { ...marker, revision: current.revision + 1, rows: prepared.length };
 }
 
+function pageStatement(db, clause, params, after, limit, summary) {
+  const selector = summary ? "CASE WHEN kind IN ('kbCustom','kbEdited','kepuCustom','kepuEdited') THEN json_remove(value,'$.detail','$.answer') ELSE value END" : 'value';
+  return db.prepare('SELECT key,kind,digest,value FROM (SELECT *,SUM(length(CAST(value AS BLOB))) OVER (ORDER BY key) AS runningBytes,ROW_NUMBER() OVER (ORDER BY key) AS position FROM (SELECT key,kind,digest,' + selector + ' AS value FROM admin_content_items WHERE ' + clause + ' AND key>? ORDER BY key LIMIT ?)) WHERE runningBytes<=1800000 OR position=1').bind(...params, after, limit);
+}
+function encodeRecordCursor(value) {
+  return btoa(Array.from(encoder.encode(JSON.stringify(value)), value => String.fromCharCode(value)).join('')).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+function pageRows(rows, summary) {
+  return rows.map(row => ({ key: row.key, value: JSON.parse(row.value), hash: row.digest, summary: summary && /^(?:kb|kepu)(?:Custom|Edited)$/.test(row.kind) }));
+}
+
+export async function initialRecordPages(db, manifest) {
+  const result = await db.batch([
+    db.prepare("SELECT value,revision FROM admin_state WHERE key='content'"),
+    ...fields.map(field => pageStatement(db, "generation=? AND kind=? AND value!='null'", [manifest.generation, field], '', 50, true))
+  ]);
+  const row = result[0].results[0], current = { ...JSON.parse(row.value), revision: row.revision };
+  if (current.storage !== 'records-v1' || current.generation !== manifest.generation) throw new RecordError(409, 'PAGE_CHANGED', '存储已更新，请刷新列表');
+  const pages = {};
+  for (const [index, field] of fields.entries()) {
+    const rows = result[index + 1].results, total = current.counts[field] || 0;
+    const value = { generation: current.generation, revision: current.revision, key: rows.at(-1)?.key || '', field, query: '', category: '', media: '', since: null };
+    pages[field] = { rows: pageRows(rows, true), cursor: rows.length && total > rows.length ? encodeRecordCursor(value) : '' };
+  }
+  return { manifest: current, pages };
+}
+
 export async function pageRecords(db, manifest, { field, cursor = '', limit = 50, summary = false, query = '', category = '', media = '', since } = {}) {
   if (field && !fields.includes(field)) throw new RecordError(400, 'INVALID_PAGE', '内容类型不正确');
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RecordError(400, 'INVALID_PAGE', '每页应为1到100条');
@@ -257,12 +284,11 @@ export async function pageRecords(db, manifest, { field, cursor = '', limit = 50
   }
   const total = !query && !category && since === undefined && manifest.counts ? field ? manifest.counts[field + (media ? '/media/' + media : '')] || 0 : fields.reduce((sum, kind) => sum + (manifest.counts[kind] || 0), 0)
     : (await db.prepare('SELECT COUNT(*) AS count FROM admin_content_items WHERE ' + clause).bind(...params).first()).count;
-  const selector = summary ? "CASE WHEN kind IN ('kbCustom','kbEdited','kepuCustom','kepuEdited') THEN json_remove(value,'$.detail','$.answer') ELSE value END" : 'value';
-  const { results: rows } = await db.prepare('SELECT key,kind,digest,value FROM (SELECT *,SUM(length(CAST(value AS BLOB))) OVER (ORDER BY key) AS runningBytes,ROW_NUMBER() OVER (ORDER BY key) AS position FROM (SELECT key,kind,digest,' + selector + ' AS value FROM admin_content_items WHERE ' + clause + ' AND key>? ORDER BY key LIMIT ?)) WHERE runningBytes<=1800000 OR position=1').bind(...params, after, limit).all();
+  const { results: rows } = await pageStatement(db, clause, params, after, limit, summary).all();
   const more = rows.length && await db.prepare('SELECT 1 AS found FROM admin_content_items WHERE ' + clause + ' AND key>? LIMIT 1').bind(...params, rows.at(-1).key).first();
   const cursorValue = { generation: manifest.generation, revision: manifest.revision, key: rows.at(-1)?.key || '', field: field || '', query, category, media, since: since ?? null };
-  const nextCursor = more ? btoa(Array.from(encoder.encode(JSON.stringify(cursorValue)), value => String.fromCharCode(value)).join('')).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '') : '';
-  return { ok: true, model: 'records-v1', revision: manifest.revision, total, rows: rows.map(row => ({ key: row.key, value: JSON.parse(row.value), hash: row.digest, summary: summary && /^(?:kb|kepu)(?:Custom|Edited)$/.test(row.kind) })), cursor: nextCursor };
+  const nextCursor = more ? encodeRecordCursor(cursorValue) : '';
+  return { ok: true, model: 'records-v1', revision: manifest.revision, total, rows: pageRows(rows, summary), cursor: nextCursor };
 }
 
 export async function recordCounts(db, manifest) {

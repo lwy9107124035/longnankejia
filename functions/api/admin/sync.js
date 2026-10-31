@@ -2,7 +2,7 @@
 import { DEFAULTS, validateContent, validateChanges, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 import { storeMedia, migrateD1Media, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
-import { recordsManifest, readRecordState, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
+import { recordsManifest, readRecordState, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
 import { archiveHistoryBefore, expandArchivedHistory } from '../../_lib/admin-history-archive.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
@@ -187,7 +187,7 @@ async function getData(db, request, env) {
   const user = await session(db, request, false);
   const params = new URL(request.url).searchParams;
   const since = params.get('revision');
-  const manifest = await recordsManifest(db);
+  let manifest = await recordsManifest(db);
   if (manifest && params.get('format') === 'history') {
     requireSuper(user);
     const page = await pageRecoveryHistory(db, manifest, params.get('cursor') || '');
@@ -221,16 +221,16 @@ async function getData(db, request, env) {
   const unchanged = known && String(known.revision) === since;
   let content, paging;
   if (!unchanged && manifest && params.get('format') === 'pages') {
+    const snapshot = await initialRecordPages(db, manifest);
+    manifest = snapshot.manifest;
     const value = structuredClone(DEFAULTS), pages = {}, summaryKeys = [], hashes = {};
     for (const field of Object.keys(globalThis.HeritageContent.defaults)) {
-      const page = await pageRecords(db, manifest, { field, summary: true });
+      const page = snapshot.pages[field];
       pages[field] = page.cursor;
       for (const row of page.rows) { globalThis.HeritageContent.setContentCell(value, row.key, row.value); hashes[row.key] = row.hash; if (row.summary) summaryKeys.push(row.key); }
     }
     content = { value, revision: manifest.revision, bytes: manifest.bytes };
     paging = { model: 'records-v1', pages, summaryKeys, hashes, counts: await recordCounts(db, manifest) };
-    const latest = await recordsManifest(db);
-    if (latest.revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
   } else content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
   const tokens = await state(db, 'tokens', []);
   const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), ...paging, capabilities: { mediaUploads: !!env.ADMIN_MEDIA, separateImageDatabase: !!env.ADMIN_MEDIA_DB }, revision: content.revision, ...(unchanged && { unchanged: true }) };

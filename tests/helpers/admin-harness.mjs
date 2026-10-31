@@ -29,6 +29,7 @@ export function createAdminBackend({ password = 'admin123', filename = ':memory:
         async all() { return { results: sqlite.prepare(sql).all(...params) }; },
         run() {
           if (params.some(value => typeof value === 'string' && Buffer.byteLength(value) > maxRowBytes)) throw new Error('D1 row limit exceeded');
+          if (/^\s*SELECT\b/i.test(sql)) return { results: sqlite.prepare(sql).all(...params), meta: { changes: 0 } };
           const result = sqlite.prepare(sql).run(...params); return { meta: { changes: Number(result.changes) } };
         }
       };

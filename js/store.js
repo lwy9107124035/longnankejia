@@ -416,8 +416,9 @@
         if (knownRevision !== undefined) args.revision = knownRevision;
         endpoint += '?' + Object.keys(args).map(function (key) { return encodeURIComponent(key) + '=' + encodeURIComponent(args[key]); }).join('&');
       }
-      var response;
+      var response, data;
       for (var attempt = 0; attempt < 3; attempt++) {
+        data = null;
         try {
           response = await fetch(endpoint, {
             method: body ? 'POST' : 'GET', headers: headers, cache: 'no-store', signal: controller.signal,
@@ -429,6 +430,13 @@
           continue;
         }
         var jsonResponse = (response.headers.get('Content-Type') || '').includes('application/json');
+        if (!body && !args.cursor && jsonResponse && response.status === 409) {
+          data = await response.json();
+          if (data.code === 'PAGE_CHANGED' && attempt < 2) {
+            await new Promise(function (resolve) { setTimeout(resolve, 300 * (attempt + 1)); });
+            continue;
+          }
+        }
         if (jsonResponse && response.status < 500) break;
         // Only content patches and reads are safe to retry after an ambiguous response.
         if (attempt >= 2 || !retryable) break;
@@ -438,7 +446,7 @@
       if (!(response.headers.get('Content-Type') || '').includes('application/json')) {
         throw Object.assign(new Error('服务器暂未响应，请稍后重试。草稿已保留。'), { code: 'ENDPOINT_UNAVAILABLE' });
       }
-      var data = await response.json();
+      data = data || await response.json();
       if (!response.ok || !data.ok) {
         if (body && body.action === 'update_content' && data.code === 'UNKNOWN_ACTION') throw Object.assign(new Error('服务正在更新，请稍后重试。草稿已保留。'), { code: 'SERVER_UPDATING' });
         var currentSession = getSession();
@@ -1505,7 +1513,8 @@
       if (document.visibilityState === 'visible') syncWithCloud();
     });
     setInterval(function () {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') syncWithCloud();
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (getSession()) syncWithCloud();
     }, 15000);
   }
 })();
