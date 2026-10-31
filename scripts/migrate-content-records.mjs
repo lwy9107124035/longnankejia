@@ -95,15 +95,20 @@ export function createRestDatabase(request, { apply = false } = {}) {
   }, { readOnly: !apply });
 }
 
-export function curlConfiguration(url, token, body) {
-  return 'silent\nshow-error\nfail-with-body\nmax-time = 60\nurl = ' + JSON.stringify(url) + '\nrequest = "POST"\nheader = ' +
-    JSON.stringify('Authorization: Bearer ' + token) + '\nheader = "Content-Type: application/json"\ndata = ' + JSON.stringify(JSON.stringify(body)) + '\n';
+export function curlConfiguration(url, token, body, method = 'POST') {
+  if (!['GET', 'POST'].includes(method)) throw new Error('Unsupported Cloudflare request method');
+  return 'silent\nshow-error\nfail-with-body\nmax-time = 60\nurl = ' + JSON.stringify(url) + '\nrequest = ' + JSON.stringify(method) + '\nheader = ' +
+    JSON.stringify('Authorization: Bearer ' + token) + (body === undefined ? '\n' : '\nheader = "Content-Type: application/json"\ndata = ' + JSON.stringify(JSON.stringify(body)) + '\n');
 }
 
-export function remoteRequest(options) {
+export function readWranglerToken(options = {}) {
   const configPath = options.configPath || path.join(process.env.APPDATA ? path.join(process.env.APPDATA, 'xdg.config') : process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), '.wrangler/config/default.toml');
   const config = fs.readFileSync(configPath, 'utf8'), token = /^oauth_token\s*=\s*"([^"\r\n]+)"/m.exec(config)?.[1];
   if (!token) throw new Error('Wrangler OAuth authorization is unavailable; authenticate Wrangler first');
+  return token;
+}
+export function remoteRequest(options) {
+  const token = readWranglerToken(options);
   const url = 'https://api.cloudflare.com/client/v4/accounts/' + options.accountId + '/d1/database/' + TARGETS[options.target].id + '/query';
   return body => new Promise((resolve, reject) => {
     const child = spawn(process.platform === 'win32' ? 'curl.exe' : 'curl', ['--config', '-'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });

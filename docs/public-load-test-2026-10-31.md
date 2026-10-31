@@ -2,7 +2,7 @@
 
 2026年10月31日，用户要求实际验证iPhone、微信和公众号高并发，随后明确目标约1000人同时使用。
 
-**验收结论：未通过1000人高峰目标，暂不合并main。** 已发布codex的读取和轮询修复，通过171项当前CI自动测试、19项相关管理员测试、8项公开浏览器测试；公网500阶段仍有503，1000阶段没有执行。真实iPhone/微信与真实AI峰值也未验收。失败证据保留，不能将常规回归通过写成全部上线条件通过。
+**验收结论：1000人综合验收仍未完成，暂不合并main。** 最新188条合成资料综合测试已完成11616次读取且全部成功，原高峰503未再出现；1000阶段P95为4618ms，超过原3秒目标，且当轮保存没有落在1000人峰值时段。单机生成器存在明显CPU与事件循环瓶颈，正在准备四台同步生成器复验。真实iPhone、微信入口及真实AI峰值仍未验收。历史失败保留，不能将常规回归通过写成全部上线条件通过。
 
 ## 真机条件
 
@@ -80,3 +80,28 @@
 预览 `.cache/public-load-preview-final-health.json`：200/JSON/no-store、483/0、problems/warnings为空、公开snapshotComplete=true；公开快照没有自定义图片，不能声称私有验收图全部已备份。正文D1实际19,918,848 bytes、图片D1 94,208 bytes。逻辑记录总字节12,616,556包含本轮保留的合成审计历史，不能当作首屏响应或客户正文大小；物理空间/逻辑字节/套餐额度分开判断，套餐仍未知。
 
 停止继续施压。当前可交付的是已验证的codex修复与真实失败报告，仍不满足千人公众号开放条件。下一阶段应先补可分类的服务端故障诊断、公开读取的削峰/缓存或读负载分流，再按原标准复测；管理请求、草稿、凭据和写入回执必须隔离于公开缓存。D1官方说明单库顺序处理查询，读复制需要Sessions API，不能只开选项就假定已扩展：[并发说明](https://developers.cloudflare.com/d1/platform/limits/)、[读复制说明](https://developers.cloudflare.com/d1/best-practices/read-replication/)。本轮没有实现或启用新的缓存、读副本、收费服务。
+
+## 继续修复后的实际结果
+
+分类诊断确认1000目录读取出现`storage_busy`，不是图片容量不足。新增固定枚举错误分类，不记录原SQL或凭据。同一数据库、来源及规范化查询的匿名读取只合并仍在执行的公共结果；完成即移除，管理员和携带revision的条件刷新独立读取。每次内容修改完成或失败后使本实例的旧共享读失效。真实本地workerd已验证50并发没有共享Request/Response产生的跨请求I/O错误。不同Worker实例的普通匿名读可能短暂处于不同版本，不承诺所有访客同一毫秒看到新内容。
+
+合并读取后，目录探针[41181852464](https://github.com/lwy9107124035/longnankejia/actions/runs/41181852464)1601次全部成功；1/100/500/1000阶段P95为923/1123/1414/2413ms。综合[41183072808](https://github.com/lwy9107124035/longnankejia/actions/runs/41183072808)完成11616次业务及HTTP读取、无取消或409，1/10/25/50/100/250/500/1000阶段P95为1252/551/574/660/836/1251/1921/4618ms。1000阶段6000次零错误仍不等于通过3秒目标。三路保存及同条竞争结果正确，但`peakOverlaps=0`，没有证明峰值保存。
+
+原始证据分别为`.cache/coalesced-probe-41181852464/storage-read-probe.json`、`.cache/remote-read-load-load-fixture-4a814ee717ee214ca632cbc2/online-read-load-report.json`及对应控制记录。唯一前缀条目和会话均清理，codex最终576/0，原密码和邀请码摘要不变。
+
+部署`e17a462`增加固定`Server-Timing: content;dur=...`，没有包含查询值或凭据。纯静态、不读D1的[对照41184122044](https://github.com/lwy9107124035/longnankejia/actions/runs/41184122044)中，1000冷连接HTML P95仍为3894ms，生成器CPU4690ms/阶段3972ms、事件循环P95阻塞2477ms。这说明单机生成器显著受限，不能把4.6秒全部归于服务端，也不能放宽目标让报告变绿。
+
+最终完整页面320/320、未捕获异常及子资源失败0；管理员初跑51通过、2组导航等待load12秒超时且无pageError，针对3项复测全部通过，合计54项功能覆盖通过，原超时报告保留。证据`.cache/coalesced-site-full.txt`、`coalesced-admin-full-initial-results.json`、`coalesced-admin-navigation-recheck.txt`。没有因测试工具改动无故再跑全量浏览器。
+
+## 下一轮的可复现入口与额度守卫
+
+- 只读用量：`node scripts/d1-usage.mjs`。按项目实际所属账户读取当前UTC日全部D1小时统计，保留原始报告；统计可能延迟、套餐仍未知，不把单库滚动24小时当作日剩余额度。
+- 综合验收：`node tests/live-codex-load.mjs --run`；`--help`不鉴权、不写入。只接受固定codex、188条合成资料和三路临时会话。遇不确定写入先核对操作回执及内容hash，使用同operationId恢复；结束仅精确删除本次条目和会话，保留审计。
+- 默认预留100万读行/2万写行测试预算，测试后预测总量须低于400万读行/8万写行，为正常业务预留免费额度。未知、过时15分钟或跨UTC日的许可拒绝启动。开始同步峰值前再次验证许可。许可不含凭据或账户ID。
+- 四个标准GitHub运行器各250用户，约定同一UTC开始时间，合计HTTP硬预算15000。合并报告必须有四份完整六路径旅程、相同版本/两图摘要、零错误、P95≤3000ms、起点偏差≤1秒，并证明1000个用户旅程实际重叠。记录最大同时HTTP数，不把1000活跃用户写成6000同时HTTP。
+- 保存使用三个独立临时会话；三路服务器回执时间必须落在1000人共同活跃窗口内，同条竞争必须一成功一冲突。远端读取未结束不提前删夹具。首次先做`read-distributed-static`纯静态对照，不读D1；合并用`node tests/aggregate-read-load.mjs --static <四个报告文件>`。
+- 新`admin_content_sequence`和`admin_content_recovery`索引已在真实本地SQLite5000历史+1000日志验证，消除排序和非恢复历史扫描。**尚未应用云端**；综合控制器通过预算守卫后才在codex创建这两个索引。main不执行DDL。
+
+2026-10-31 16:19北京时间账户UTC当日统计为4,986,544读行/52,426写行，`.cache/account-read-budget-1793434756611.json`；已停止当天所有D1云端负载和夹具写入。新控制器实际运行已在创建会话前拒绝，`.cache/live-load-budget-refusal.txt`。免费日额度按00:00UTC重置，即北京时间次日08:00，重置后仍须重新核对余量；[官方D1额度](https://developers.cloudflare.com/d1/platform/pricing/)。未付费绕过额度。
+
+最后独立核验`.cache/storage-final-verification-1793437500514.json`：79原行及原凭据摘要不变，main385/188公开响应仍与原快照逐字相同，codex576/0。`.cache/registered-session-cleanup-final.json`再次确认活跃合成条目/维护会话均0。Windows微信已经进入本站，但停在平台安全提示页，须用户本人继续访问；未代理绕过。真实iPhone仍缺设备，未声称模拟已替代真机。

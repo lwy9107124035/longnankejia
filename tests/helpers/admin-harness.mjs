@@ -4,6 +4,19 @@ import { onRequestGet, onRequestPost, onRequestOptions } from '../../functions/a
 import { onRequestGet as onMedia, onRequestHead as onMediaHead } from '../../functions/api/media/[id].js';
 import { onRequestPost as onUploads } from '../../functions/api/admin/uploads.js';
 
+export function captureQueryPlans(backend, matches = () => true) {
+  const prepare = backend.db.prepare.bind(backend.db), plans = [];
+  backend.db.prepare = sql => {
+    const statement = prepare(sql), bind = statement.bind.bind(statement);
+    statement.bind = (...values) => {
+      if (/^SELECT\b/i.test(sql) && matches(sql)) plans.push(backend.sqlite.prepare('EXPLAIN QUERY PLAN ' + sql).all(...values).map(row => row.detail).join('\n'));
+      return bind(...values);
+    };
+    return statement;
+  };
+  return plans;
+}
+
 export async function recoveryFixture(count = 70) {
   const content = structuredClone(globalThis.HeritageContent.defaults); content._history = [];
   for (let i = 0; i < count; i++) {

@@ -11,11 +11,15 @@ on:
     inputs:
       mode:
         type: choice
-        options: [deploy, read-load, read-probe, read-static]
+        options: [deploy, read-load, read-probe, read-static, read-distributed, read-distributed-static]
         default: deploy
       load_prefix:
         type: string
       load_revision:
+        type: string
+      load_start:
+        type: string
+      load_budget:
         type: string
 
 permissions:
@@ -30,6 +34,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && startsWith(inputs.mode, 'read-') && github.ref_name == 'codex'
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(contains(inputs.mode, 'distributed') && '[0,1,2,3]' || '[0]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,8 +48,11 @@ jobs:
           LOAD_PREFIX: ${{ inputs.load_prefix }}
           LOAD_REVISION: ${{ inputs.load_revision }}
           READ_MODE: ${{ inputs.mode }}
+          LOAD_SHARD: ${{ matrix.shard }}
+          LOAD_START: ${{ inputs.load_start }}
+          LOAD_BUDGET: ${{ inputs.load_budget }}
         run: |
-          if [ "$READ_MODE" = read-probe ] || [ "$READ_MODE" = read-static ]; then
+          if [ "$READ_MODE" = read-probe ] || [ "$READ_MODE" = read-static ] || [ "$READ_MODE" = read-distributed-static ]; then
             node tests/ci-storage-probe.mjs
           else
             node tests/ci-read-load.mjs
@@ -49,7 +60,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: codex-read-load-report
+          name: ${{ contains(inputs.mode, 'distributed') && format('codex-read-load-report-{0}', matrix.shard) || 'codex-read-load-report' }}
           path: |
             .cache/online-read-load-report.json
             .cache/storage-read-probe.json
@@ -70,7 +81,7 @@ jobs:
 
       - name: Verify administrator API and multi-device synchronization
         if: github.ref_name == 'codex' || github.ref_name == 'main'
-        run: node --test tests/admin-deployment.test.mjs tests/admin-sync.test.mjs tests/admin-security.test.mjs tests/admin-comprehensive.test.mjs tests/content-collaboration.test.mjs tests/collaboration-recheck.test.mjs tests/media-storage.test.mjs tests/media-database.test.mjs tests/maintenance-health.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs tests/content-records.test.mjs tests/migrate-content-records.test.mjs tests/media-r2.test.mjs tests/media-uploads.test.mjs tests/history-archive.test.mjs tests/release-readiness.test.mjs tests/visitor-polling.test.mjs tests/catalog-snapshot.test.mjs tests/storage-failures.test.mjs tests/public-catalog.test.mjs
+        run: node --test tests/admin-deployment.test.mjs tests/admin-sync.test.mjs tests/admin-security.test.mjs tests/admin-comprehensive.test.mjs tests/content-collaboration.test.mjs tests/collaboration-recheck.test.mjs tests/media-storage.test.mjs tests/media-database.test.mjs tests/maintenance-health.test.mjs tests/v3_admin_ux.test.mjs tests/pages-functions.test.mjs tests/content-records.test.mjs tests/migrate-content-records.test.mjs tests/media-r2.test.mjs tests/media-uploads.test.mjs tests/history-archive.test.mjs tests/release-readiness.test.mjs tests/visitor-polling.test.mjs tests/catalog-snapshot.test.mjs tests/storage-failures.test.mjs tests/public-catalog.test.mjs tests/metadata-read-cost.test.mjs tests/load-budget.test.mjs tests/read-load-reports.test.mjs tests/d1-usage.test.mjs
 
       - name: Bind persistent administrator storage
         if: github.ref_name == 'codex' || github.ref_name == 'main'

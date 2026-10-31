@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { aggregateReadLoads } from './helpers/read-load-reports.mjs';
+const args = process.argv.slice(2), staticOnly = args.includes('--static'), files = args.filter(arg => arg !== '--static');
+assert.equal(files.length, 4, 'Provide the four generator report files');
+const report = aggregateReadLoads(files.map(file => JSON.parse(fs.readFileSync(file, 'utf8'))), { staticOnly });
+const file = '.cache/distributed-read-summary-' + Date.now() + '.json';
+fs.mkdirSync('.cache', { recursive: true }); fs.writeFileSync(file, JSON.stringify(report, null, 2), { flag: 'wx' });
+console.log(JSON.stringify({ file, ...report }, null, 2));
+if (!report.pass) process.exitCode = 1;

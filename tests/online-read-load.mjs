@@ -3,14 +3,20 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { assertLoadPermit } from './helpers/load-budget.mjs';
 
 const origin = 'https://codex.longnankejia-dev.pages.dev';
-const phases = [1, 10, 25, 50, 100, 250, 500, 1000].map(users => ({ users, iterations: 1 }));
+const allowedPhases = [1, 10, 25, 50, 100, 250, 500, 1000];
 const percentile = (values, p) => values.length ? [...values].sort((a, b) => a - b)[Math.ceil(values.length * p) - 1] : null;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, reportPath, duringPeak,
-  generator = 'single Windows host via configured proxy; HTTP virtual users, not physical phones', peakPauseMs = 0, latencyDiagnostic = false }) {
+  generator = 'single Windows host via configured proxy; HTTP virtual users, not physical phones', peakPauseMs = 0, latencyDiagnostic = false,
+  permit, phaseUsers = allowedPhases, shard = 0, shardCount = 1, requestBudget = 15000, startAt }) {
+  assertLoadPermit(permit, requestBudget * shardCount);
+  assert.ok([1, 4].includes(shardCount) && Number.isInteger(shard) && shard >= 0 && shard < shardCount);
+  assert.ok(phaseUsers.length && phaseUsers.every(users => allowedPhases.includes(users)));
+  const phases = phaseUsers.map(users => ({ users, iterations: 1 }));
   assert.match(prefix, /^load-fixture-[a-f0-9]{24}$/); assert.ok(detailKey.startsWith('kepuCustom/' + prefix + '-'));
   const targets = [
     { name: 'html', path: '/', type: 'text/html' },
@@ -20,15 +26,15 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
     { name: 'legacy-image', path: '/api/media/a5de70330e575fa03c530091f07430a2d959b70aa3df14b8804e7a3c4e2c5a6a', type: 'image/jpeg' },
     { name: 'new-image', path: '/api/media/a80e375c338e604e10af745832bcd141b155c762adf56fefe58799175a372825', type: 'image/jpeg' }
   ];
-  const report = { startedAt: new Date().toISOString(), origin, generator, latencyDiagnostic,
-    realIphone: false, realWechat: false, realOfficialAccount: false, paidAiCalls: 0, fixtureCount, fixtureRevision: revision,
-    requestBudget: 15000, requestTimeoutMs: 10000, proposedRequestP95Ms: 3000, targetUsersConfirmed: true, targetUsers: 1000, phases: [], samples: [] };
+  const report = { startedAt: new Date().toISOString(), origin, generator, latencyDiagnostic, shard, shardCount, coordinatedStart: startAt,
+    realIphone: false, realWechat: false, realOfficialAccount: false, paidAiCalls: 0, fixtureCount, fixtureRevision: revision, fixturePrefix: prefix,
+    requestBudget, requestTimeoutMs: 10000, proposedRequestP95Ms: 3000, targetUsersConfirmed: true, targetUsers: 1000, phases: [], samples: [] };
   let inFlight = 0, nextRequest = 0, stopped = false;
   const images = new Map();
-  async function request(target, phase, signal) {
+  async function request(target, phase, signal, user) {
     if (++nextRequest > report.requestBudget) throw Error('Read-only load request budget exhausted');
     const started = performance.now(); inFlight++; phase.peakInFlight = Math.max(phase.peakInFlight, inFlight);
-    const sample = { phase: phase.users, target: target.name };
+    const sample = { phase: phase.users, target: target.name, user, startedAt: new Date().toISOString() };
     try {
       let response, bytes; sample.statuses = [];
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -60,11 +66,17 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
       } else assert.match(new TextDecoder().decode(bytes), /龙南客家/);
       sample.ok = true;
     } catch (error) { sample.ok = false; sample.cancelled = signal.aborted; sample.error = error.name; sample.message = error.message.slice(0, 160); }
-    finally { sample.ms = Math.round(performance.now() - started); inFlight--; phase.samples.push(sample); report.samples.push(sample); }
+    finally { sample.ms = Math.round(performance.now() - started); sample.finishedAt = new Date().toISOString(); inFlight--; phase.samples.push(sample); report.samples.push(sample); }
     return sample;
   }
   for (const spec of phases) {
     if (stopped) break;
+    if (startAt && spec.users === Math.max(...phaseUsers)) {
+      const scheduled = Date.parse(startAt); assert.ok(Number.isFinite(scheduled) && scheduled - Date.now() < 5 * 60000, 'Invalid coordinated start');
+      while (Date.now() < scheduled) await sleep(Math.min(1000, scheduled - Date.now()));
+      assert.ok(Date.now() - scheduled < 3000, 'Generator missed the coordinated start');
+      assertLoadPermit(permit, requestBudget * shardCount);
+    }
     if (spec.users === 1000 && peakPauseMs) await sleep(peakPauseMs);
     const phase = { ...spec, startedAt: new Date().toISOString(), samples: [], peakInFlight: 0 }, controller = new AbortController(), started = performance.now();
     const cpu = process.cpuUsage(), loop = monitorEventLoopDelay({ resolution: 20 }); loop.enable();
@@ -75,7 +87,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
       for (let iteration = 0; iteration < spec.iterations; iteration++) {
         for (const target of targets) {
           if (controller.signal.aborted) return;
-          const sample = await request(target, phase, controller.signal);
+          const sample = await request(target, phase, controller.signal, index);
           if (spec.users === 1000 && !peakWork && duringPeak) peakWork = duringPeak().then(value => ({ value }), error => ({ error: error.message }));
           if (sample.status === 429 || failures() >= 10 || phase.samples.length >= 40 && failures() / phase.samples.length > 0.05) {
             stopped = true; controller.abort(); return;
@@ -102,6 +114,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
       headerP95Ms: percentile(samples.map(sample => sample.headerMs).filter(Number.isFinite), 0.95),
       bodyP95Ms: percentile(samples.map(sample => sample.bodyMs).filter(Number.isFinite), 0.95) }; });
     delete phase.samples;
+    report.imageDigests = Object.fromEntries(images);
     console.log(JSON.stringify({ users: phase.users, requests: phase.requests, failures: phase.failures, p95Ms: phase.p95Ms, pass: phase.pass }));
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
     if (phase.failures || !latencyDiagnostic && phase.p95Ms > 5000) stopped = true;

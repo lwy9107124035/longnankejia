@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS admin_content_items (
 );
 CREATE INDEX IF NOT EXISTS admin_content_kind ON admin_content_items (generation, kind, key);
 CREATE INDEX IF NOT EXISTS admin_content_live ON admin_content_items (generation, kind, key) WHERE value!='null';
+CREATE INDEX IF NOT EXISTS admin_content_sequence ON admin_content_items (generation, kind);
+CREATE INDEX IF NOT EXISTS admin_content_recovery ON admin_content_items (generation, kind) WHERE kind='_history' AND COALESCE(json_extract(value,'$.undone'),0)=0 AND json_type(value,'$.before') IS NOT NULL AND json_type(value,'$.before')!='null';
 CREATE INDEX IF NOT EXISTS admin_content_changes ON admin_content_items (generation, revision, key);
 CREATE INDEX IF NOT EXISTS admin_content_owner ON admin_content_items (generation, owner, kind);
 CREATE INDEX IF NOT EXISTS admin_content_media ON admin_content_items (generation, kind, media_type, key);

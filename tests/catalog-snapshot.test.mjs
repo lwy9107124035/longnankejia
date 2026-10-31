@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { createAdminBackend } from './helpers/admin-harness.mjs';
+import { createAdminBackend, captureQueryPlans } from './helpers/admin-harness.mjs';
 import { migrateRecordStorage } from '../functions/_lib/admin-records.js';
 
 for (const format of ['pages', 'records']) test(`a concurrent save cannot mix ${format} counts and page rows or invalidate an already coherent snapshot`, async t => {
@@ -81,15 +81,7 @@ test('live pages skip retained deletion markers while incremental synchronizatio
   backend.sqlite.exec('BEGIN');
   for (let i = 0; i < 2000; i++) insert.run(manifest.generation, 'kepuCustom/a-deleted-' + i);
   backend.sqlite.exec('COMMIT');
-  const prepare = backend.db.prepare.bind(backend.db), plans = [];
-  backend.db.prepare = sql => {
-    const statement = prepare(sql), bind = statement.bind.bind(statement);
-    statement.bind = (...values) => {
-      if (sql.includes('AS runningBytes')) plans.push(backend.sqlite.prepare('EXPLAIN QUERY PLAN ' + sql).all(...values).map(row => row.detail).join('\n'));
-      return bind(...values);
-    };
-    return statement;
-  };
+  const plans = captureQueryPlans(backend, sql => sql.includes('AS runningBytes'));
   const live = await (await backend.fetchApi('/api/admin/sync?format=records&field=kepuCustom&summary=1')).json();
   assert.equal(live.rows.length, 50); assert.equal(live.total, 50); assert.equal(live.cursor, '');
   assert.match(plans.at(-1), /admin_content_live/);

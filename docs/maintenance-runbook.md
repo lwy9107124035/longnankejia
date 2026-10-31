@@ -16,7 +16,7 @@
 
 ```powershell
 $env:NODE_USE_ENV_PROXY = '1'
-node scripts/maintenance-health.mjs --baseline docs/production-baseline.json --report .cache/maintenance/latest.json --snapshot-dir .cache/maintenance/backups --d1-database longnankejia-admin-main
+node scripts/maintenance-health.mjs --baseline docs/production-baseline.json --report .cache/maintenance/latest.json --snapshot-dir .cache/maintenance/backups --d1-database 31744e43-aed6-4440-a551-21c35054b89d
 ```
 
 - 内容检查只使用公开 GET，不需要管理员密码或邀请码，不写云端数据。实际数据库大小由现有 Wrangler 授权只读获取。
@@ -26,7 +26,7 @@ node scripts/maintenance-health.mjs --baseline docs/production-baseline.json --r
 - 备份成功时按版本和内容摘要追加公开 JSON，并校验、缓存所有本站独立图片；已有备份不覆盖、不自动删除。外站媒体、站点自带资源和私有审计历史不属于这份公开内容备份。站点自带资源保存在 Git；完整私有备份由维护人员另行保管。
 - 图片归档失败时报告不完整，不把缺图快照当作完整备份。`.cache` 不提交仓库，应随电脑资料备份保存。
 - `--d1-database` 调用 `wrangler d1 info ... --json`，同时记录实际数据库文件大小；达到 350 MiB 提前预警。350 MiB 是保守维护预算，不是查询得出的套餐上限。Wrangler 缺失或授权过期会明确提示容量检查未完成，仍继续公开备份，不伪报容量正常。
-- 绑定独立图片库的环境另加 `--media-d1-database longnankejia-media-codex`（仅 codex）。两库分别记录大小和350 MiB预警；未配置图片库检查或授权失效时明确报告图片容量未知。main未绑定图片库时沿用上面的原命令。公开图片仍由同一路径下载，备份必须包含两库引用的全部图片。
+- 绑定独立图片库的环境另加 `--media-d1-database 7704b0bf-1598-44cb-9cb6-28e9c1281557`（仅 codex；其正文库为`f5a18460-1926-4c5f-846e-fbb11d686bd0`）。Wrangler查询使用固定UUID，避免名称未被解析而请求错误路径；不因名称路由10000错误直接认定授权失效。两库分别记录大小和350 MiB预警；未配置图片库检查或授权失效时明确报告图片容量未知。main未绑定图片库时沿用上面的原命令。公开图片仍由同一路径下载，备份必须包含两库引用的全部图片。
 - 应用快照额度、D1 文件占用和账户套餐额度分别判断，不互相替代。当前权限无法查询账户订阅；不擅自开通付费服务。超过免费读写或存储额度可能停止服务，若已使用付费套餐则超额可能计费，费用以账户实际订阅为准。
 - 巡检结果不变时保持安静；接口异常、缺条、容量预警、备份失败、修复完成或需要用户决定时才通知。
 
@@ -45,3 +45,11 @@ node scripts/maintenance-health.mjs --baseline docs/production-baseline.json --r
 隔离演练将 80 条旧图片转为独立内容摘要引用，118 条文字、归属与创建时间不变，元数据降至约 0.43 MiB。服务端额外兼容仍未刷新的旧页面，避免内嵌图片重新撑满快照。正式发布与迁移结果以项目检查点和原始证据为准。
 
 实际处理已完成：正式 revision 243，118 条及80张图片已核验；真实上传成功，维护测试记录已删除，密码和邀请码不变。首份完整公开内容与图片备份已保存，巡检无异常。完整事故经过与未完成的实机边界见 `docs/upload-incident-2026-10-28.md`。
+
+## codex高峰验收的继续条件
+
+2026-10-31的D1账户当日读取接近免费500万行，已停止云端D1负载；不再重跑直到跨UTC日并核验预算。每次先执行`node scripts/d1-usage.mjs`，再用`node tests/live-codex-load.mjs --run`受保护入口。默认预测100万读行/2万写行，预计用量不得超过400万读行/8万写行；未知、超预算、过期或跨日均拒绝。不能直接dispatch无许可的API负载，不使用旧.cache临时控制器绕过守卫。额度拒绝、网络不可用或用户手动微信安全提示待处理时，保留证据并停止依赖步骤，不高频重试。
+
+该入口只操作codex测试库，创建188条唯一前缀合成资料和三个临时会话，四台生成器同步各250用户并安排峰值保存，最后按前缀/会话hash精确清理。会话bearer只在内存，不输出或落盘；原密码/邀请码/API密钥不改。只有通过预算守卫后才应用两个幂等历史查询索引，main不执行DDL或发布。先完成不读取D1的四机静态对照；报告标准及当前真实失败见`docs/public-load-test-2026-10-31.md`。
+
+已有每6小时维护任务在同一聊天接续尚未完成的验收，要求电脑和Codex应用可用；不是云端全天任务，不承诺准点执行。除新异常、容量/备份问题、修复完成或确需用户决定外保持安静，验收结束后不反复加压。无真实iPhone/真机云条件不能报告真机通过，Windows微信安全提示须用户手动处理；不能由代理绕过。
