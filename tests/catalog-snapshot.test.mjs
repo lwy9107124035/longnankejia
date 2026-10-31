@@ -31,3 +31,35 @@ test('a concurrent save cannot mix catalog counts and page rows or invalidate an
   const cursor = JSON.parse(Buffer.from(data.pages.kepuCustom.replaceAll('-', '+').replaceAll('_', '/'), 'base64').toString());
   assert.equal(cursor.revision, data.revision);
 });
+
+test('record detail reads its value and revision together while redacting legacy invitation credentials', async t => {
+  const backend = createAdminBackend(); t.after(() => backend.close());
+  backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql', import.meta.url), 'utf8'));
+  const content = structuredClone(globalThis.HeritageContent.defaults);
+  const invite = 'NFYJ-INV-SYNTHETIC-DETAIL-ONLY';
+  content.kepuCustom = [{ id: 'detail-snapshot', name: '原名称', detail: '原正文', creatorTokenId: invite }];
+  backend.sqlite.prepare("UPDATE admin_state SET value=?,revision=1 WHERE key='tokens'").run(JSON.stringify([{ id: 'detail-author', token: invite }]));
+  await migrateRecordStorage(backend.db, { value: content, revision: 0 });
+  const root = (await backend.call({ action: 'login', credential: 'admin123', clientId: 'detail-reader' })).data;
+  const prepare = backend.db.prepare.bind(backend.db), batch = backend.db.batch.bind(backend.db); let written = false;
+  async function writeDuringRead() {
+    if (written) return; written = true;
+    const row = content.kepuCustom[0];
+    const saved = await backend.call({ action: 'update_content', changes: [{ key: 'kepuCustom/' + row.id,
+      baseHash: await globalThis.HeritageContent.cellHash({ ...row, creatorTokenId: 'detail-author' }), value: { ...row, name: '新名称', detail: '新正文' } }] }, root.bearer);
+    assert.equal(saved.status, 200); assert.equal(saved.data.accepted.length, 1);
+  }
+  backend.db.prepare = sql => {
+    const statement = prepare(sql), all = statement.all.bind(statement);
+    statement.all = async () => { const result = await all(); if (sql.startsWith('SELECT key,kind,value FROM admin_content_items')) await writeDuringRead(); return result; };
+    return statement;
+  };
+  backend.db.batch = async statements => { await writeDuringRead(); return batch(statements); };
+  const response = await backend.fetchApi('/api/admin/sync?format=record&key=kepuCustom/detail-snapshot');
+  assert.equal(response.status, 200);
+  const data = await response.json(); assert.equal(data.revision, 2); assert.equal(data.rows[0].value.detail, '新正文');
+  assert.equal(data.rows[0].value.creatorTokenId, 'detail-author'); assert.equal(JSON.stringify(data).includes(invite), false);
+  assert.equal(data.rows[0].hash, await globalThis.HeritageContent.cellHash(data.rows[0].value, true));
+  assert.equal((await backend.fetchApi('/api/admin/sync?format=record&key=auditLogs/private')).status, 400);
+  assert.equal((await backend.fetchApi('/api/admin/sync?format=record&key=_history/private')).status, 400);
+});

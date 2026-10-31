@@ -2,7 +2,7 @@
 import { DEFAULTS, validateContent, validateChanges, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 import { storeMedia, migrateD1Media, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
-import { recordsManifest, readRecordState, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
+import { recordsManifest, readRecordState, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
 import { archiveHistoryBefore, expandArchivedHistory } from '../../_lib/admin-history-archive.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
@@ -200,21 +200,23 @@ async function getData(db, request, env) {
   }
   if (manifest && manifest.bytes > MAX_CONTENT_BYTES && !params.has('format')) throw new ApiError(409, 'CLIENT_UPGRADE_REQUIRED', '内容存储已升级，请刷新页面后继续使用；本机草稿已保留');
   if (manifest && ['records', 'record', 'search'].includes(params.get('format'))) {
-    const tokens = await state(db, 'tokens', []);
-    let result;
-    if (params.get('format') === 'search') result = await searchKnowledgeRecords(db, manifest, params.get('q') || '');
-    else if (params.get('format') === 'record') {
+    let result, tokens;
+    if (params.get('format') === 'record') {
       const key = params.get('key') || '';
       if (!Object.keys(DEFAULTS).some(field => key === field || key.startsWith(field + '/')) || key.startsWith('auditLogs')) throw new ApiError(400, 'INVALID_RECORD', '内容编号不正确');
-      const current = await readRecordState(db, manifest, [key]);
-      result = { ok: true, model: 'records-v1', revision: manifest.revision, rows: [{ key, value: globalThis.HeritageContent.contentCells(safeContent(current.value, tokens.value)).get(key) ?? null, summary: false }] };
-    } else result = await pageRecords(db, manifest, { field: params.get('field') || undefined, cursor: params.get('cursor') || '', query: (params.get('q') || '').slice(0, 500), category: params.get('category') || '', media: params.get('media') || '', summary: params.get('summary') === '1', since: params.has('since') ? Number(params.get('since')) : undefined });
+      const current = await recordSnapshot(db, manifest, key);
+      manifest = current.manifest; tokens = { value: current.tokens };
+      result = { ok: true, model: 'records-v1', revision: manifest.revision, rows: [{ key, value: globalThis.HeritageContent.contentCells(current.value).get(key) ?? null, summary: false }] };
+    } else {
+      tokens = await state(db, 'tokens', []);
+      result = params.get('format') === 'search' ? await searchKnowledgeRecords(db, manifest, params.get('q') || '')
+        : await pageRecords(db, manifest, { field: params.get('field') || undefined, cursor: params.get('cursor') || '', query: (params.get('q') || '').slice(0, 500), category: params.get('category') || '', media: params.get('media') || '', summary: params.get('summary') === '1', since: params.has('since') ? Number(params.get('since')) : undefined });
+    }
     const pageContent = structuredClone(DEFAULTS);
     for (const row of result.rows) globalThis.HeritageContent.setContentCell(pageContent, row.key, row.value);
     const redacted = globalThis.HeritageContent.contentCells(safeContent(pageContent, tokens.value));
     result.rows = await Promise.all(result.rows.map(async row => ({ ...row, value: redacted.get(row.key) ?? null, hash: row.hash || await globalThis.HeritageContent.cellHash(row.value, true) })));
-    const latest = await recordsManifest(db);
-    if (latest.revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
+    if (params.get('format') !== 'record' && (await recordsManifest(db)).revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
     return result;
   }
   const known = since !== null && await db.prepare("SELECT revision FROM admin_state WHERE key = 'content'").first();

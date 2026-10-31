@@ -236,13 +236,28 @@ function pageRows(rows, summary) {
   return rows.map(row => ({ key: row.key, value: JSON.parse(row.value), hash: row.digest, summary: summary && /^(?:kb|kepu)(?:Custom|Edited)$/.test(row.kind) }));
 }
 
+function snapshotManifest(row, manifest) {
+  const current = { ...JSON.parse(row.value), revision: row.revision };
+  if (current.storage !== 'records-v1' || current.generation !== manifest.generation) throw new RecordError(409, 'PAGE_CHANGED', '存储已更新，请刷新列表');
+  return current;
+}
+
+export async function recordSnapshot(db, manifest, key) {
+  const [state, record] = await db.batch([
+    db.prepare("SELECT key,value,revision FROM admin_state WHERE key IN ('content','tokens')"),
+    db.prepare('SELECT key,kind,value FROM admin_content_items WHERE generation=? AND key=?').bind(manifest.generation, key)
+  ]);
+  const current = snapshotManifest(state.results.find(row => row.key === 'content'), manifest);
+  return { manifest: current, tokens: JSON.parse(state.results.find(row => row.key === 'tokens')?.value || '[]'),
+    value: assembledState(record.results, current).value };
+}
+
 export async function initialRecordPages(db, manifest) {
   const result = await db.batch([
     db.prepare("SELECT value,revision FROM admin_state WHERE key='content'"),
     ...fields.map(field => pageStatement(db, "generation=? AND kind=? AND value!='null'", [manifest.generation, field], '', 50, true))
   ]);
-  const row = result[0].results[0], current = { ...JSON.parse(row.value), revision: row.revision };
-  if (current.storage !== 'records-v1' || current.generation !== manifest.generation) throw new RecordError(409, 'PAGE_CHANGED', '存储已更新，请刷新列表');
+  const current = snapshotManifest(result[0].results[0], manifest);
   const pages = {};
   for (const [index, field] of fields.entries()) {
     const rows = result[index + 1].results, total = current.counts[field] || 0;

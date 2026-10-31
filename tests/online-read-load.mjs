@@ -9,7 +9,7 @@ const percentile = (values, p) => values.length ? [...values].sort((a, b) => a -
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, reportPath, duringPeak,
-  generator = 'single Windows host via configured proxy; HTTP virtual users, not physical phones', peakPauseMs = 0 }) {
+  generator = 'single Windows host via configured proxy; HTTP virtual users, not physical phones', peakPauseMs = 0, latencyDiagnostic = false }) {
   assert.match(prefix, /^load-fixture-[a-f0-9]{24}$/); assert.ok(detailKey.startsWith('kepuCustom/' + prefix + '-'));
   const targets = [
     { name: 'html', path: '/', type: 'text/html' },
@@ -19,7 +19,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
     { name: 'legacy-image', path: '/api/media/a5de70330e575fa03c530091f07430a2d959b70aa3df14b8804e7a3c4e2c5a6a', type: 'image/jpeg' },
     { name: 'new-image', path: '/api/media/a80e375c338e604e10af745832bcd141b155c762adf56fefe58799175a372825', type: 'image/jpeg' }
   ];
-  const report = { startedAt: new Date().toISOString(), origin, generator,
+  const report = { startedAt: new Date().toISOString(), origin, generator, latencyDiagnostic,
     realIphone: false, realWechat: false, realOfficialAccount: false, paidAiCalls: 0, fixtureCount, fixtureRevision: revision,
     requestBudget: 15000, requestTimeoutMs: 10000, proposedRequestP95Ms: 3000, targetUsersConfirmed: true, targetUsers: 1000, phases: [], samples: [] };
   let inFlight = 0, nextRequest = 0, stopped = false;
@@ -93,7 +93,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
     delete phase.samples;
     console.log(JSON.stringify({ users: phase.users, requests: phase.requests, failures: phase.failures, p95Ms: phase.p95Ms, pass: phase.pass }));
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-    if (phase.failures || phase.p95Ms > 5000) stopped = true;
+    if (phase.failures || !latencyDiagnostic && phase.p95Ms > 5000) stopped = true;
     if (!stopped) await sleep(1000);
   }
   report.finishedAt = new Date().toISOString(); report.requests = report.samples.length; report.stoppedEarly = stopped;

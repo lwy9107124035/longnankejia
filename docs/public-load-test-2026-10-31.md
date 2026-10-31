@@ -35,3 +35,11 @@
 本轮没有发起真实付费模型压力请求，也没有开通收费服务。网站代理还有每IP每分钟30次的单实例保护；多个实例不是共享全局配额。模型平台另按账户/模型限制RPM、TPM等，不能把网页读取1000并发当作1000人同时提问已验收。实际账户模型额度未获得，应在公众号开放前单独核对。[模型限流说明](https://api-docs.siliconflow.cn/docs/userguide/faqs/rate-limit-and-upgradation)
 
 最终提交、CI、线上复测和清理证据继续记录到 `docs/codex-admin-checkpoint.md`；未完成真机与真实AI峰值前，不给出全项“实测无误”的结论。
+
+## 云端运行器复测与详情读取修复
+
+本机代理发生无HTTP响应的TLS重置后，改用公开仓库的标准GitHub运行器直连，仍只测codex，不调用AI。原测试未通过，证据不覆盖：[41166615163](https://github.com/lwy9107124035/longnankejia/actions/runs/41166615163)。2616次业务读取无错误，但250并发P95为5872ms，达到5秒停止线，未继续500/1000。250阶段详情P95为5907ms，目录2751ms、分页2960ms；图片分别1107/680ms，不能把瓶颈归为图片。原报告 `.cache/remote-read-load-load-fixture-970f67cdd91cbfbf5f080340/online-read-load-report.json`。本轮临时资料/会话已删除，凭据摘要不变，codex364/0；main未写。
+
+详情接口原需4次串行D1往返，读完后若有其他保存还会返回409。现用原有D1 batch机制，同时读版本、所选单条和脱敏映射，保留私有字段过滤；总计2次往返。并发测试修复前409、修复后同版本正文200，并核验公开响应不含合成邀请码。证据 `.cache/detail-snapshot-before.txt`、`detail-snapshot-tests.txt`。
+
+下一轮云端为容量诊断：允许延迟超过5秒后继续逐级到1000，3秒P95验收目标保持不变，超时、限流、错误停止规则和15000次HTTP预算不变。报告明确 `latencyDiagnostic=true`，性能超标仍判失败，不能用达到1000阶段冒充全部通过。这是有限突发读取测试，不是长时稳定性或1000并发真实AI答复验收。
