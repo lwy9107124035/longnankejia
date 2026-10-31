@@ -324,3 +324,8 @@
 - 待完成：媒体helpers兼容独立库与旧库回退、存储统计和部署可选绑定、隔离双库故障/恢复测试；相关回归后再创建/绑定预览图片库并只推codex。不得先创建未验证架构、清理旧图或改写正式数据库。旧巡检记录的未提交文档修改继续保留。
 - 本地实现与验证已完成：Node195/195、相关37/37、Chrome/WebKit双库上传/刷新/导出/空库恢复10/10，静态/3负向/Functions构建通过。新增双库独立容量检查；图片库故障不回写正文库，原链接回退仅在新库无该图时进行。真实失败与边界见`docs/free-storage-upgrade-2026-10-31.md`，未复跑一万图演练。
 - 已创建独立预览图片库`longnankejia-media-codex`，APAC，ID7704b0bf-1598-44cb-9cb6-28e9c1281557，证据`.cache/free-media-create.txt`；只应用media表结构，不放凭据或默认内容。下一步核验schema后配置CODEX_MEDIA_D1_ID、只推codex，待CI成功做真实新图上传及旧图读取/精确清理验收。main没有图片库变量，不部署或修改正式内容。
+- 实际已完成：media-only schema初始化成功，仓库变量只新增CODEX_MEDIA_D1_ID。首次gh设置遭EOF，先只读确认未生效再重试成功，未盲目重复写入；未设置MAIN_MEDIA_D1_ID。业务提交6b775a40228b1f11e0c65a4724affed7953b9dc8仅推codex，[CI41157002310](https://github.com/lwy9107124035/longnankejia/actions/runs/41157002310)成功。
+- 真实预览`.cache/free-media-cloud-smoke-1793411363680.json`通过新旧图字节/Range、去重、保存编辑、跨库历史恢复、两库统计4组验收。临时资料与维护会话已清理，codex78→82、自定义0→0；两张唯一合成图片114,316原始bytes随审计历史保留，不清除原历史或造成图片引用失效。原密码和邀请码摘要不变。
+- 最终独立只读`.cache/free-media-final-readonly-1793411401034.json`：79原行digest及原password/tokens摘要和revision一致，temporaryRecords/maintenanceSessions均0；Pages实际绑定ADMIN_DB=f5原库、ADMIN_MEDIA_DB=7704新库，main=317原库且无新媒体库绑定。账户现3个D1库；仅保守按免费每库500MB/账户5GB规划，实际套餐仍未知，不把清单file_size刷新延迟当精确合计。
+- `.cache/free-media-data-verification.txt`验证四关键前端源码与已部署提交一致，main385/188公开响应与发布前逐字一致。该检查并发于临时验收，codex80/1为过程值，不能当最终内容；后续稳定巡检`.cache/free-media-preview-health.json`为82/0、31,772元数据bytes、正文库1,433,600bytes、图片库94,208bytes，HTTP200/JSON/no-store、problems/warnings空、snapshotComplete=true。公开备份不包含私有合成图片历史，未声称全库私有备份完成。
+- 本轮免费升级已发布并验收，仅补充文档skip ci推codex收尾；main仍559ed098f3994eee926d7b5b28e0d6a27077cc3f，未改正式内容、密码、邀请码、API密钥、账单或订阅。R2继续关闭；真实iOS/微信、公网峰值、大音视频上传仍不是本次验收范围，不重复运行无关规模回归。用户可从原地址.html进入codex，链接无需因本次升级修改。

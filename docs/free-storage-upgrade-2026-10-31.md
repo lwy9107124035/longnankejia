@@ -28,4 +28,14 @@
 - 静态检查、3项负向变异和Pages Functions构建通过。
 - 首次匿名大图请求预期401，但接口按既有8KiB未登录请求限制先返回413；改为分别验证小请求401和大请求413，权限未放宽。首轮页面测试退出清理重复关闭SQLite，修正为由服务器单次关闭后全部通过；这些是测试夹具问题，未因此放宽业务断言。
 
-实际发布提交、CI、线上绑定、容量及原数据核对结果完成后写入共同检查点 `docs/codex-admin-checkpoint.md`。
+## 发布与线上核验
+
+业务提交 `6b775a40228b1f11e0c65a4724affed7953b9dc8` 已仅推codex，[CI41157002310](https://github.com/lwy9107124035/longnankejia/actions/runs/41157002310)成功。预览地址仍为 `https://codex.longnankejia-dev.pages.dev/`，地址页无需换链接。
+
+真实预览验收 `.cache/free-media-cloud-smoke-1793411363680.json`：新图片只写独立库，旧图仍从原库读取；两图字节、Range、重复上传、正文编辑及跨库历史恢复通过。临时条目与会话已清理，revision78→82，原自定义科普0→0。两张合成图片合计114,316原始bytes，随测试审计历史保留，避免验收历史引用失效；不混入公开科普列表。
+
+独立只读核对 `.cache/free-media-final-readonly-1793411401034.json`：79条原内容/私有元数据行digest不变，密码和tokens原值摘要与revision不变，临时条目/会话均0。原ADMIN_DB继续f5库，新ADMIN_MEDIA_DB绑定7704库；main仍317库且没有新图片库绑定。正式公开响应核对 `.cache/free-media-data-verification.txt` 为revision385/188，与发布前逐字一致；该文件记录的codex80/1为并发验收过程值，最终稳定值使用下面的82/0报告。
+
+最终完整分页巡检 `.cache/free-media-preview-health.json`：HTTP200/JSON/no-store，revision82/0，元数据31,772 bytes，正文库实际1,433,600 bytes，图片库94,208 bytes；两库套餐上限仍未知，预警均未触发，problems/warnings为空，公开快照备份完整。公开列表没有自定义图片，mediaArchived=0不表示私有验收历史图片也已被公开备份。账户数据库数量从2增至3，仍须同时遵守账户总存储和每日读写额度。
+
+本次没有推main、修改正式内容/凭据、开通R2或更改收费设置。共同检查点为 `docs/codex-admin-checkpoint.md`。
