@@ -497,6 +497,7 @@ async function postData(db, env, request, body) {
 }
 async function handle(context) {
   const { request, env = {} } = context;
+  const started = performance.now();
   try {
     const origin = request.headers.get('Origin');
     if (origin && !allowedOrigin(request, origin)) throw new ApiError(403, 'ORIGIN_DENIED', '此网址不允许访问管理接口。');
@@ -522,7 +523,9 @@ async function handle(context) {
       try { result = await postData(env.ADMIN_DB, env, request, body); }
       finally { publicContentReads.delete(env.ADMIN_DB); }
     } else throw new ApiError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法。');
-    return json(200, result, request);
+    const response = json(200, result, request);
+    if (request.method === 'GET') response.headers.set('Server-Timing', 'content;dur=' + (performance.now() - started).toFixed(1));
+    return response;
   } catch (error) {
     if (error instanceof ApiError || error instanceof RecordError) return json(error.status, { ok: false, code: error.code, error: error.message, ...error.extra }, request);
     const detail = [error.message, error.cause?.message].join(' ');

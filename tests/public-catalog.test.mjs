@@ -39,6 +39,7 @@ test('simultaneous anonymous catalog requests share database work and create the
   const responses = await Promise.all(requests);
   for (const [i, response] of responses.entries()) {
     assert.equal(response.status, 200); assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.match(response.headers.get('Server-Timing'), /^content;dur=\d+(?:\.\d+)?$/);
     assert.equal(response.headers.get('Access-Control-Allow-Origin'), origins[i]);
     const value = await response.json(); assert.equal(value.counts.kepuCustom, 1); assert.equal(value.kepuCustom[0].name, '旧内容');
     for (const field of ['tokens', 'session', 'auditLogs', 'recovery', 'notifications']) assert.equal(Object.hasOwn(value, field), false);

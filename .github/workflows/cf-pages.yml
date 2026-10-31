@@ -11,7 +11,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [deploy, read-load, read-probe]
+        options: [deploy, read-load, read-probe, read-static]
         default: deploy
       load_prefix:
         type: string
@@ -41,7 +41,7 @@ jobs:
           LOAD_REVISION: ${{ inputs.load_revision }}
           READ_MODE: ${{ inputs.mode }}
         run: |
-          if [ "$READ_MODE" = read-probe ]; then
+          if [ "$READ_MODE" = read-probe ] || [ "$READ_MODE" = read-static ]; then
             node tests/ci-storage-probe.mjs
           else
             node tests/ci-read-load.mjs
