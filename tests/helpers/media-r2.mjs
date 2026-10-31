@@ -22,9 +22,9 @@ export async function createMediaRuntime(t, { api = false, persistPath } = {}) {
   const script = api ? `import { onRequestPost as upload } from '../../functions/api/admin/uploads.js';
     import { onRequestPost as sync } from '../../functions/api/admin/sync.js';
     import { onRequestGet as media } from '../../functions/api/media/[id].js';
-    export default { fetch(request, env) {
+    export default { fetch(request, env, ctx) {
       const path = new URL(request.url).pathname;
-      return (path === '/api/admin/uploads' ? upload : path.startsWith('/api/media/') ? media : sync)({ request, env });
+      return (path === '/api/admin/uploads' ? upload : path.startsWith('/api/media/') ? media : sync)({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });
     } };` : `import * as uploads from '../../functions/_lib/admin-uploads.js';
     import * as media from '../../functions/_lib/admin-media.js';
     export default { async fetch(request, env) {

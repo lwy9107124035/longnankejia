@@ -8,6 +8,7 @@ const LOCK_MS = 60000;
 const encoder = new TextEncoder();
 const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
 const CHUNK_CHARS = 400000;
+const publicContentReads = new WeakMap();
 class ApiError extends Error {
   constructor(status, code, message, extra = {}) { super(message); Object.assign(this, { status, code, extra }); }
 }
@@ -183,7 +184,25 @@ function contentPayload(body) {
   try { return validateContent(body); }
   catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
 }
-async function getData(db, request, env) {
+async function getData(db, request, env, context) {
+  const url = new URL(request.url);
+  if (request.headers.has('Authorization') || !['pages', 'records', 'record', 'search'].includes(url.searchParams.get('format'))) return readData(db, request, env);
+  url.searchParams.sort();
+  const key = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB;
+  let reads = publicContentReads.get(db);
+  if (!reads) { reads = new Map(); publicContentReads.set(db, reads); }
+  if (reads.has(key)) return reads.get(key);
+  // Share parsed public data only while a read is running, never request/response objects or sessions.
+  const promise = readData(db, request, env);
+  reads.set(key, promise);
+  context.waitUntil?.(Promise.allSettled([promise]));
+  try { return await promise; }
+  finally {
+    reads.delete(key);
+    if (!reads.size && publicContentReads.get(db) === reads) publicContentReads.delete(db);
+  }
+}
+async function readData(db, request, env) {
   const user = await session(db, request, false);
   const params = new URL(request.url).searchParams;
   const since = params.get('revision');
@@ -476,14 +495,15 @@ async function postData(db, env, request, body) {
     default: throw new ApiError(400, 'UNKNOWN_ACTION', '不支持的操作，请刷新页面后重试。');
   }
 }
-async function handle({ request, env = {} }) {
+async function handle(context) {
+  const { request, env = {} } = context;
   try {
     const origin = request.headers.get('Origin');
     if (origin && !allowedOrigin(request, origin)) throw new ApiError(403, 'ORIGIN_DENIED', '此网址不允许访问管理接口。');
     if (request.method === 'OPTIONS') return json(204, null, request);
     if (!env.ADMIN_DB) throw new ApiError(503, 'STORAGE_NOT_CONFIGURED', '云端数据库尚未配置，管理登录和同步暂不可用。');
     let result;
-    if (request.method === 'GET') result = await getData(env.ADMIN_DB, request, env);
+    if (request.method === 'GET') result = await getData(env.ADMIN_DB, request, env, context);
     else if (request.method === 'POST') {
       if (!request.headers.get('Content-Type')?.includes('application/json')) throw new ApiError(415, 'INVALID_TYPE', '请求需要使用 JSON。');
       // Login stays available with an expired bearer; only validated sessions get the large upload budget.
@@ -499,7 +519,8 @@ async function handle({ request, env = {} }) {
       let body;
       try { body = JSON.parse(text); } catch { throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。'); }
       if (!body || Array.isArray(body) || typeof body !== 'object') throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。');
-      result = await postData(env.ADMIN_DB, env, request, body);
+      try { result = await postData(env.ADMIN_DB, env, request, body); }
+      finally { publicContentReads.delete(env.ADMIN_DB); }
     } else throw new ApiError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法。');
     return json(200, result, request);
   } catch (error) {
