@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { getProjectAccount } from '../scripts/_lib/cloudflare-read.mjs';
 import { readD1Usage } from '../scripts/d1-usage.mjs';
@@ -12,6 +12,7 @@ import { createLoadPermit, assertLoadPermit, assertProductionReady } from './hel
 import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './helpers/read-load-reports.mjs';
 import {controlRequest,warmControlConnections} from './helpers/load-control-client.mjs';
 import {calibrateLoadClock} from './helpers/load-clock.mjs';
+import {githubLoadControl as gh} from './helpers/github-load-control.mjs';
 if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Persistent fetch is the default; LOAD_CONTROL_TRANSPORT=curl selects cold-connection diagnostics. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.ok(process.argv.length === 3 && ['--run','--probe-saves'].includes(process.argv[2]), 'Only --run, --probe-saves or --help is supported');
 const saveProbe = process.argv[2] === '--probe-saves';
@@ -109,11 +110,6 @@ async function rows() {
   return rows;
 }
 const credentialsHash = async () => createHash('sha256').update(JSON.stringify((await db.prepare("SELECT key,value,revision FROM admin_state WHERE key IN ('password','tokens') ORDER BY key").all()).results)).digest('hex');
-function gh(args) {
-  const response = spawnSync('gh', args, { encoding: 'utf8', windowsHide: true, timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
-  if (response.status !== 0) throw Error('GitHub control request failed: ' + args[0]);
-  return response.stdout;
-}
 async function saveThreeSessions(initial) {
   const window = { startedAt: new Date(clock.earliest()).toISOString(), nominalStartedAt:new Date(clock.now()).toISOString() };
   const outcomes = await Promise.allSettled(ids.slice(0, 3).map((id, i) => {
@@ -134,13 +130,13 @@ async function saveThreeSessions(initial) {
 async function remoteLoad(revision, initial) {
   const scheduled = clock.now() + 120000, startAt = new Date(scheduled).toISOString();
   let dispatched = '', dispatchError;
-  try { dispatched = gh(['workflow', 'run', 'cf-pages.yml', '--repo', 'lwy9107124035/longnankejia', '--ref', 'codex', '-f', 'mode=read-distributed', '-f', 'load_prefix=' + prefix, '-f', 'load_revision=' + revision, '-f', 'load_start=' + startAt, '-f', 'load_budget=' + JSON.stringify(loadPermit)]); }
+  try { dispatched = await gh(['workflow', 'run', 'cf-pages.yml', '--repo', 'lwy9107124035/longnankejia', '--ref', 'codex', '-f', 'mode=read-distributed', '-f', 'load_prefix=' + prefix, '-f', 'load_revision=' + revision, '-f', 'load_start=' + startAt, '-f', 'load_budget=' + JSON.stringify(loadPermit)]); }
   catch (error) { dispatchError = error.message; }
   const foundId = dispatched.match(/actions\/runs\/(\d+)/)?.[1];
   let run = foundId ? { databaseId: Number(foundId), url: 'https://github.com/lwy9107124035/longnankejia/actions/runs/' + foundId } : null;
   for (let i = 0; i < 5 && !run; i++) {
     await sleep(3000);
-    run = JSON.parse(gh(['run', 'list', '--repo', 'lwy9107124035/longnankejia', '--workflow', 'cf-pages.yml', '--branch', 'codex', '--event', 'workflow_dispatch', '--limit', '5', '--json', 'databaseId,displayTitle,status,url'])).find(item => item.displayTitle.includes(prefix));
+    run = JSON.parse(await gh(['run', 'list', '--repo', 'lwy9107124035/longnankejia', '--workflow', 'cf-pages.yml', '--branch', 'codex', '--event', 'workflow_dispatch', '--limit', '5', '--json', 'databaseId,displayTitle,status,url'])).find(item => item.displayTitle.includes(prefix));
   }
   assert.ok(run, dispatchError || 'dispatched read-load workflow not found'); result.remoteRunId = run.databaseId; result.remoteRunUrl = run.url;
   result.coordinatedStart = startAt;
@@ -159,7 +155,7 @@ async function remoteLoad(revision, initial) {
     // A control request can occupy 30 seconds; keep it outside the write barrier.
     if ((writes.length || remaining > 35000) && now - lastStatus >= 15000) {
       lastStatus = now;
-      const state = JSON.parse(gh(['run', 'view', String(run.databaseId), '--repo', 'lwy9107124035/longnankejia', '--json', 'status,conclusion']));
+      const state = JSON.parse(await gh(['run', 'view', String(run.databaseId), '--repo', 'lwy9107124035/longnankejia', '--json', 'status,conclusion']));
       if (state.status === 'completed') { result.remoteConclusion = state.conclusion; break; }
     }
     await sleep(!writes.length && remaining <= 5000 ? Math.max(50, Math.min(200, remaining)) : 1000);
@@ -167,7 +163,7 @@ async function remoteLoad(revision, initial) {
   assert.ok(result.remoteConclusion, 'Remote load did not finish within the control window');
   const destination = '.cache/remote-read-load-' + prefix;
   fs.mkdirSync(destination, { recursive: true });
-  gh(['run', 'download', String(run.databaseId), '--repo', 'lwy9107124035/longnankejia', '--dir', destination]);
+  await gh(['run', 'download', String(run.databaseId), '--repo', 'lwy9107124035/longnankejia', '--dir', destination]);
   const reports = [0, 1, 2, 3].map(shard => JSON.parse(fs.readFileSync(destination + '/codex-read-load-report-' + shard + '/online-read-load-report.json', 'utf8')));
   const report = aggregateReadLoads(reports,{requireClockBounds:true});
   result.concurrentWrites = { windows: writes, peakOverlaps: writes.filter(window => window.startedAt <= report.allUsersActiveUntil && window.finishedAt >= report.allUsersActiveFrom).length, sameRecordAccepted: 1, sameRecordConflict: 1 };
@@ -228,10 +224,11 @@ finally {
   try {
     if (result.remoteRunId && !result.remoteConclusion) {
       const args = ['run', 'view', String(result.remoteRunId), '--repo', 'lwy9107124035/longnankejia', '--json', 'status,conclusion'];
-      let state = JSON.parse(gh(args));
+      let state = JSON.parse(await gh(args));
       if (state.status !== 'completed') {
-        gh(['run', 'cancel', String(result.remoteRunId), '--repo', 'lwy9107124035/longnankejia']);
-        for (let i = 0; i < 12 && state.status !== 'completed'; i++) { await sleep(5000); state = JSON.parse(gh(args)); }
+        try {await gh(['run', 'cancel', String(result.remoteRunId), '--repo', 'lwy9107124035/longnankejia']);}
+        catch {result.remoteCancellationUnconfirmed=true;}
+        for (let i = 0; i < 12 && state.status !== 'completed'; i++) { await sleep(5000); state = JSON.parse(await gh(args)); }
       }
       assert.equal(state.status, 'completed', 'Remote job is still reading; fixture cleanup deferred');
       result.remoteConclusion = state.conclusion;
