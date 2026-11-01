@@ -188,12 +188,13 @@ async function getData(db, request, env, context) {
   const url = new URL(request.url);
   if (request.headers.has('Authorization') || url.searchParams.has('revision') || !['pages', 'records', 'record', 'search'].includes(url.searchParams.get('format'))) return readData(db, request, env);
   url.searchParams.sort();
-  const key = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB;
+  const manifest = globalThis.caches?.open ? await recordsManifest(db) : undefined;
+  const key = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB + ':' + (manifest ? manifest.generation + ':' + manifest.revision : 'legacy');
   let reads = publicContentReads.get(db);
   if (!reads) { reads = new Map(); publicContentReads.set(db, reads); }
   if (reads.has(key)) return reads.get(key);
   // Share parsed public data only while a read is running, never request/response objects or sessions.
-  const promise = readData(db, request, env);
+  const promise = manifest ? readPublicSnapshot(db, request, env, context, manifest) : readData(db, request, env, manifest);
   reads.set(key, promise);
   context.waitUntil?.(Promise.allSettled([promise]));
   try { return await promise; }
@@ -202,11 +203,37 @@ async function getData(db, request, env, context) {
     if (!reads.size && publicContentReads.get(db) === reads) publicContentReads.delete(db);
   }
 }
-async function readData(db, request, env) {
+async function readPublicSnapshot(db, request, env, context, manifest) {
+  const url = new URL(request.url);
+  url.pathname = '/_nfyj_public_snapshot';
+  url.searchParams.set('_generation', manifest.generation);
+  url.searchParams.set('_revision', String(manifest.revision));
+  url.searchParams.set('_media', String(!!env.ADMIN_MEDIA) + ':' + String(!!env.ADMIN_MEDIA_DB));
+  url.searchParams.sort();
+  const key = new Request(url), revision = manifest.revision;
+  let cache;
+  try {
+    cache = await globalThis.caches.open('nfyj-public-content-v1');
+    const found = await cache.match(key);
+    if (found) {
+      const value = await found.json();
+      if (value.ok === true && value.model === 'records-v1' && value.revision === revision) return value;
+    }
+  } catch (error) { console.warn('Public snapshot cache read failed:', error.name); }
+  const data = await readData(db, request, env, manifest);
+  if (cache && data.ok && data.model === 'records-v1' && data.revision === revision) {
+    // Only a public body for this freshly checked version is stored; HTTP responses still use no-store.
+    const task = Promise.resolve().then(() => cache.put(key, Response.json(data, {headers:{'Cache-Control':'public, max-age=300'}})))
+      .catch(error => { console.warn('Public snapshot cache write failed:', error.name); });
+    if (context.waitUntil) context.waitUntil(task); else await task;
+  }
+  return data;
+}
+async function readData(db, request, env, knownManifest) {
   const user = await session(db, request, false);
   const params = new URL(request.url).searchParams;
   const since = params.get('revision');
-  let manifest = await recordsManifest(db);
+  let manifest = knownManifest === undefined ? await recordsManifest(db) : knownManifest;
   if (manifest && params.get('format') === 'history') {
     requireSuper(user);
     const page = await pageRecoveryHistory(db, manifest, params.get('cursor') || '');

@@ -50,6 +50,12 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
         break;
       }
       sample.status = response.status; sample.bytes = bytes.length;
+      if (response.status >= 400 && target.type === 'application/json') {
+        try { const failure = JSON.parse(new TextDecoder().decode(bytes));
+          if (/^[A-Z_]{1,80}$/.test(failure.code || '')) sample.serviceCode = failure.code;
+          if (/^[a-z_]{1,40}$/.test(failure.reason || '')) sample.storageReason = failure.reason;
+        } catch { /* Non-JSON gateway errors are reported by status and content type. */ }
+      }
       sample.colo = response.headers.get('cf-ray')?.split('-').at(-1) || null; sample.cache = response.headers.get('cf-cache-status');
       sample.mediaCache = response.headers.get('X-Media-Cache');
       const serverTiming = response.headers.get('server-timing')?.match(/content;dur=([\d.]+)/);
