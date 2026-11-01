@@ -577,8 +577,8 @@ async function handle(context) {
       finally { publicContentReads.delete(env.ADMIN_DB); }
     } else throw new ApiError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法。');
     const response = json(200, result, request);
+    response.headers.set('Server-Timing', 'content;dur=' + (performance.now() - started).toFixed(1));
     if (request.method === 'GET') {
-      response.headers.set('Server-Timing', 'content;dur=' + (performance.now() - started).toFixed(1));
       const size = publicVersionBatchSizes.get(request);
       if (size) response.headers.set('X-Read-Version-Batch', String(size));
     }

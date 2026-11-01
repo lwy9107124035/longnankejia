@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 const origin = 'https://codex.longnankejia-dev.pages.dev';
 const targets = ['html', 'catalog', 'page', 'detail', 'legacy-image', 'new-image'];
 const p95 = values => values.length ? [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1] : null;
+export function parseControlResponse(raw) {
+  const lines = raw.split('\n'), timing = lines.pop(), seconds = Number(lines.pop()), status = Number(lines.pop());
+  if (!Number.isInteger(status) || status < 100 || status > 599 || !Number.isFinite(seconds) || seconds < 0) throw Error('Control response timing or status is invalid');
+  let data;
+  try { data = JSON.parse(lines.join('\n')); } catch { throw Error('Control response JSON is invalid'); }
+  const match = timing.match(/content;dur=([\d.]+)/);
+  return {status, data, timing:{curlMs:Math.round(seconds * 1000), serverMs:match ? Number(match[1]) : null}};
+}
 function peakCount(intervals) {
   const events = intervals.flatMap(([start, end]) => [[start, 1], [end, -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   let active = 0, peak = 0; for (const [, delta] of events) { active += delta; peak = Math.max(peak, active); } return peak;

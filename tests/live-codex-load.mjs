@@ -9,9 +9,10 @@ import { createRestDatabase, remoteRequest, TARGETS } from '../scripts/migrate-c
 import { checkHealth } from '../scripts/maintenance-health.mjs';
 import '../js/content-schema.js';
 import { createLoadPermit, assertLoadPermit, assertProductionReady } from './helpers/load-budget.mjs';
-import { aggregateReadLoads, confirmPeakWrites } from './helpers/read-load-reports.mjs';
-if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
-assert.deepEqual(process.argv.slice(2), ['--run'], 'Only --run or --help is supported');
+import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './helpers/read-load-reports.mjs';
+if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
+assert.ok(process.argv.length === 3 && ['--run','--probe-saves'].includes(process.argv[2]), 'Only --run, --probe-saves or --help is supported');
+const saveProbe = process.argv[2] === '--probe-saves';
 const account = await getProjectAccount();
 const origin = 'https://codex.longnankejia-dev.pages.dev', schema = globalThis.HeritageContent;
 const cleanupOnly = process.env.CLEANUP_LOAD_PREFIX;
@@ -40,9 +41,9 @@ const db = createRestDatabase(async body => {
     catch (error) { if (!readOnly || attempt >= 2) throw error; await sleep(1000); }
   }
 }, { apply: true });
-const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, cleanup: false, phases: [], sessionHashes: sessionIds };
+const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionIds };
 const stateFile = '.cache/' + (cleanupOnly ? 'load-cleanup-' + Date.now() + '-' : 'load-control-') + prefix + '.json';
-const ids = Array.from({ length: 188 }, (_, i) => prefix + '-' + String(i).padStart(3, '0'));
+const ids = Array.from({ length: saveProbe ? 4 : 188 }, (_, i) => prefix + '-' + String(i).padStart(3, '0'));
 const value = (id, i) => ({ id, name: '合成并发验收' + i + ' ' + prefix, category: 'craft', detail: ('这是独立测试资料，不能作为文化资料引用。' + i + '\n').repeat(130),
   imageUrl: i % 2 ? '/api/media/a5de70330e575fa03c530091f07430a2d959b70aa3df14b8804e7a3c4e2c5a6a' : '/api/media/a80e375c338e604e10af745832bcd141b155c762adf56fefe58799175a372825' });
 fs.mkdirSync('.cache', { recursive: true });
@@ -50,7 +51,7 @@ fs.writeFileSync(stateFile, JSON.stringify({ prefix, ids, sessionHash: sessionId
 async function app(body, query = 'format=pages', auth = true, attempt = 0) {
   try {
   const url = origin + '/api/admin/sync' + (body ? '' : '?' + query);
-  let input = 'silent\nshow-error\nmax-time = 30\nurl = ' + JSON.stringify(url) + '\nwrite-out = "\\n%{http_code}"\nheader = "Cache-Control: no-cache"\n';
+  let input = 'silent\nshow-error\nmax-time = 30\nurl = ' + JSON.stringify(url) + '\nwrite-out = "\\n%{http_code}\\n%{time_total}\\n%header{server-timing}"\nheader = "Cache-Control: no-cache"\n';
   if (auth) input += 'header = ' + JSON.stringify('Authorization: Bearer ' + (typeof auth === 'string' ? auth : bearer)) + '\n';
   if (body) input += 'request = "POST"\nheader = "Content-Type: application/json"\ndata = ' + JSON.stringify(JSON.stringify(body)) + '\n';
   const raw = await new Promise((resolve, reject) => {
@@ -60,7 +61,8 @@ async function app(body, query = 'format=pages', auth = true, attempt = 0) {
     child.on('close', code => code === 0 ? resolve(output) : reject(Error('Control transport did not confirm request: ' + code)));
     child.stdin.end(input);
   });
-  const boundary = raw.lastIndexOf('\n'), data = JSON.parse(raw.slice(0, boundary)); assert.equal(Number(raw.slice(boundary + 1)), 200, data.code); return data;
+  const parsed = parseControlResponse(raw); assert.equal(parsed.status, 200, parsed.data.code);
+  return { ...parsed.data, ...(body && { testTiming:parsed.timing }) };
   } catch (error) {
     if (body || attempt >= 2) throw error;
     await sleep(1000); return app(body, query, auth, attempt + 1);
@@ -99,6 +101,23 @@ function gh(args) {
   if (response.status !== 0) throw Error('GitHub control request failed: ' + args[0]);
   return response.stdout;
 }
+async function saveThreeSessions(initial) {
+  const window = { startedAt: new Date().toISOString() };
+  const outcomes = await Promise.allSettled(ids.slice(0, 3).map((id, i) => {
+    const row = initial.get('kepuCustom/' + id);
+    return write([{ key: row.key, baseHash: row.hash, value: { ...row.value, tag: '三会话峰值写入' } }], actorBearers[i]);
+  }).concat(['甲', '乙'].map((tag, i) => {
+    const row = initial.get('kepuCustom/' + ids[3]);
+    return write([{ key: row.key, baseHash: row.hash, value: { ...row.value, tag } }], actorBearers[i + 1]);
+  })));
+  for (const outcome of outcomes) if (outcome.status === 'rejected') throw outcome.reason;
+  const saved = outcomes.map(outcome => outcome.value);
+  assert.ok(saved.slice(0, 3).every(reply => reply.accepted.length === 1));
+  assert.equal(saved.slice(3).reduce((sum, reply) => sum + reply.accepted.length, 0), 1);
+  assert.equal(saved.slice(3).reduce((sum, reply) => sum + reply.conflicts.length, 0), 1);
+  window.finishedAt = new Date().toISOString(); Object.assign(window, { timings:saved.map(reply=>reply.testTiming || {recovered:true}), accepted: 3, actors: 3, operationIds: saved.slice(0, 3).map(reply => reply.testOperationId), sameRecordAccepted: 1, sameRecordConflict: 1 });
+  return window;
+}
 async function remoteLoad(revision, initial) {
   const scheduled = Date.now() + 120000, startAt = new Date(scheduled).toISOString();
   let dispatched = '', dispatchError;
@@ -116,20 +135,7 @@ async function remoteLoad(revision, initial) {
   while (Date.now() < scheduled + 6 * 60000) {
     const now = Date.now(), remaining = scheduled + 500 - now;
     if (!writes.length && remaining <= 0) {
-      const window = { startedAt: new Date().toISOString() };
-      const outcomes = await Promise.allSettled(ids.slice(0, 3).map((id, i) => {
-        const row = initial.get('kepuCustom/' + id);
-        return write([{ key: row.key, baseHash: row.hash, value: { ...row.value, tag: '三会话峰值写入' } }], actorBearers[i]);
-      }).concat(['甲', '乙'].map((tag, i) => {
-        const row = initial.get('kepuCustom/' + ids[3]);
-        return write([{ key: row.key, baseHash: row.hash, value: { ...row.value, tag } }], actorBearers[i + 1]);
-      })));
-      for (const outcome of outcomes) if (outcome.status === 'rejected') throw outcome.reason;
-      const saved = outcomes.map(outcome => outcome.value);
-      assert.ok(saved.slice(0, 3).every(reply => reply.accepted.length === 1));
-      assert.equal(saved.slice(3).reduce((sum, reply) => sum + reply.accepted.length, 0), 1);
-      assert.equal(saved.slice(3).reduce((sum, reply) => sum + reply.conflicts.length, 0), 1);
-      window.finishedAt = new Date().toISOString(); Object.assign(window, { accepted: 3, actors: 3, operationIds: saved.slice(0, 3).map(reply => reply.testOperationId), sameRecordAccepted: 1, sameRecordConflict: 1 }); writes.push(window);
+      writes.push(await saveThreeSessions(initial));
       console.log('Three independent sessions saved during the coordinated peak');
     }
     // A control request can occupy 30 seconds; keep it outside the write barrier.
@@ -186,10 +192,17 @@ try {
     const saved = await write(changes); assert.equal(saved.accepted.length, changes.length);
   }
   const manifest = await app(); result.seedRevision = manifest.revision; assert.ok(manifest.counts.kepuCustom >= ids.length);
-  console.log('188 synthetic records prepared; original content and credentials retained');
+  console.log(ids.length + ' synthetic records prepared; original content and credentials retained');
   const initial = new Map((await rows()).filter(row => row.key.startsWith('kepuCustom/' + prefix)).map(row => [row.key, row]));
-  const load = await remoteLoad(manifest.revision, initial);
-  result.loadPass = load.pass; result.phases = load.phases; result.requests = load.requests;
+  if (saveProbe) {
+    result.saveProbe = await saveThreeSessions(initial);
+    const persisted = new Map((await rows()).map(row=>[row.key,row]));
+    assert.ok(ids.slice(0,3).every(id=>persisted.get('kepuCustom/'+id)?.value.tag==='三会话峰值写入'));
+    result.probePass = true;
+  } else {
+    const load = await remoteLoad(manifest.revision, initial);
+    result.loadPass = load.pass; result.phases = load.phases; result.requests = load.requests;
+  }
   } else result.loadSkipped = true;
 } catch (error) { result.error = error.message; }
 finally {
@@ -228,4 +241,4 @@ finally {
 }
 console.log(JSON.stringify({ ...result, sessionHashes: undefined, phases: result.phases.map(phase => ({ users: phase.users, requests: phase.requests, failures: phase.failures, p95Ms: phase.p95Ms, pass: phase.pass })) }, null, 2));
 fs.writeFileSync(stateFile, JSON.stringify(result, null, 2));
-if (result.error || !result.cleanup || !cleanupOnly && !result.loadPass || !result.sessionRemoved) process.exitCode = 1;
+if (result.error || !result.cleanup || !cleanupOnly && !(saveProbe ? result.probePass : result.loadPass) || !result.sessionRemoved) process.exitCode = 1;

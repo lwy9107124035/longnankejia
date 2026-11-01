@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateReadLoads, confirmPeakWrites } from './helpers/read-load-reports.mjs';
+import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './helpers/read-load-reports.mjs';
+
+test('control timings separate server work from client transport without exposing malformed private bodies',()=>{
+  const result=parseControlResponse('{"ok":true}\n200\n0.75\ncontent;dur=123.4');
+  assert.deepEqual(result,{status:200,data:{ok:true},timing:{curlMs:750,serverMs:123.4}});
+  assert.equal(parseControlResponse('{"ok":false}\n503\n0.1\n').timing.serverMs,null);
+  assert.throws(()=>parseControlResponse('SYNTHETIC-PRIVATE-CREDENTIAL\n200\n0.1\n'),error=>error.message==='Control response JSON is invalid');
+  assert.throws(()=>parseControlResponse('{}\ninvalid\n0.1\n'));
+});
 
 test('distributed acceptance requires complete synchronized journeys, matching images and all reports without relaxing latency', () => {
   const start = '2026-10-31T08:00:00.000Z', end = '2026-10-31T08:00:01.000Z';

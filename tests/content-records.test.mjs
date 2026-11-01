@@ -43,7 +43,7 @@ test('independent row writes merge, same-row conflicts persist, operation receip
   const create = id => ({ key: 'kepuCustom/' + id, baseHash: '', value: { id, name: id, detail: '正文' } });
   const absent = await schema.cellHash(null);
   const results = await Promise.all(['first', 'second', 'third'].map(id => backend.call({ action: 'update_content', changes: [{ ...create(id), baseHash: absent }], operationId: 'records-operation-' + id }, bearer)));
-  for (const result of results) { assert.equal(result.status, 200); assert.equal(result.data.accepted.length, 1); }
+  for (const result of results) { assert.equal(result.status, 200); assert.equal(result.data.accepted.length, 1); assert.match(result.response.headers.get('Server-Timing'), /content;dur=[\d.]+/); }
   const current = await loadContentState(backend.db);
   assert.equal(current.value.kepuCustom.length, 3); assert.equal(current.value._history.length, 3);
   const repeated = await backend.call({ action: 'update_content', changes: [{ ...create('first'), baseHash: absent }], operationId: 'records-operation-first' }, bearer);
