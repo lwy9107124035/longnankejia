@@ -58,6 +58,10 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
       }
       sample.colo = response.headers.get('cf-ray')?.split('-').at(-1) || null; sample.cache = response.headers.get('cf-cache-status');
       sample.mediaCache = response.headers.get('X-Media-Cache');
+      const batchSize = Number(response.headers.get('X-Read-Version-Batch'));
+      if (Number.isSafeInteger(batchSize) && batchSize > 0) sample.versionBatchSize = batchSize;
+      const placement = response.headers.get('X-Function-Placement');
+      if (/^(?:local|remote)-[A-Z]{3}$/.test(placement || '')) sample.functionPlacement = placement;
       const serverTiming = response.headers.get('server-timing')?.match(/content;dur=([\d.]+)/);
       if (serverTiming) sample.serverMs = Number(serverTiming[1]);
       assert.equal(response.status, 200); assert.ok((response.headers.get('content-type') || '').startsWith(target.type));

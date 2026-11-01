@@ -65,7 +65,16 @@ test('arrivals batch before version-query dispatch while requests after another-
   const changed={...content().kepuCustom[0],name:'查询发出后另一个实例保存'},digest=await schema.cellHash(changed,true);
   site.sqlite.exec('BEGIN');site.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,revision=2 WHERE key=?').run(JSON.stringify(changed),digest,'kepuCustom/snapshot-0');site.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'; COMMIT");
   const fresh=await (await request(site.env)).json();assert.equal(fresh.revision,2);assert.equal(fresh.kepuCustom[0].name,changed.name);assert.equal(calls,2);
-  release();const previous=await Promise.all(waiting.map(async response=>(await (await response).json()).revision));assert.ok(previous.every(revision=>revision===1));
+  release();const previous=await Promise.all(waiting.map(async response=>{const reply=await response;assert.equal(reply.headers.get('X-Read-Version-Batch'),'50');return (await reply.json()).revision;}));assert.ok(previous.every(revision=>revision===1));
+});
+
+test('a short staggered burst shares bounded fresh-version batches instead of one database read per arrival',async t=>{
+  cache(t);const site=await backend(t);await request(site.env);
+  const prepare=site.db.prepare.bind(site.db);let calls=0;
+  site.db.prepare=sql=>{if(sql==="SELECT value, revision FROM admin_state WHERE key='content'")calls++;return prepare(sql);};
+  const bodies=await Promise.all(Array.from({length:100},(_,i)=>sleep(i).then(async()=>{const response=await request(site.env);assert.equal(response.status,200);assert.match(response.headers.get('Cache-Control'),/no-store/);return response.json();})));
+  assert.ok(calls<=4,'100 staggered arrivals must use at most four version queries, observed '+calls);assert.ok(bodies.every(body=>body.revision===1));
+  const response=await request(site.env,catalog,{'cf-placement':'remote-ICN'});assert.equal(response.headers.get('X-Function-Placement'),'remote-ICN');
 });
 
 test('cache failures fall back to real data, and unavailable current-version reads never serve an old snapshot',async t=>{

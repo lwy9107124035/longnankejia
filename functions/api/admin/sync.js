@@ -10,6 +10,7 @@ const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
 const CHUNK_CHARS = 400000;
 const publicContentReads = new WeakMap();
 const scheduledPublicVersions = new WeakMap();
+const publicVersionBatchSizes = new WeakMap();
 class ApiError extends Error {
   constructor(status, code, message, extra = {}) { super(message); Object.assign(this, { status, code, extra }); }
 }
@@ -189,7 +190,9 @@ async function getData(db, request, env, context) {
   const url = new URL(request.url);
   if (request.headers.has('Authorization') || url.searchParams.has('revision') || !['pages', 'records', 'record', 'search'].includes(url.searchParams.get('format'))) return readData(db, request, env);
   url.searchParams.sort();
-  const manifest = globalThis.caches?.open ? await publicVersion(db, context) : undefined;
+  const group = globalThis.caches?.open ? await publicVersion(db, context) : undefined;
+  const manifest = group?.manifest;
+  if (group) publicVersionBatchSizes.set(request, group.size);
   const key = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB + ':' + (manifest ? manifest.generation + ':' + manifest.revision : 'legacy');
   let reads = publicContentReads.get(db);
   if (!reads) { reads = new Map(); publicContentReads.set(db, reads); }
@@ -205,17 +208,19 @@ async function getData(db, request, env, context) {
   }
 }
 function publicVersion(db, context) {
-  let promise = scheduledPublicVersions.get(db);
-  if (!promise) {
-    promise = new Promise((resolve, reject) => setTimeout(() => {
+  let group = scheduledPublicVersions.get(db);
+  if (!group) {
+    group = {size:0};
+    group.promise = new Promise((resolve, reject) => setTimeout(() => {
       // Only arrivals before dispatch share a query; later arrivals need a new version check.
       scheduledPublicVersions.delete(db);
-      recordsManifest(db).then(resolve, reject);
-    }, 0));
-    scheduledPublicVersions.set(db, promise);
+      recordsManifest(db).then(manifest => resolve({manifest, size:group.size}), reject);
+    }, 50));
+    scheduledPublicVersions.set(db, group);
   }
-  context.waitUntil?.(Promise.allSettled([promise]));
-  return promise;
+  group.size++;
+  context.waitUntil?.(Promise.allSettled([group.promise]));
+  return group.promise;
 }
 async function readPublicSnapshot(db, request, env, context, manifest) {
   const url = new URL(request.url);
@@ -566,7 +571,13 @@ async function handle(context) {
       finally { publicContentReads.delete(env.ADMIN_DB); }
     } else throw new ApiError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法。');
     const response = json(200, result, request);
-    if (request.method === 'GET') response.headers.set('Server-Timing', 'content;dur=' + (performance.now() - started).toFixed(1));
+    if (request.method === 'GET') {
+      response.headers.set('Server-Timing', 'content;dur=' + (performance.now() - started).toFixed(1));
+      const size = publicVersionBatchSizes.get(request);
+      if (size) response.headers.set('X-Read-Version-Batch', String(size));
+    }
+    const placement = request.headers.get('cf-placement');
+    if (/^(?:local|remote)-[A-Z]{3}$/.test(placement || '')) response.headers.set('X-Function-Placement', placement);
     return response;
   } catch (error) {
     if (error instanceof ApiError || error instanceof RecordError) return json(error.status, { ok: false, code: error.code, error: error.message, ...error.extra }, request);
