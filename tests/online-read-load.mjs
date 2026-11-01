@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { assertLoadPermit } from './helpers/load-budget.mjs';
+import {calibrateLoadClock} from './helpers/load-clock.mjs';
 
 const origin = 'https://codex.longnankejia-dev.pages.dev';
 const allowedPhases = [1, 10, 25, 50, 100, 250, 500, 1000];
@@ -14,6 +15,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
   generator = 'single Windows host via configured proxy; HTTP virtual users, not physical phones', peakPauseMs = 0, latencyDiagnostic = false,
   permit, phaseUsers = allowedPhases, shard = 0, shardCount = 1, requestBudget = 15000, startAt }) {
   assertLoadPermit(permit, requestBudget * shardCount);
+  const clock = await calibrateLoadClock(origin);
   assert.ok([1, 4].includes(shardCount) && Number.isInteger(shard) && shard >= 0 && shard < shardCount);
   assert.ok(phaseUsers.length && phaseUsers.every(users => allowedPhases.includes(users)));
   const phases = phaseUsers.map(users => ({ users, iterations: 1 }));
@@ -28,13 +30,13 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
   ];
   const report = { startedAt: new Date().toISOString(), origin, generator, latencyDiagnostic, shard, shardCount, coordinatedStart: startAt,
     realIphone: false, realWechat: false, realOfficialAccount: false, paidAiCalls: 0, fixtureCount, fixtureRevision: revision, fixturePrefix: prefix,
-    requestBudget, requestTimeoutMs: 10000, proposedRequestP95Ms: 3000, targetUsersConfirmed: true, targetUsers: 1000, phases: [], samples: [] };
-  let inFlight = 0, nextRequest = 0, stopped = false;
+    clockCalibration:clock.report, requestBudget, requestTimeoutMs: 10000, proposedRequestP95Ms: 3000, targetUsersConfirmed: true, targetUsers: 1000, phases: [], samples: [] };
+  let inFlight = 0, nextRequest = clock.report.httpRequests, stopped = false;
   const images = new Map();
   async function request(target, phase, signal, user) {
     if (++nextRequest > report.requestBudget) throw Error('Read-only load request budget exhausted');
     const started = performance.now(); inFlight++; phase.peakInFlight = Math.max(phase.peakInFlight, inFlight);
-    const sample = { phase: phase.users, target: target.name, user, startedAt: new Date().toISOString() };
+    const sample = { phase: phase.users, target: target.name, user, startedAt: new Date(clock.now()).toISOString(), startedAtLatest:new Date(clock.latest()).toISOString() };
     try {
       let response, bytes; sample.statuses = [];
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -77,19 +79,19 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
       } else assert.match(new TextDecoder().decode(bytes), /龙南客家/);
       sample.ok = true;
     } catch (error) { sample.ok = false; sample.cancelled = signal.aborted; sample.error = error.name; sample.message = error.message.slice(0, 160); }
-    finally { sample.ms = Math.round(performance.now() - started); sample.finishedAt = new Date().toISOString(); inFlight--; phase.samples.push(sample); report.samples.push(sample); }
+    finally { sample.ms = Math.round(performance.now() - started); sample.finishedAt = new Date(clock.now()).toISOString(); sample.finishedAtEarliest=new Date(clock.earliest()).toISOString(); inFlight--; phase.samples.push(sample); report.samples.push(sample); }
     return sample;
   }
   for (const spec of phases) {
     if (stopped) break;
     if (startAt && spec.users === Math.max(...phaseUsers)) {
-      const scheduled = Date.parse(startAt); assert.ok(Number.isFinite(scheduled) && scheduled - Date.now() < 5 * 60000, 'Invalid coordinated start');
-      while (Date.now() < scheduled) await sleep(Math.min(1000, scheduled - Date.now()));
-      assert.ok(Date.now() - scheduled < 3000, 'Generator missed the coordinated start');
+      const scheduled = Date.parse(startAt); assert.ok(Number.isFinite(scheduled) && scheduled - clock.now() < 5 * 60000, 'Invalid coordinated start');
+      while (clock.now() < scheduled) await sleep(Math.min(1000, scheduled - clock.now()));
+      assert.ok(clock.now() - scheduled < 3000, 'Generator missed the coordinated start');
       assertLoadPermit(permit, requestBudget * shardCount);
     }
     if (spec.users === 1000 && peakPauseMs) await sleep(peakPauseMs);
-    const phase = { ...spec, startedAt: new Date().toISOString(), samples: [], peakInFlight: 0 }, controller = new AbortController(), started = performance.now();
+    const phase = { ...spec, startedAt: new Date(clock.now()).toISOString(), samples: [], peakInFlight: 0 }, controller = new AbortController(), started = performance.now();
     const cpu = process.cpuUsage(), loop = monitorEventLoopDelay({ resolution: 20 }); loop.enable();
     report.phases.push(phase);
     const failures = () => phase.samples.filter(sample => !sample.ok && !sample.cancelled).length;
@@ -111,7 +113,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
     phase.durationMs = Math.round(performance.now() - started); phase.requests = phase.samples.length;
     loop.disable(); const usedCpu = process.cpuUsage(cpu);
     phase.generatorCpuMs = Math.round((usedCpu.user + usedCpu.system) / 1000); phase.generatorLoopP95Ms = Math.round(loop.percentile(95) / 1000000);
-    phase.finishedAt = new Date().toISOString();
+    phase.finishedAt = new Date(clock.now()).toISOString();
     phase.failures = failures(); phase.cancelled = phase.samples.filter(sample => sample.cancelled).length;
     phase.versionRetries = phase.samples.reduce((sum, sample) => sum + (sample.statuses || []).filter(status => status === 409).length, 0);
     phase.failureRate = phase.failures / (phase.requests - phase.cancelled);

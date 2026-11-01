@@ -24,11 +24,13 @@ export function confirmPeakWrites(report, windows, serverTimes) {
     && Date.parse(window.startedAt) >= start && Date.parse(window.finishedAt) <= end && Date.parse(window.finishedAt) >= Date.parse(window.startedAt)
     && serverTimes.length === 3 && serverTimes.every(time => Date.parse(time) >= start && Date.parse(time) <= end);
 }
-export function aggregateReadLoads(reports, { staticOnly = false } = {}) {
+export function aggregateReadLoads(reports, { staticOnly = false, requireClockBounds = false } = {}) {
   assert.equal(reports.length, 4, 'all four generators are required');
   assert.deepEqual(reports.map(r => r.shard).sort(), [0, 1, 2, 3]);
   const samples = [], phases = [], journeys = [];
   for (const report of reports) {
+    if(requireClockBounds) assert.ok(report.clockCalibration && Number.isFinite(report.clockCalibration.uncertaintyMs)
+      && report.clockCalibration.uncertaintyMs >= 0 && report.clockCalibration.uncertaintyMs <= 1000, 'Calibrated cloud clock is required');
     assert.equal(report.origin, origin); assert.equal(report.shardCount, 4);
     assert.ok(report.coordinatedStart && report.coordinatedStart === reports[0].coordinatedStart, 'all generators must use the same start barrier');
     const phase = report.phases.find(p => p.users === 250); assert.ok(phase, 'a generator did not reach its peak'); phases.push(phase);
@@ -41,7 +43,11 @@ export function aggregateReadLoads(reports, { staticOnly = false } = {}) {
       const starts = owned.map(row => Date.parse(row.startedAt)), ends = owned.map(row => Date.parse(row.finishedAt));
       assert.ok(starts.every(Number.isFinite) && ends.every(Number.isFinite));
       assert.ok(owned.every((row, i) => ends[i] >= starts[i] && Number.isFinite(row.ms) && row.ms >= 0));
-      journeys.push([Math.min(...starts), Math.max(...ends)]);
+      const definiteStarts=requireClockBounds?owned.map(row=>Date.parse(row.startedAtLatest)):starts;
+      const definiteEnds=requireClockBounds?owned.map(row=>Date.parse(row.finishedAtEarliest)):ends;
+      assert.ok(definiteStarts.every(Number.isFinite)&&definiteEnds.every(Number.isFinite), 'Clock bounds missing');
+      assert.ok(owned.every((row,i)=>definiteStarts[i]>=starts[i]&&definiteEnds[i]<=ends[i]), 'Clock bounds do not enclose nominal timestamps');
+      journeys.push([Math.min(...definiteStarts), Math.max(...definiteEnds)]);
     }
     if (!staticOnly) {
       assert.equal(report.fixturePrefix, reports[0].fixturePrefix); assert.equal(report.fixtureRevision, reports[0].fixtureRevision);
@@ -56,7 +62,8 @@ export function aggregateReadLoads(reports, { staticOnly = false } = {}) {
   const httpRequests = reports.reduce((total, r) => total + (r.httpRequests ?? r.requestBudget), 0); assert.ok(httpRequests <= 15000);
   const concurrentUsers = peakCount(journeys), latency = p95(samples.map(s => s.ms));
   return { at: new Date().toISOString(), origin, staticOnly, targetUsers: 1000, actualGenerators: 4, virtualUsers: journeys.length,
-    concurrentUsers, peakHttpRequests: peakCount(samples.map(s => [Date.parse(s.startedAt), Date.parse(s.finishedAt)])),
+    concurrentUsers, clockBoundsRequired:requireClockBounds,
+    peakHttpRequests: peakCount(samples.map(s => [Date.parse(requireClockBounds?s.startedAtLatest:s.startedAt), Date.parse(requireClockBounds?s.finishedAtEarliest:s.finishedAt)]).filter(([start,end])=>end>=start)),
     allUsersActiveFrom: new Date(Math.max(...journeys.map(([start]) => start))).toISOString(),
     allUsersActiveUntil: new Date(Math.min(...journeys.map(([, end]) => end))).toISOString(),
     startedAt: new Date(Math.min(...starts)).toISOString(), finishedAt: new Date(Math.max(...finishes)).toISOString(), startSpreadMs,

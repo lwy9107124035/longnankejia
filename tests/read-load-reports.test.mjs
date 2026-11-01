@@ -20,6 +20,16 @@ test('distributed acceptance requires complete synchronized journeys, matching i
       .map((target, step) => ({ user, target, phase: 250, ok: true, status: 200, ms: 100,
         startedAt: new Date(Date.parse(start) + step * 150).toISOString(), finishedAt: new Date(Date.parse(start) + step * 150 + 100).toISOString() }))).flat() }));
   const result = aggregateReadLoads(reports); assert.equal(result.pass, true); assert.equal(result.concurrentUsers, 1000); assert.equal(result.peakRequests, 6000);
+  assert.throws(()=>aggregateReadLoads(reports,{requireClockBounds:true}));
+  const calibrated=structuredClone(reports);
+  calibrated.forEach(report=>{report.clockCalibration={uncertaintyMs:40};report.samples.forEach(sample=>{
+    sample.startedAtLatest=new Date(Date.parse(sample.startedAt)+20).toISOString();
+    sample.finishedAtEarliest=new Date(Date.parse(sample.finishedAt)-20).toISOString();
+  });});
+  const conservative=aggregateReadLoads(calibrated,{requireClockBounds:true});
+  assert.equal(conservative.pass,true); assert.equal(conservative.allUsersActiveFrom,'2026-10-31T08:00:00.020Z');
+  assert.equal(conservative.allUsersActiveUntil,'2026-10-31T08:00:00.830Z');
+  calibrated[0].samples[0].startedAtLatest='invalid'; assert.throws(()=>aggregateReadLoads(calibrated,{requireClockBounds:true}));
   assert.throws(() => aggregateReadLoads(reports.slice(1)));
   const missing = structuredClone(reports); missing[0].samples.pop(); assert.throws(() => aggregateReadLoads(missing));
   const mismatched = structuredClone(reports); mismatched[0].imageDigests['new-image'] = 'c'.repeat(64); assert.throws(() => aggregateReadLoads(mismatched));
