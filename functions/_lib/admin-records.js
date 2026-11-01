@@ -41,17 +41,30 @@ function assembledState(results, manifest) {
   return { value: content, revision: manifest.revision, bytes: manifest.bytes };
 }
 
-export async function readRecordState(db, manifest, keys) {
+function recordStateStatement(db, manifest, keys) {
   let sql = 'SELECT key,kind,value FROM admin_content_items WHERE generation=?';
   const params = [manifest.generation];
   if (keys) {
     if (keys.length > 32) throw new RecordError(400, 'TOO_MANY_CHANGES', '每批最多保存32条，请分批提交');
-    if (!keys.length) return { value: { ...empty(), _history: [], _notifications: [] }, revision: manifest.revision, bytes: manifest.bytes };
-    sql += ' AND key IN (' + keys.map(() => '?').join(',') + ')'; params.push(...keys);
+    sql += keys.length ? ' AND key IN (' + keys.map(() => '?').join(',') + ')' : ' AND 0'; params.push(...keys);
   }
   sql += ' ORDER BY rowid';
-  const { results } = await db.prepare(sql).bind(...params).all();
+  return db.prepare(sql).bind(...params);
+}
+export async function readRecordState(db, manifest, keys) {
+  if (keys && !keys.length) return assembledState([], manifest);
+  const { results } = await recordStateStatement(db, manifest, keys).all();
   return assembledState(results, manifest);
+}
+export async function recordChangeSnapshot(db, manifest, keys, operationId) {
+  const [state, rows, receipt] = await db.batch([
+    db.prepare("SELECT key,value,revision FROM admin_state WHERE key IN ('content','tokens')"),
+    recordStateStatement(db, manifest, keys),
+    ...(operationId ? [db.prepare('SELECT owner,request_hash,value FROM admin_content_receipts WHERE generation=? AND id=?').bind(manifest.generation, operationId)] : [])
+  ]);
+  const current = snapshotManifest(state.results.find(row => row.key === 'content'), manifest);
+  return { manifest: current, current: assembledState(rows.results, current),
+    tokens: JSON.parse(state.results.find(row => row.key === 'tokens')?.value || '[]'), receipt: receipt?.results[0] };
 }
 export async function readRecordKinds(db, manifest, kinds, owner) {
   if (!kinds.length || kinds.some(kind => !privateKinds.includes(kind))) throw new TypeError('Only private metadata kinds may be selected');

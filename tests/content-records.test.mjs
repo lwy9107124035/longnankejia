@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { createAdminBackend } from './helpers/admin-harness.mjs';
 import { setupEnvironment } from './helpers/store-harness.mjs';
 import { loadContentState } from '../functions/api/admin/sync.js';
-import { migrateRecordStorage, recordsManifest, readRecordState } from '../functions/_lib/admin-records.js';
+import { migrateRecordStorage, recordsManifest, readRecordState, recordChangeSnapshot } from '../functions/_lib/admin-records.js';
 
 const schema = globalThis.HeritageContent;
 function setup(t) {
@@ -56,6 +56,27 @@ test('independent row writes merge, same-row conflicts persist, operation receip
   assert.equal(edits.reduce((sum, result) => sum + result.data.conflicts.length, 0), 1);
   const tamper = await backend.call({ action: 'update_content', changes: [{ ...create('different'), baseHash: absent }], operationId: 'records-operation-first' }, bearer);
   assert.equal(tamper.status, 409); assert.equal(tamper.data.code, 'OPERATION_MISMATCH');
+});
+
+test('one change-snapshot round trip keeps revision, values, invitation metadata and receipts from the same transaction',async t=>{
+  const backend=setup(t),value=structuredClone(schema.defaults),id='atomic-change',operation='atomic-change-receipt';
+  value.kepuCustom=[{id,name:'原名称',detail:'原正文'}];
+  const manifest=await migrateRecordStorage(backend.db,{value,revision:0});
+  backend.sqlite.prepare('INSERT INTO admin_content_receipts(generation,id,owner,request_hash,value,created_at) VALUES(?,?,?,?,?,?)').run(manifest.generation,operation,'super_admin','original-hash',JSON.stringify({accepted:['original']}),1);
+  const batch=backend.db.batch.bind(backend.db),changed={...value.kepuCustom[0],name:'随后保存的名称'},digest=await schema.cellHash(changed,true);let roundTrips=0;
+  backend.db.batch=async statements=>{
+    roundTrips++;const result=await batch(statements);
+    backend.sqlite.exec('BEGIN');
+    backend.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,revision=2 WHERE generation=? AND key=?').run(JSON.stringify(changed),digest,manifest.generation,'kepuCustom/'+id);
+    backend.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'");
+    backend.sqlite.prepare("UPDATE admin_state SET value=?,revision=revision+1 WHERE key='tokens'").run(JSON.stringify([{id:'later-metadata'}]));
+    backend.sqlite.prepare('UPDATE admin_content_receipts SET request_hash=?,value=? WHERE generation=? AND id=?').run('later-hash',JSON.stringify({accepted:['later']}),manifest.generation,operation);
+    backend.sqlite.exec('COMMIT');return result;
+  };
+  const snapshot=await recordChangeSnapshot(backend.db,manifest,['kepuCustom/'+id],operation);assert.equal(roundTrips,1);
+  assert.equal(snapshot.manifest.revision,1);assert.equal(snapshot.current.revision,1);assert.equal(snapshot.current.value.kepuCustom[0].name,'原名称');assert.deepEqual(snapshot.tokens,[]);assert.equal(snapshot.receipt.request_hash,'original-hash');
+  backend.db.batch=batch;const fresh=await recordChangeSnapshot(backend.db,manifest,['kepuCustom/'+id],operation);
+  assert.equal(fresh.manifest.revision,2);assert.equal(fresh.current.value.kepuCustom[0].name,changed.name);assert.equal(fresh.tokens[0].id,'later-metadata');assert.equal(fresh.receipt.request_hash,'later-hash');
 });
 
 test('staging failure or a concurrent legacy edit cannot switch the live manifest', async t => {

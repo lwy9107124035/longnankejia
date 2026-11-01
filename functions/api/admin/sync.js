@@ -2,7 +2,7 @@
 import { DEFAULTS, validateContent, validateChanges, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 import { storeMedia, migrateD1Media, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
-import { recordsManifest, readRecordState, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
+import { recordsManifest, readRecordState, recordChangeSnapshot, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
 import { archiveHistoryBefore, expandArchivedHistory } from '../../_lib/admin-history-archive.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
@@ -372,19 +372,25 @@ async function postData(db, env, request, body) {
       return { ok: true };
     case 'update_content': {
       if (Array.isArray(body.changes) && body.changes.some(change => ['apiConfig', 'workflowConfig'].includes(change?.key))) requireSuper(user);
-      const tokens = await state(db, 'tokens', []);
+      const initialManifest = await recordsManifest(db);
+      let tokens = initialManifest ? null : await state(db, 'tokens', []);
       const mediaCache = new Map();
       for (let attempt = 0; attempt < 5; attempt++) {
-        const manifest = await recordsManifest(db);
+        let manifest = initialManifest;
         if (manifest && (!Array.isArray(body.changes) || body.changes.length > 16)) throw new ApiError(400, 'TOO_MANY_CHANGES', '每批最多保存16条，请分批提交');
         try { validateChanges(body.changes, user); }
         catch (error) { throw new ApiError(400, 'INVALID_CONTENT', error.message); }
-        const current = manifest ? await readRecordState(db, manifest, body.changes.map(change => change.key)) : await state(db, 'content', DEFAULTS);
         let operation;
         if (manifest && body.operationId) {
           if (!/^[a-zA-Z0-9-]{16,100}$/.test(body.operationId)) throw new ApiError(400, 'INVALID_OPERATION_ID', '保存编号不正确');
           operation = { id: body.operationId, owner: user.tokenId || 'super_admin', hash: await digest(JSON.stringify(body.changes)) };
-          const found = await db.prepare('SELECT owner,request_hash,value FROM admin_content_receipts WHERE generation=? AND id=?').bind(manifest.generation, operation.id).first();
+        }
+        let current, found;
+        if (manifest) {
+          const snapshot = await recordChangeSnapshot(db, manifest, body.changes.map(change => change.key), operation?.id);
+          manifest = snapshot.manifest; current = snapshot.current; tokens = {value:snapshot.tokens}; found = snapshot.receipt;
+        } else current = await state(db, 'content', DEFAULTS);
+        if (operation) {
           if (found) {
             if (found.owner !== operation.owner || found.request_hash !== operation.hash) throw new ApiError(409, 'OPERATION_MISMATCH', '保存编号已用于其他内容，请刷新后重试');
             const receipt = JSON.parse(found.value), values = globalThis.HeritageContent.contentCells(safeContent(current.value, tokens.value));
@@ -416,8 +422,8 @@ async function postData(db, env, request, body) {
           throw error;
         }
         const logs = user.role === 'super_admin' ? safeAudit(result.next, tokens.value) : [];
-        const savedManifest = manifest && await recordsManifest(db);
-        const summaries = savedManifest && user.role === 'super_admin' ? await recordSummaries(db, savedManifest, tokens.value) : null;
+        const [savedManifest, summaries] = manifest ? await Promise.all([recordsManifest(db),
+          user.role === 'super_admin' ? recordSummaries(db, manifest, tokens.value) : null]) : [null, null];
         return { ...reply, revision, ...(savedManifest && savedManifest.revision === revision && { counts: publicRecordCounts(savedManifest.counts) }), auditLogs: logs,
           recovery: user.role === 'super_admin' ? recoveryHistory(result.next) : undefined,
           ...summaries,
