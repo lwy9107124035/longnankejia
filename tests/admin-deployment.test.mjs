@@ -36,7 +36,7 @@ test('codex continues using its independent preview database', t => {
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.config.name, 'longnankejia-dev');
   assert.equal(result.config.d1_databases[0].database_id, preview);
-  assert.deepEqual(result.config.placement, { mode: 'smart' });
+  assert.deepEqual(result.config.placement, { region: 'aws:ap-east-1' });
 });
 test('production refuses a missing database rather than creating an empty default-password state', t => {
   const result = run(t, 'main', { MAIN_ADMIN_D1_ID: '' });
