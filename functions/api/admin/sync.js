@@ -11,6 +11,14 @@ const CHUNK_CHARS = 400000;
 const publicContentReads = new WeakMap();
 const scheduledPublicVersions = new WeakMap();
 const publicVersionBatchSizes = new WeakMap();
+const saveMeasurements = new WeakMap();
+async function measureSave(request, name, work) {
+  let measurements = saveMeasurements.get(request);
+  if (!measurements) { measurements = {}; saveMeasurements.set(request, measurements); }
+  const started = performance.now();
+  try { return await work(); }
+  finally { measurements[name] = (measurements[name] || 0) + performance.now() - started; }
+}
 class ApiError extends Error {
   constructor(status, code, message, extra = {}) { super(message); Object.assign(this, { status, code, extra }); }
 }
@@ -324,7 +332,7 @@ async function readData(db, request, env, knownManifest) {
 async function postData(db, env, request, body) {
   const mediaDb = env.ADMIN_MEDIA_DB || db;
   if (body.action === 'login') return login(db, env, request, body);
-  const user = await session(db, request);
+  const user = body.action === 'update_content' ? await measureSave(request, 'save_auth', () => session(db, request)) : await session(db, request);
   switch (body.action) {
     case 'storage_info': {
       requireSuper(user);
@@ -372,10 +380,11 @@ async function postData(db, env, request, body) {
       return { ok: true };
     case 'update_content': {
       if (Array.isArray(body.changes) && body.changes.some(change => ['apiConfig', 'workflowConfig'].includes(change?.key))) requireSuper(user);
-      const initialManifest = await recordsManifest(db);
+      const initialManifest = await measureSave(request, 'save_version', () => recordsManifest(db));
       let tokens = initialManifest ? null : await state(db, 'tokens', []);
       const mediaCache = new Map();
       for (let attempt = 0; attempt < 5; attempt++) {
+        saveMeasurements.get(request).attempts = attempt + 1;
         let manifest = initialManifest;
         if (manifest && (!Array.isArray(body.changes) || body.changes.length > 16)) throw new ApiError(400, 'TOO_MANY_CHANGES', '每批最多保存16条，请分批提交');
         try { validateChanges(body.changes, user); }
@@ -387,9 +396,9 @@ async function postData(db, env, request, body) {
         }
         let current, found;
         if (manifest) {
-          const snapshot = await recordChangeSnapshot(db, manifest, body.changes.map(change => change.key), operation?.id);
+          const snapshot = await measureSave(request, 'save_read', () => recordChangeSnapshot(db, manifest, body.changes.map(change => change.key), operation?.id));
           manifest = snapshot.manifest; current = snapshot.current; tokens = {value:snapshot.tokens}; found = snapshot.receipt;
-        } else current = await state(db, 'content', DEFAULTS);
+        } else current = await measureSave(request, 'save_read', () => state(db, 'content', DEFAULTS));
         if (operation) {
           if (found) {
             if (found.owner !== operation.owner || found.request_hash !== operation.hash) throw new ApiError(409, 'OPERATION_MISMATCH', '保存编号已用于其他内容，请刷新后重试');
@@ -398,10 +407,10 @@ async function postData(db, env, request, body) {
           }
         }
         let result;
-        try { result = await applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(mediaDb, value, env.ADMIN_MEDIA, db), async value => {
+        try { result = await measureSave(request, 'save_prepare', () => applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(mediaDb, value, env.ADMIN_MEDIA, db), async value => {
           try { return await storeRecordMedia(mediaDb, value, mediaCache, env.ADMIN_MEDIA); }
           catch (error) { if (error instanceof TypeError) throw error; throw new ApiError(503, 'MEDIA_UNAVAILABLE', '图片存储暂不可用，草稿已保留'); }
-        }); }
+        })); }
         catch (error) { if (error.status) throw error; throw new ApiError(400, 'INVALID_CONTENT', error.message); }
         if (result.changed) result.next = await archiveHistoryMedia(mediaDb, result.next, (current.value._history || []).length, env.ADMIN_MEDIA);
         const values = globalThis.HeritageContent.contentCells(safeContent(result.next, tokens.value));
@@ -415,15 +424,15 @@ async function postData(db, env, request, body) {
         try {
           if (manifest) {
             if (operation) operation.value = reply;
-            if (result.changed || operation) revision = await writeRecordState(db, manifest, current.value, result.next, { receipt: operation });
-          } else if (result.changed) revision = await saveState(db, 'content', result.next, current.revision);
+            if (result.changed || operation) revision = await measureSave(request, 'save_commit', () => writeRecordState(db, manifest, current.value, result.next, { receipt: operation }));
+          } else if (result.changed) revision = await measureSave(request, 'save_commit', () => saveState(db, 'content', result.next, current.revision));
         } catch (error) {
           if (error.code === 'SYNC_CONFLICT' && attempt < 4) continue;
           throw error;
         }
         const logs = user.role === 'super_admin' ? safeAudit(result.next, tokens.value) : [];
-        const metadata = manifest && user.role === 'super_admin' ? await recordSummarySnapshot(db, manifest, tokens.value) : null;
-        const savedManifest = metadata ? metadata.manifest : manifest && await recordsManifest(db);
+        const metadata = manifest && user.role === 'super_admin' ? await measureSave(request, 'save_metadata', () => recordSummarySnapshot(db, manifest, tokens.value)) : null;
+        const savedManifest = metadata ? metadata.manifest : manifest && await measureSave(request, 'save_metadata', () => recordsManifest(db));
         const summaries = metadata?.summaries;
         return { ...reply, revision, ...(savedManifest && savedManifest.revision === revision && { counts: publicRecordCounts(savedManifest.counts) }), auditLogs: logs,
           recovery: user.role === 'super_admin' ? recoveryHistory(result.next) : undefined,
@@ -578,7 +587,9 @@ async function handle(context) {
       finally { publicContentReads.delete(env.ADMIN_DB); }
     } else throw new ApiError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法。');
     const response = json(200, result, request);
-    response.headers.set('Server-Timing', 'content;dur=' + (performance.now() - started).toFixed(1));
+    const measurements = saveMeasurements.get(request);
+    response.headers.set('Server-Timing', ['content;dur=' + (performance.now() - started).toFixed(1),
+      ...Object.entries(measurements || {}).map(([name, value]) => name === 'attempts' ? 'save_attempts;desc="' + value + '"' : name + ';dur=' + value.toFixed(1))].join(', '));
     if (request.method === 'GET') {
       const size = publicVersionBatchSizes.get(request);
       if (size) response.headers.set('X-Read-Version-Batch', String(size));

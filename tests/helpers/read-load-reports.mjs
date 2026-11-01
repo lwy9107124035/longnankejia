@@ -8,7 +8,10 @@ export function parseControlResponse(raw) {
   let data;
   try { data = JSON.parse(lines.join('\n')); } catch { throw Error('Control response JSON is invalid'); }
   const match = timing.match(/content;dur=([\d.]+)/);
-  return {status, data, timing:{curlMs:Math.round(seconds * 1000), serverMs:match ? Number(match[1]) : null}};
+  const phases = Object.fromEntries([...timing.matchAll(/\b(save_(?:auth|version|read|prepare|commit|metadata));dur=(\d+(?:\.\d+)?)/g)].map(item=>[item[1],Number(item[2])]));
+  const attempts = timing.match(/save_attempts;desc="([1-5])"/);
+  return {status, data, timing:{curlMs:Math.round(seconds * 1000), serverMs:match ? Number(match[1]) : null,
+    ...(Object.keys(phases).length && {phases}), ...(attempts && {attempts:Number(attempts[1])})}};
 }
 function peakCount(intervals) {
   const events = intervals.flatMap(([start, end]) => [[start, 1], [end, -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
