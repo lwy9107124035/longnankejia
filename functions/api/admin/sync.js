@@ -2,7 +2,7 @@
 import { DEFAULTS, validateContent, validateChanges, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 import { storeMedia, migrateD1Media, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
-import { recordsManifest, readRecordState, recordChangeSnapshot, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummaries, pageRecords, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
+import { recordsManifest, readRecordState, recordChangeSnapshot, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummarySnapshot, pageRecords, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
 import { archiveHistoryBefore, expandArchivedHistory } from '../../_lib/admin-history-archive.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
@@ -422,8 +422,9 @@ async function postData(db, env, request, body) {
           throw error;
         }
         const logs = user.role === 'super_admin' ? safeAudit(result.next, tokens.value) : [];
-        const [savedManifest, summaries] = manifest ? await Promise.all([recordsManifest(db),
-          user.role === 'super_admin' ? recordSummaries(db, manifest, tokens.value) : null]) : [null, null];
+        const metadata = manifest && user.role === 'super_admin' ? await recordSummarySnapshot(db, manifest, tokens.value) : null;
+        const savedManifest = metadata ? metadata.manifest : manifest && await recordsManifest(db);
+        const summaries = metadata?.summaries;
         return { ...reply, revision, ...(savedManifest && savedManifest.revision === revision && { counts: publicRecordCounts(savedManifest.counts) }), auditLogs: logs,
           recovery: user.role === 'super_admin' ? recoveryHistory(result.next) : undefined,
           ...summaries,

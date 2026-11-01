@@ -79,6 +79,16 @@ test('one change-snapshot round trip keeps revision, values, invitation metadata
   assert.equal(fresh.manifest.revision,2);assert.equal(fresh.current.value.kepuCustom[0].name,changed.name);assert.equal(fresh.tokens[0].id,'later-metadata');assert.equal(fresh.receipt.request_hash,'later-hash');
 });
 
+test('a pure conflict persists its replay receipt without changing content revision, counts or byte accounting',async t=>{
+  const backend=setup(t),bearer=await login(backend),value=structuredClone(schema.defaults);value.kepuCustom=[{id:'conflict-receipt',name:'已保存资料',detail:'完整正文'}];
+  await migrateRecordStorage(backend.db,{value,revision:0});const before=await recordsManifest(backend.db);
+  const body={action:'update_content',operationId:'pure-conflict-receipt-operation',changes:[{key:'kepuCustom/conflict-receipt',baseHash:await schema.cellHash(null),value:{id:'conflict-receipt',name:'冲突内容',detail:'不能覆盖原文'}}]};
+  const conflict=await backend.call(body,bearer);assert.equal(conflict.status,200);assert.deepEqual(conflict.data.accepted,[]);assert.deepEqual(conflict.data.conflicts,['kepuCustom/conflict-receipt']);
+  assert.deepEqual(await recordsManifest(backend.db),before);assert.ok(backend.sqlite.prepare('SELECT id FROM admin_content_receipts WHERE id=?').get(body.operationId));
+  const replay=await backend.call(body,bearer);assert.equal(replay.status,200);assert.equal(replay.data.replayed,true);assert.deepEqual(replay.data.conflicts,conflict.data.conflicts);assert.equal(replay.data.revision,before.revision);
+  assert.equal((await readRecordState(backend.db,before,['kepuCustom/conflict-receipt'])).value.kepuCustom[0].detail,'完整正文');
+});
+
 test('staging failure or a concurrent legacy edit cannot switch the live manifest', async t => {
   const backend = setup(t), before = await loadContentState(backend.db);
   backend.sqlite.exec("CREATE TRIGGER fail_staging BEFORE INSERT ON admin_content_items BEGIN SELECT RAISE(ABORT,'synthetic failure'); END");

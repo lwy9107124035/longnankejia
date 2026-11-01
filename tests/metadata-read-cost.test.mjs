@@ -2,7 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createAdminBackend, captureQueryPlans } from './helpers/admin-harness.mjs';
-import { migrateRecordStorage, recordSummaries, pageRecoveryHistory } from '../functions/_lib/admin-records.js';
+import { migrateRecordStorage, recordSummaries, recordSummarySnapshot, pageRecoveryHistory } from '../functions/_lib/admin-records.js';
+
+test('save summaries and their revision use one round trip and cannot mix a later audit transaction',async t=>{
+  const backend=createAdminBackend();t.after(()=>backend.close());backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql',import.meta.url),'utf8'));
+  const manifest=await migrateRecordStorage(backend.db,{value:structuredClone(globalThis.HeritageContent.defaults),revision:0});
+  const insert=backend.sqlite.prepare("INSERT INTO admin_content_items(generation,key,kind,value,digest,revision) VALUES(?,?,'auditLogs',?,'synthetic',1)");
+  const log=id=>JSON.stringify({id,action:'合成记录',detail:'',time:1});insert.run(manifest.generation,'auditLogs/early',log('early'));
+  const batch=backend.db.batch.bind(backend.db);let trips=0;backend.db.batch=async statements=>{trips++;const result=await batch(statements);backend.sqlite.exec('BEGIN');insert.run(manifest.generation,'auditLogs/later',log('later'));backend.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'; COMMIT");return result;};
+  const snapshot=await recordSummarySnapshot(backend.db,manifest,[]);assert.equal(trips,1);assert.equal(snapshot.manifest.revision,1);assert.deepEqual(snapshot.summaries.auditLogs.map(row=>row.id),['early']);
+  backend.db.batch=batch;const fresh=await recordSummarySnapshot(backend.db,manifest,[]);assert.equal(fresh.manifest.revision,2);assert.deepEqual(fresh.summaries.auditLogs.map(row=>row.id),['later','early']);
+});
 
 test('administrator summaries and recovery pages use ordered indexes instead of sorting the accumulated history', async t => {
   const backend = createAdminBackend(); t.after(() => backend.close());

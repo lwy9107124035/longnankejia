@@ -198,7 +198,7 @@ try {
     result.saveProbe = await saveThreeSessions(initial);
     const persisted = new Map((await rows()).map(row=>[row.key,row]));
     assert.ok(ids.slice(0,3).every(id=>persisted.get('kepuCustom/'+id)?.value.tag==='三会话峰值写入'));
-    result.probePass = true;
+    result.probeCorrectnessPass = true;
   } else {
     const load = await remoteLoad(manifest.revision, initial);
     result.loadPass = load.pass; result.phases = load.phases; result.requests = load.requests;
@@ -241,4 +241,4 @@ finally {
 }
 console.log(JSON.stringify({ ...result, sessionHashes: undefined, phases: result.phases.map(phase => ({ users: phase.users, requests: phase.requests, failures: phase.failures, p95Ms: phase.p95Ms, pass: phase.pass })) }, null, 2));
 fs.writeFileSync(stateFile, JSON.stringify(result, null, 2));
-if (result.error || !result.cleanup || !cleanupOnly && !(saveProbe ? result.probePass : result.loadPass) || !result.sessionRemoved) process.exitCode = 1;
+if (result.error || !result.cleanup || !cleanupOnly && !(saveProbe ? result.probeCorrectnessPass : result.loadPass) || !result.sessionRemoved) process.exitCode = 1;

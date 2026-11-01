@@ -86,12 +86,23 @@ export async function readRollbackState(db, manifest, keys) {
   }
   return assembledState(results, manifest);
 }
-export async function recordSummaries(db, manifest, tokens) {
-  const [logs, history] = await Promise.all([
-    db.prepare("SELECT value FROM admin_content_items WHERE generation=? AND kind='auditLogs' ORDER BY rowid DESC LIMIT 200").bind(manifest.generation).all(),
-    db.prepare("SELECT json_extract(value,'$.id') AS id,json_extract(value,'$.title') AS title,json_extract(value,'$.kind') AS kind,json_extract(value,'$.time') AS time FROM admin_content_items WHERE generation=? AND kind='_history' AND COALESCE(json_extract(value,'$.undone'),0)=0 AND json_type(value,'$.before') IS NOT NULL AND json_type(value,'$.before')!='null' ORDER BY rowid DESC LIMIT 50").bind(manifest.generation).all()
-  ]);
+function summaryStatements(db, manifest) {
+  return [
+    db.prepare("SELECT value FROM admin_content_items WHERE generation=? AND kind='auditLogs' ORDER BY rowid DESC LIMIT 200").bind(manifest.generation),
+    db.prepare("SELECT json_extract(value,'$.id') AS id,json_extract(value,'$.title') AS title,json_extract(value,'$.kind') AS kind,json_extract(value,'$.time') AS time FROM admin_content_items WHERE generation=? AND kind='_history' AND COALESCE(json_extract(value,'$.undone'),0)=0 AND json_type(value,'$.before') IS NOT NULL AND json_type(value,'$.before')!='null' ORDER BY rowid DESC LIMIT 50").bind(manifest.generation)
+  ];
+}
+function summaryValues([logs, history], tokens) {
   return { auditLogs: safeAudit({ auditLogs: logs.results.map(row => JSON.parse(row.value)) }, tokens), recovery: history.results };
+}
+export async function recordSummaries(db, manifest, tokens) {
+  return summaryValues(await Promise.all(summaryStatements(db, manifest).map(statement => statement.all())), tokens);
+}
+export async function recordSummarySnapshot(db, manifest, tokens) {
+  const [state, ...summaries] = await db.batch([
+    db.prepare("SELECT value,revision FROM admin_state WHERE key='content'"), ...summaryStatements(db, manifest)
+  ]);
+  return { manifest:snapshotManifest(state.results[0], manifest), summaries:summaryValues(summaries, tokens) };
 }
 
 export async function pageRecoveryHistory(db, manifest, cursor = '') {
@@ -195,10 +206,14 @@ export async function writeRecordState(db, manifest, previous, next, { receipt }
   for (const keys of groups(removals)) statements.push(db.prepare('DELETE FROM admin_content_items WHERE generation=? AND key IN (SELECT value FROM json_each(?)) AND ' + guard).bind(manifest.generation, JSON.stringify(keys), manifest.revision, manifest.generation));
   if (statements.length > 40) throw new RecordError(409, 'BATCH_REQUIRED', '本次变更多，请刷新页面后分批保存');
   if (!statements.length && !receipt) return manifest.revision;
-  if (receipt) {
-    statements.push(db.prepare('INSERT INTO admin_content_receipts(generation,id,owner,request_hash,value,created_at) SELECT ?,?,?,?,?,? WHERE ' + guard + ' ON CONFLICT(generation,id) DO NOTHING')
-      .bind(manifest.generation, receipt.id, receipt.owner, receipt.hash, JSON.stringify(receipt.value), Date.now(), manifest.revision, manifest.generation));
+  const receiptStatement = receipt && db.prepare('INSERT INTO admin_content_receipts(generation,id,owner,request_hash,value,created_at) SELECT ?,?,?,?,?,? WHERE ' + guard + ' ON CONFLICT(generation,id) DO NOTHING')
+    .bind(manifest.generation, receipt.id, receipt.owner, receipt.hash, JSON.stringify(receipt.value), Date.now(), manifest.revision, manifest.generation);
+  if (!statements.length && receipt) {
+    const inserted = await receiptStatement.run();
+    if (inserted.meta.changes !== 1) throw new RecordError(409, 'SYNC_CONFLICT', '内容已更新，请重试；本机草稿已保留');
+    return manifest.revision;
   }
+  if (receiptStatement) statements.push(receiptStatement);
   const marker = { storage: 'records-v1', generation: manifest.generation, counts, bytes: Math.max(0, (manifest.bytes || 0) + delta) };
   statements.push(db.prepare("UPDATE admin_state SET value=?,revision=revision+1 WHERE key='content' AND revision=?").bind(JSON.stringify(marker), manifest.revision));
   const results = await db.batch(statements);
