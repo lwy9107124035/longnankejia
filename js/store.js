@@ -687,19 +687,23 @@
             if (!pending) { conflictKeys = []; editBases = {}; draftOwner = ''; }
             await persistState(); savedStatus(); return !pending;
           }
-          var changes = [];
+          var changes = [], canonicalHashes = true;
           var mediaCache = new Map(), requestBytes = 0;
           // Keep each request small; the library and its pictures may be much larger.
           for (var change of sendable.slice(0, 8)) {
             await uploadRecordMedia(change.before, mediaCache);
             var value = await uploadRecordMedia(change.value, mediaCache);
-            var operation = { key: change.key, baseHash: change.baseHash || await globalThis.HeritageContent.cellHash(change.before), value: value };
+            var canonicalBaseHash = await globalThis.HeritageContent.cellHash(change.before);
+            var operation = { key: change.key, baseHash: change.baseHash || canonicalBaseHash, value: value };
             var bytes = new TextEncoder().encode(JSON.stringify(operation)).length;
             if (changes.length && requestBytes + bytes > 4 * 1024 * 1024) break;
+            if (operation.baseHash !== canonicalBaseHash) canonicalHashes = false;
             changes.push(operation); requestBytes += bytes;
           }
           var operationId = await globalThis.HeritageContent.cellHash({ revision: cloudRevision, changes: changes }, true);
-          var data = await cloudRequest({ action: 'update_content', operationId: operationId, revision: cloudRevision, changes: changes });
+          var writeRequest = { action: 'update_content', operationId: operationId, revision: cloudRevision, changes: changes };
+          if (canonicalHashes) writeRequest.hashFormat = 'media-identity-v1';
+          var data = await cloudRequest(writeRequest);
           var acknowledged = changes.filter(function (change) { return data.accepted.indexOf(change.key) >= 0; });
           var latest = copy(cloudBase || globalThis.HeritageContent.defaults);
           if (cloudRevision === null || data.revision >= cloudRevision) {
@@ -850,7 +854,7 @@
     var completed = 0, copied = 0;
     for (var entry of records) {
       var value = await uploadRecordMedia(entry[1], new Map());
-      var result = await cloudRequest({ action: 'update_content', changes: [{ key: entry[0], baseHash: await schema.cellHash(entry[1]), value: value }] });
+      var result = await cloudRequest({ action: 'update_content', hashFormat: 'media-identity-v1', changes: [{ key: entry[0], baseHash: await schema.cellHash(entry[1]), value: value }] });
       completed += result.accepted.length;
     }
     if (catalog.capabilities && catalog.capabilities.mediaUploads) {

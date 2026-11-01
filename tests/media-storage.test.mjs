@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createAdminBackend } from './helpers/admin-harness.mjs';
 import { setupEnvironment } from './helpers/store-harness.mjs';
+import {migrateRecordStorage} from '../functions/_lib/admin-records.js';
 
 const sampleBytes = fs.readFileSync(new URL('../assets/model-references/hutoumao-211.jpg', import.meta.url));
 const image = 'data:image/jpeg;base64,' + sampleBytes.toString('base64');
@@ -185,6 +186,40 @@ test('an already-open old browser cannot put inline pictures back into the share
   assert.equal(edited.data.conflicts.length, 0); const actual = (await backend.call()).data.kepuCustom[0];
   assert.equal(actual.detail, '旧页面第二版'); assert.equal(actual.imageUrl, published.imageUrl);
   assert.deepEqual(Buffer.from(await (await backend.fetchApi(actual.imageUrl)).arrayBuffer()), sampleBytes);
+});
+
+test('current media hashes reject real conflicts without fetching old pictures while unflagged legacy hashes still save',async t=>{
+  const backend=setup(t),device=setupEnvironment(backend),user=await login(device),schema=globalThis.HeritageContent;
+  const initial={id:'hash-format',name:'原资料',detail:'原正文',imageUrl:image},key='kepuCustom/hash-format';
+  assert.equal((await backend.call({action:'update_content',changes:[{key,baseHash:await schema.cellHash(null),value:initial}]},user.bearer)).data.accepted.length,1);
+  const original=(await backend.call()).data.kepuCustom[0],baseHash=await schema.cellHash(original,true);
+  assert.equal((await backend.call({action:'update_content',hashFormat:'media-identity-v1',changes:[{key,baseHash,value:{...original,name:'同事已改'}}]},user.bearer)).data.accepted.length,1);
+  const prepare=backend.db.prepare.bind(backend.db);let mediaQueries=0;
+  backend.db.prepare=sql=>{const statement=prepare(sql),bind=statement.bind.bind(statement);statement.bind=(...params)=>{if(params.some(value=>typeof value==='string'&&value.startsWith('media:')))mediaQueries++;return bind(...params);};return statement;};
+  const conflict=await backend.call({action:'update_content',hashFormat:'media-identity-v1',changes:[{key,baseHash,value:{...original,name:'不能覆盖'}}]},user.bearer);
+  assert.equal(conflict.status,200);assert.deepEqual(conflict.data.conflicts,[key]);assert.equal(mediaQueries,0);
+  const latest=(await backend.call()).data.kepuCustom[0],legacy={...latest,imageUrl:image};
+  const saved=await backend.call({action:'update_content',changes:[{key,baseHash:await schema.cellHash(legacy,true),value:{...legacy,detail:'旧页面仍能编辑'}}]},user.bearer);
+  assert.equal(saved.status,200);assert.deepEqual(saved.data.accepted,[key]);assert.ok(mediaQueries>0);
+  const actual=(await backend.call()).data.kepuCustom[0];assert.equal(actual.detail,'旧页面仍能编辑');assert.equal(actual.imageUrl,original.imageUrl);
+  const invalid=await backend.call({action:'update_content',hashFormat:'unsupported',changes:[{key,baseHash,value:original}]},user.bearer);assert.equal(invalid.status,400);assert.equal(invalid.data.code,'INVALID_HASH_FORMAT');
+});
+
+test('a pending inline-picture draft survives server media normalization before the current client uploads it',async t=>{
+  const backend=setup(t),schema=globalThis.HeritageContent,value=structuredClone(schema.defaults);
+  const initial={id:'pending-inline-hash',name:'旧图草稿',detail:'原正文',imageUrl:image};value.kepuCustom=[initial];
+  backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql',import.meta.url),'utf8'));
+  await migrateRecordStorage(backend.db,{value,revision:0});
+  const device=setupEnvironment(backend),user=await login(device);await device.store.loadRecord('kepu',initial.id);
+  const fetch=device.sandbox.fetch;device.sandbox.fetch=async()=>{throw Error('isolated offline draft');};
+  device.store.updateHeritageCard(initial.id,{detail:'旧草稿的新正文'});assert.equal(await device.store.flushPending(),false);
+  const media=(await backend.call({action:'store_media',dataUrl:image},user.bearer)).data;
+  const migrated=await backend.call({action:'update_content',changes:[{key:'kepuCustom/'+initial.id,baseHash:await schema.cellHash(initial,true),value:{...initial,imageUrl:media.url}}]},user.bearer);assert.equal(migrated.status,200);
+  const sent=[];device.sandbox.fetch=async(url,options={})=>{if(options.body){const body=JSON.parse(options.body);if(body.action==='update_content')sent.push(body);}return fetch(url,options);};
+  assert.equal(await device.store.flushPending(),true,JSON.stringify(device.store.getSyncStatus()));assert.equal(sent[0].hashFormat,undefined);
+  let actual=(await backend.call()).data.kepuCustom[0];assert.equal(actual.detail,'旧草稿的新正文');assert.equal(actual.imageUrl,media.url);
+  device.store.updateHeritageCard(initial.id,{detail:'当前页面继续编辑'});assert.equal(await device.store.flushPending(),true);assert.equal(sent.at(-1).hashFormat,'media-identity-v1');
+  actual=(await backend.call()).data.kepuCustom[0];assert.equal(actual.detail,'当前页面继续编辑');assert.equal(actual.imageUrl,media.url);
 });
 
 test('large media spanning several stored parts returns the exact binary payload', async t => {

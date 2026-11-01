@@ -4,10 +4,10 @@ import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './h
 
 test('control timings separate server work from client transport without exposing malformed private bodies',()=>{
   const result=parseControlResponse('{"ok":true}\n200\n0.75\ncontent;dur=123.4');
-  assert.deepEqual(result,{status:200,data:{ok:true},timing:{curlMs:750,serverMs:123.4}});
+  assert.deepEqual(result,{status:200,data:{ok:true},timing:{clientMs:750,serverMs:123.4}});
   assert.equal(parseControlResponse('{"ok":false}\n503\n0.1\n').timing.serverMs,null);
   assert.deepEqual(parseControlResponse('{}\n200\n1\ncontent;dur=800, save_auth;dur=20, save_read;dur=100.5, save_attempts;desc="2"').timing,
-    {curlMs:1000,serverMs:800,phases:{save_auth:20,save_read:100.5},attempts:2});
+    {clientMs:1000,serverMs:800,phases:{save_auth:20,save_read:100.5},attempts:2});
   assert.throws(()=>parseControlResponse('SYNTHETIC-PRIVATE-CREDENTIAL\n200\n0.1\n'),error=>error.message==='Control response JSON is invalid');
   assert.throws(()=>parseControlResponse('{}\ninvalid\n0.1\n'));
 });

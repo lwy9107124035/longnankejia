@@ -379,6 +379,7 @@ async function postData(db, env, request, body) {
       await db.prepare('DELETE FROM admin_sessions WHERE id = ?').bind(user.sessionId).run();
       return { ok: true };
     case 'update_content': {
+      if (body.hashFormat !== undefined && body.hashFormat !== 'media-identity-v1') throw new ApiError(400, 'INVALID_HASH_FORMAT', '请刷新页面后重试，草稿已保留');
       if (Array.isArray(body.changes) && body.changes.some(change => ['apiConfig', 'workflowConfig'].includes(change?.key))) requireSuper(user);
       const initialManifest = await measureSave(request, 'save_version', () => recordsManifest(db));
       let tokens = initialManifest ? null : await state(db, 'tokens', []);
@@ -407,7 +408,7 @@ async function postData(db, env, request, body) {
           }
         }
         let result;
-        try { result = await measureSave(request, 'save_prepare', () => applyChanges(current.value, body.changes, user, tokens.value, value => expandRecordMedia(mediaDb, value, env.ADMIN_MEDIA, db), async value => {
+        try { result = await measureSave(request, 'save_prepare', () => applyChanges(current.value, body.changes, user, tokens.value, body.hashFormat === 'media-identity-v1' ? null : value => expandRecordMedia(mediaDb, value, env.ADMIN_MEDIA, db), async value => {
           try { return await storeRecordMedia(mediaDb, value, mediaCache, env.ADMIN_MEDIA); }
           catch (error) { if (error instanceof TypeError) throw error; throw new ApiError(503, 'MEDIA_UNAVAILABLE', '图片存储暂不可用，草稿已保留'); }
         })); }

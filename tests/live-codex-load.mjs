@@ -10,9 +10,12 @@ import { checkHealth } from '../scripts/maintenance-health.mjs';
 import '../js/content-schema.js';
 import { createLoadPermit, assertLoadPermit, assertProductionReady } from './helpers/load-budget.mjs';
 import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './helpers/read-load-reports.mjs';
-if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
+import {controlRequest,warmControlConnections} from './helpers/load-control-client.mjs';
+if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Persistent fetch is the default; LOAD_CONTROL_TRANSPORT=curl selects cold-connection diagnostics. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.ok(process.argv.length === 3 && ['--run','--probe-saves'].includes(process.argv[2]), 'Only --run, --probe-saves or --help is supported');
 const saveProbe = process.argv[2] === '--probe-saves';
+const controlTransport = process.env.LOAD_CONTROL_TRANSPORT || 'fetch';
+assert.ok(['fetch','curl'].includes(controlTransport), 'Unknown control transport');
 const account = await getProjectAccount();
 const origin = 'https://codex.longnankejia-dev.pages.dev', schema = globalThis.HeritageContent;
 const cleanupOnly = process.env.CLEANUP_LOAD_PREFIX;
@@ -41,7 +44,7 @@ const db = createRestDatabase(async body => {
     catch (error) { if (!readOnly || attempt >= 2) throw error; await sleep(1000); }
   }
 }, { apply: true });
-const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionIds };
+const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, controlTransport, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionIds };
 const stateFile = '.cache/' + (cleanupOnly ? 'load-cleanup-' + Date.now() + '-' : 'load-control-') + prefix + '.json';
 const ids = Array.from({ length: saveProbe ? 4 : 188 }, (_, i) => prefix + '-' + String(i).padStart(3, '0'));
 const value = (id, i) => ({ id, name: '合成并发验收' + i + ' ' + prefix, category: 'craft', detail: ('这是独立测试资料，不能作为文化资料引用。' + i + '\n').repeat(130),
@@ -51,6 +54,10 @@ fs.writeFileSync(stateFile, JSON.stringify({ prefix, ids, sessionHash: sessionId
 async function app(body, query = 'format=pages', auth = true, attempt = 0) {
   try {
   const url = origin + '/api/admin/sync' + (body ? '' : '?' + query);
+  let parsed;
+  if (controlTransport === 'fetch') {
+    parsed = await controlRequest(url,{body,headers:{'Cache-Control':'no-cache',...(auth && {Authorization:'Bearer '+(typeof auth==='string'?auth:bearer)})}});
+  } else {
   let input = 'silent\nshow-error\nmax-time = 30\nurl = ' + JSON.stringify(url) + '\nwrite-out = "\\n%{http_code}\\n%{time_total}\\n%header{server-timing}"\nheader = "Cache-Control: no-cache"\n';
   if (auth) input += 'header = ' + JSON.stringify('Authorization: Bearer ' + (typeof auth === 'string' ? auth : bearer)) + '\n';
   if (body) input += 'request = "POST"\nheader = "Content-Type: application/json"\ndata = ' + JSON.stringify(JSON.stringify(body)) + '\n';
@@ -61,7 +68,9 @@ async function app(body, query = 'format=pages', auth = true, attempt = 0) {
     child.on('close', code => code === 0 ? resolve(output) : reject(Error('Control transport did not confirm request: ' + code)));
     child.stdin.end(input);
   });
-  const parsed = parseControlResponse(raw); assert.equal(parsed.status, 200, parsed.data.code);
+  parsed = parseControlResponse(raw);
+  }
+  assert.equal(parsed.status, 200, parsed.data.code);
   return { ...parsed.data, ...(body && { testTiming:parsed.timing }) };
   } catch (error) {
     if (body || attempt >= 2) throw error;
@@ -69,7 +78,7 @@ async function app(body, query = 'format=pages', auth = true, attempt = 0) {
   }
 }
 async function write(changes, actor = bearer) {
-  const body = { action: 'update_content', operationId: randomBytes(32).toString('hex'), changes };
+  const body = { action: 'update_content', hashFormat: 'media-identity-v1', operationId: randomBytes(32).toString('hex'), changes };
   for (let attempt = 0; ; attempt++) {
     try { return { ...await app(body, 'format=pages', actor), testOperationId: body.operationId }; }
     catch (error) {
@@ -131,10 +140,15 @@ async function remoteLoad(revision, initial) {
   }
   assert.ok(run, dispatchError || 'dispatched read-load workflow not found'); result.remoteRunId = run.databaseId; result.remoteRunUrl = run.url;
   result.coordinatedStart = startAt;
-  console.log('Four-generator load started: ' + run.databaseId + '; peak ' + startAt); const writes = []; let lastStatus = 0;
+  console.log('Four-generator load started: ' + run.databaseId + '; peak ' + startAt); const writes = []; let lastStatus = 0, warmed = false;
   while (Date.now() < scheduled + 6 * 60000) {
     const now = Date.now(), remaining = scheduled + 500 - now;
+    if (controlTransport === 'fetch' && !warmed && remaining > 0 && remaining <= 3000) {
+      const startedAt = new Date().toISOString(); await warmControlConnections(origin); warmed = true;
+      result.controlWarmup = {startedAt,finishedAt:new Date().toISOString(),staticRequests:5}; continue;
+    }
     if (!writes.length && remaining <= 0) {
+      assert.ok(controlTransport !== 'fetch' || warmed, 'Control client missed the connection calibration window');
       writes.push(await saveThreeSessions(initial));
       console.log('Three independent sessions saved during the coordinated peak');
     }
@@ -195,6 +209,7 @@ try {
   console.log(ids.length + ' synthetic records prepared; original content and credentials retained');
   const initial = new Map((await rows()).filter(row => row.key.startsWith('kepuCustom/' + prefix)).map(row => [row.key, row]));
   if (saveProbe) {
+    if (controlTransport === 'fetch') { await warmControlConnections(origin); result.controlWarmup = {staticRequests:5}; }
     result.saveProbe = await saveThreeSessions(initial);
     const persisted = new Map((await rows()).map(row=>[row.key,row]));
     assert.ok(ids.slice(0,3).every(id=>persisted.get('kepuCustom/'+id)?.value.tag==='三会话峰值写入'));
