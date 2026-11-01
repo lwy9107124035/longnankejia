@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readD1Usage } from '../scripts/d1-usage.mjs';
-import { getProjectAccount } from '../scripts/_lib/cloudflare-read.mjs';
+import { cloudflareRead, getProjectAccount } from '../scripts/_lib/cloudflare-read.mjs';
 import { TARGETS, curlConfiguration } from '../scripts/migrate-content-records.mjs';
 
 test('D1 monitoring sums the current UTC day across the project account and rejects unknown counters', async () => {
@@ -40,5 +40,24 @@ test('unrecoverable or unrelated monitoring failures stop instead of repeatedly 
     let refreshed = 0, checks = 0;
     await assert.rejects(getProjectAccount({ accountId: '', read: async () => { checks++; throw Error(message); }, refresh: async () => { refreshed++; } }), error => error.message === message);
     assert.equal(refreshed, message.endsWith('9109') ? 1 : 0); assert.equal(checks, refreshed + 1);
+  }
+});
+
+test('monitoring uses bounded HTTPS with bearer in headers and permits only metadata GETs or analytics queries',async()=>{
+  const requests=[], request=async(url,options)=>{requests.push({url,options});return Response.json({success:true,result:[{id:'synthetic'}]});};
+  assert.deepEqual(await cloudflareRead('/accounts',undefined,{token:'synthetic-only',request}),[{id:'synthetic'}]);
+  assert.equal(requests[0].options.headers.Authorization,'Bearer synthetic-only');
+  assert.equal(requests[0].options.redirect,'error'); assert.equal(requests[0].options.method,'GET');
+  assert.equal(requests[0].options.body,undefined); assert.equal(requests[0].url,'https://api.cloudflare.com/client/v4/accounts');
+  await cloudflareRead('/graphql',{query:'query metrics { viewer { accounts { id } } }'},{token:'synthetic-only',request});
+  assert.equal(requests[1].options.method,'POST');
+  await assert.rejects(cloudflareRead('/graphql',{query:'mutation unsafe {}'},{token:'synthetic-only',request}));
+  await assert.rejects(cloudflareRead('/accounts',{}, {token:'synthetic-only',request})); assert.equal(requests.length,2);
+});
+test('monitoring failures preserve authorization codes and never reveal raw private replies',async()=>{
+  const options=request=>({token:'synthetic-only',request});
+  await assert.rejects(cloudflareRead('/accounts',undefined,options(async()=>Response.json({success:false,errors:[{code:9109,message:'PRIVATE'}]}))),/^Error: Cloudflare read rejected: 9109$/);
+  for(const request of [async()=>{throw Error('PRIVATE');},async()=>new Response('PRIVATE'),async()=>new Response('PRIVATE',{headers:{'Content-Length':String(9*1024*1024)}})]) {
+    await assert.rejects(cloudflareRead('/accounts',undefined,options(request)),error=>!error.message.includes('PRIVATE'));
   }
 });

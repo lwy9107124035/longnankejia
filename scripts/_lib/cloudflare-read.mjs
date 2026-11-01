@@ -1,22 +1,19 @@
-import { spawn } from 'node:child_process';
-import { curlConfiguration, readWranglerToken, TARGETS } from '../migrate-content-records.mjs';
+import { readWranglerToken, TARGETS } from '../migrate-content-records.mjs';
 import { readDatabaseCapacity } from '../maintenance-health.mjs';
+import {readLimited} from '../../functions/_lib/read-limited.js';
 
-export async function cloudflareRead(apiPath, body) {
+export async function cloudflareRead(apiPath, body, {token,request=fetch}={}) {
   if (!apiPath.startsWith('/') || body && (apiPath !== '/graphql' || !/^query\b/.test(body.query || ''))) throw Error('Only Cloudflare metadata GETs and analytics queries are allowed');
-  const token = readWranglerToken();
-  const result = await new Promise((resolve, reject) => {
-    const child = spawn(process.platform === 'win32' ? 'curl.exe' : 'curl', ['--config', '-'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); let output = '', length = 0;
-    child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { length += Buffer.byteLength(chunk); if (length > 8 * 1024 * 1024) child.kill(); else output += chunk; });
-    child.stderr.resume(); child.on('error', () => reject(Error('Cloudflare read connection unavailable')));
-    child.stdin.on('error', () => reject(Error('Cloudflare read input failed')));
-    child.on('close', code => {
-      if (length > 8 * 1024 * 1024 || code && code !== 22) return reject(Error('Cloudflare read transport was not confirmed'));
-      try { resolve(JSON.parse(output)); } catch { reject(Error('Cloudflare read response is invalid')); }
-    });
-    child.stdin.end(curlConfiguration('https://api.cloudflare.com/client/v4' + apiPath, token, body, body ? 'POST' : 'GET'));
-  });
-  if (result.errors?.length || !body && result.success !== true) throw Error('Cloudflare read rejected: ' + (result.errors || []).map(error => error.code).filter(Number.isFinite).join(','));
+  const bearer=token ?? readWranglerToken();
+  let response, bytes;
+  try {
+    response=await request('https://api.cloudflare.com/client/v4'+apiPath,{method:body?'POST':'GET',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(30000),
+      headers:{Authorization:'Bearer '+bearer,...(body&&{'Content-Type':'application/json'})},...(body&&{body:JSON.stringify(body)})});
+    bytes=await readLimited(response,8*1024*1024);
+  } catch { throw Error('Cloudflare read transport was not confirmed'); }
+  let result;
+  try { result=JSON.parse(new TextDecoder().decode(bytes)); } catch { throw Error('Cloudflare read response is invalid'); }
+  if (!response.ok || result.errors?.length || !body && result.success !== true) throw Error('Cloudflare read rejected: ' + (result.errors || []).map(error => error.code).filter(Number.isFinite).join(','));
   return body ? result : result.result;
 }
 
