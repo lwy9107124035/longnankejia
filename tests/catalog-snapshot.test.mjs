@@ -58,7 +58,7 @@ test('record detail reads its value and revision together while redacting legacy
   }
   backend.db.prepare = sql => {
     const statement = prepare(sql), all = statement.all.bind(statement);
-    statement.all = async () => { const result = await all(); if (sql.startsWith('SELECT key,kind,value FROM admin_content_items')) await writeDuringRead(); return result; };
+    statement.all = async () => { const result = await all(); if (sql.startsWith('SELECT key,kind,value') && sql.includes(' FROM admin_content_items')) await writeDuringRead(); return result; };
     return statement;
   };
   backend.db.batch = async statements => { await writeDuringRead(); return batch(statements); };

@@ -475,3 +475,11 @@
 - 只读数据库元数据与一条SELECT1（无写入）`.cache/database-{location-current,colo-confirmed}-20261101.json`确认codex主库APAC/HKG、单主、无复制，SQL本身0.2311ms。原先任何“ICN”的猜测不可沿用。按官方Placement Hints及已安装Wrangler4.137实际Pages打包路径验证，配置region会编码targeted定位；准备只将codex由自动smart改为香港地理参考aws:ap-east-1，main配置无此字段，未搬库/开新存储。只有部署及探针实测后才能说有效。部署配置6/6，待212项CI后重读实际配置并做4条小探针，不盲目再施千人负载。
 - 81de598/[CI41298818050](https://github.com/lwy9107124035/longnankejia/actions/runs/41298818050)212项和部署成功，项目元数据确认preview mode=targeted（`.cache/targeted-placement-live-config-20261101.json`，项目未返回region，不能据此单独证明实际执行城市）。第三个4条小探针`.cache/isolated-save-probe-three-20261101.txt`正确性通过、精确清理908/0、会话移除、凭据不变；curl2724/3154/2279/1886/2872ms、server1929/2361/1485/1115/2073ms，尚无明显加速证据，未跑新的千人负载。
 - 继续基于证据分段定位：保存响应只附固定阶段耗时（auth/version/read/prepare/commit/metadata）与1–5次尝试数，不含SQL、条目内容或凭据；控制器仅解析固定字段为数值。新读集、真实CAS和权限步骤未改，未启用自动网络重放或降低3秒/峰值标准。相关49/49与Functions构建通过（`save-stage-timing-final-tests-20261101.txt`、`save-stage-timing-build-20261101.txt`），待212项CI部署后仍只4条小探针。
+
+## 2026-11-01 逐条编辑并发整改（本地218项通过，待预览探针）
+
+- 当前线上1b8e832/[CI41299526529](https://github.com/lwy9107124035/longnankejia/actions/runs/41299526529)212项成功。第四个4条探针`.cache/isolated-save-probe-four-20261101.txt`：正常独立条目仍1/3/4次尝试；每次auth/version/read/commit/metadata往返约0.17–0.23秒，内容处理近0；同条冲突另有357ms旧图片摘要兼容处理。五请求server1124–2303ms，curl1879–3172ms。清理914/0、会话移除、凭据不变。真实慢点为不相关条目争抢全局revision引起重读重提，不能归于SQL执行或全当本机网络；尚未再次压千人。
+- 已实现仅用于`recordChangeSnapshot`常规录入的读集校验：记录读取到的每行digest+行revision和缺失键；在同一个D1 batch事务内原子取得临时提交标记，逐行校验后写内容/审计/持久回执，按数据库当前值累计counts/bytes，推进真实总revision并移除临时标记。新行使用真实提交epoch，回执baseRevision也对齐真实父epoch，避免漏掉增量或让客户端跳过别人的保存。事务中间异常自动回滚，不发布临时标记。重复operationId在入场条件中排除，阻止并行不同请求共用编号写入。
+- 历史归档、迁移、撤回等维护读取保持原全局revision保护。首轮全回归217/218发现归档并发应拒绝的边界被意外放宽，原失败`.cache/cell-cas-all-node-20261101.txt`保留；已把逐条并发明确限于常规录入，原归档断言未改，相关46/46恢复，最终`.cache/cell-cas-all-node-final-20261101.txt`为218/218，Functions最终构建通过。
+- 新`tests/record-write-concurrency.test.mjs`6项（独立并发各一次、真实父版本/持久回执/增量可见性、不同旧快照字节累计、摘要相同但归属新版本的旧写拒绝、并行编号复用、提交中途失败无行/统计/标记残留、同条竞争重放不重复历史；其中部分归为同项），真实SQLite验证计数/字节逐项等于实际表。正常数据仍逐条hash保护；不采用整库覆盖、不改密码/邀请码/API密钥、无main操作/付费/桌面控制。
+- 下一步只推codex并等218项CI；先重新检查预算/正式健康完整备份后用`--probe-saves`验证实际尝试数和阶段耗时，改善证实后才考虑一次新千人验收。累计账户余量仍须每次重读，不能沿用早期数字。只读独立核对第四探针原79行/main未变后再收尾记录；main385/188原响应为既有基线，未知套餐不说充足。真实iPhone/微信/AI千人仍未验收，3秒及完整ACK窗口不放宽。

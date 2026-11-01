@@ -7,7 +7,7 @@ const fields = Object.keys(schema.defaults);
 const privateKinds = ['_history', 'auditLogs', '_notifications'];
 const empty = () => structuredClone(DEFAULTS);
 const bytes = value => encoder.encode(value).length;
-const sourceSizes = new WeakMap();
+const sourceRows = new WeakMap();
 function dialectCounters(value) {
   if (!value) return [];
   return ['dialectCustom/media/' + (schema.isAudioTrack(value) ? 'audio' : 'video')];
@@ -33,16 +33,19 @@ function addRow(content, row) {
   if (privateKinds.includes(row.kind)) content[row.kind].push(value);
   else if (value !== null) schema.setContentCell(content, row.key, value);
 }
-function assembledState(results, manifest) {
+function assembledState(results, manifest, keys, independentWrites = false) {
   const content = { ...empty(), _history: [], _notifications: [] };
   for (const row of results) addRow(content, row);
-  sourceSizes.set(content, new Map(results.map(row => [row.key, row.storedBytes ?? bytes(row.value)])));
+  const versions = independentWrites && results.every(row => typeof row.digest === 'string' && Number.isSafeInteger(row.revision))
+    ? new Map(results.map(row => [row.key, {digest:row.digest, revision:row.revision}])) : null;
+  if (versions) for (const key of keys || []) if (!versions.has(key)) versions.set(key, {digest:null, revision:null});
+  sourceRows.set(content, {sizes:new Map(results.map(row => [row.key, row.storedBytes ?? bytes(row.value)])), versions});
   content.auditLogs.reverse(); content._notifications.reverse();
   return { value: content, revision: manifest.revision, bytes: manifest.bytes };
 }
 
 function recordStateStatement(db, manifest, keys) {
-  let sql = 'SELECT key,kind,value FROM admin_content_items WHERE generation=?';
+  let sql = 'SELECT key,kind,value,digest,revision FROM admin_content_items WHERE generation=?';
   const params = [manifest.generation];
   if (keys) {
     if (keys.length > 32) throw new RecordError(400, 'TOO_MANY_CHANGES', '每批最多保存32条，请分批提交');
@@ -52,9 +55,9 @@ function recordStateStatement(db, manifest, keys) {
   return db.prepare(sql).bind(...params);
 }
 export async function readRecordState(db, manifest, keys) {
-  if (keys && !keys.length) return assembledState([], manifest);
+  if (keys && !keys.length) return assembledState([], manifest, keys);
   const { results } = await recordStateStatement(db, manifest, keys).all();
-  return assembledState(results, manifest);
+  return assembledState(results, manifest, keys);
 }
 export async function recordChangeSnapshot(db, manifest, keys, operationId) {
   const [state, rows, receipt] = await db.batch([
@@ -63,7 +66,7 @@ export async function recordChangeSnapshot(db, manifest, keys, operationId) {
     ...(operationId ? [db.prepare('SELECT owner,request_hash,value FROM admin_content_receipts WHERE generation=? AND id=?').bind(manifest.generation, operationId)] : [])
   ]);
   const current = snapshotManifest(state.results.find(row => row.key === 'content'), manifest);
-  return { manifest: current, current: assembledState(rows.results, current),
+  return { manifest: current, current: assembledState(rows.results, current, keys, true),
     tokens: JSON.parse(state.results.find(row => row.key === 'tokens')?.value || '[]'), receipt: receipt?.results[0] };
 }
 export async function readRecordKinds(db, manifest, kinds, owner) {
@@ -84,7 +87,7 @@ export async function readRollbackState(db, manifest, keys) {
   for (const row of results) if (row.kind === '_history') {
     const value = JSON.parse(row.value); value.before = row.beforeType && row.beforeType !== 'null' ? { $operation: value.id } : null; row.value = JSON.stringify(value);
   }
-  return assembledState(results, manifest);
+  return assembledState(results, manifest, keys);
 }
 function summaryStatements(db, manifest) {
   return [
@@ -171,15 +174,17 @@ async function rowInfo(key, value) {
 
 export async function writeRecordState(db, manifest, previous, next, { receipt } = {}) {
   const before = cellRows(previous), after = cellRows(next);
-  const sizes = sourceSizes.get(previous);
-  const revision = manifest.revision + 1, statements = [], upserts = [], removals = [];
-  const counts = { ...manifest.counts };
+  const source = sourceRows.get(previous), sizes = source?.sizes;
+  const expected = source?.versions && new Map(source.versions);
+  const statements = [], upserts = [], removals = [], claim = crypto.randomUUID();
+  const counts = {};
   let delta = 0;
-  const guard = "EXISTS (SELECT 1 FROM admin_state WHERE key='content' AND revision=? AND json_extract(value,'$.generation')=?)";
+  const guard = "EXISTS (SELECT 1 FROM admin_state WHERE key='content' AND json_extract(value,'$.generation')=? AND json_extract(value,'$._writeClaim')=?)";
   for (const key of new Set([...before.keys(), ...after.keys()])) {
     const oldValue = before.get(key) ?? null, value = after.get(key) ?? null;
     if (schema.canonical(oldValue) === schema.canonical(value)) continue;
     const row = await rowInfo(key, value);
+    if (expected && !expected.has(key)) expected.set(key, {digest:null, revision:null});
     counts[row.kind] = (counts[row.kind] || 0) + (value === null ? 0 : 1) - (oldValue === null ? 0 : 1);
     if (row.kind === 'dialectCustom') {
       for (const key of dialectCounters(oldValue)) counts[key] = (counts[key] || 0) - 1;
@@ -201,25 +206,41 @@ export async function writeRecordState(db, manifest, previous, next, { receipt }
     }
     if (group.length) result.push(group); return result;
   }
-  for (const rows of groups(upserts)) statements.push(db.prepare("INSERT INTO admin_content_items(generation,key,kind,owner,media_type,target_key,value,digest,revision) SELECT ?,json_extract(j.value,'$.key'),json_extract(j.value,'$.kind'),json_extract(j.value,'$.owner'),json_extract(j.value,'$.media'),json_extract(j.value,'$.target'),json(j.value -> '$.value'),json_extract(j.value,'$.digest'),? FROM json_each(?) j WHERE " + guard + ' ON CONFLICT(generation,key) DO UPDATE SET value=excluded.value,owner=excluded.owner,media_type=excluded.media_type,target_key=excluded.target_key,digest=excluded.digest,revision=excluded.revision')
-    .bind(manifest.generation, revision, JSON.stringify(rows), manifest.revision, manifest.generation));
-  for (const keys of groups(removals)) statements.push(db.prepare('DELETE FROM admin_content_items WHERE generation=? AND key IN (SELECT value FROM json_each(?)) AND ' + guard).bind(manifest.generation, JSON.stringify(keys), manifest.revision, manifest.generation));
+  for (const rows of groups(upserts)) statements.push(db.prepare("INSERT INTO admin_content_items(generation,key,kind,owner,media_type,target_key,value,digest,revision) SELECT ?,json_extract(j.value,'$.key'),json_extract(j.value,'$.kind'),json_extract(j.value,'$.owner'),json_extract(j.value,'$.media'),json_extract(j.value,'$.target'),json(j.value -> '$.value'),json_extract(j.value,'$.digest'),(SELECT revision+1 FROM admin_state WHERE key='content') FROM json_each(?) j WHERE " + guard + ' ON CONFLICT(generation,key) DO UPDATE SET value=excluded.value,owner=excluded.owner,media_type=excluded.media_type,target_key=excluded.target_key,digest=excluded.digest,revision=excluded.revision')
+    .bind(manifest.generation, JSON.stringify(rows), manifest.generation, claim));
+  for (const keys of groups(removals)) statements.push(db.prepare('DELETE FROM admin_content_items WHERE generation=? AND key IN (SELECT value FROM json_each(?)) AND ' + guard).bind(manifest.generation, JSON.stringify(keys), manifest.generation, claim));
   if (statements.length > 40) throw new RecordError(409, 'BATCH_REQUIRED', '本次变更多，请刷新页面后分批保存');
   if (!statements.length && !receipt) return manifest.revision;
   // A receipt-only observation is valid at its read snapshot and must not contend with unrelated content edits.
   const receiptGuard = statements.length ? guard : "EXISTS (SELECT 1 FROM admin_state WHERE key='content' AND json_extract(value,'$.generation')=?)";
-  const receiptStatement = receipt && db.prepare('INSERT INTO admin_content_receipts(generation,id,owner,request_hash,value,created_at) SELECT ?,?,?,?,?,? WHERE ' + receiptGuard + ' ON CONFLICT(generation,id) DO NOTHING')
-    .bind(manifest.generation, receipt.id, receipt.owner, receipt.hash, JSON.stringify(receipt.value), Date.now(), ...(statements.length ? [manifest.revision, manifest.generation] : [manifest.generation]));
+  let receiptValue = '?';
+  if (statements.length && receipt && Object.hasOwn(receipt.value, 'baseRevision')) receiptValue = "json_set(" + receiptValue + ", '$.baseRevision', (SELECT revision FROM admin_state WHERE key='content'))";
+  if (statements.length && receipt && Object.hasOwn(receipt.value, 'revision')) receiptValue = "json_set(" + receiptValue + ", '$.revision', (SELECT revision+1 FROM admin_state WHERE key='content'))";
+  const receiptStatement = receipt && db.prepare('INSERT INTO admin_content_receipts(generation,id,owner,request_hash,value,created_at) SELECT ?,?,?,?,' + receiptValue + ',? WHERE ' + receiptGuard + ' ON CONFLICT(generation,id) DO NOTHING')
+    .bind(manifest.generation, receipt.id, receipt.owner, receipt.hash, JSON.stringify(receipt.value), Date.now(), ...(statements.length ? [manifest.generation, claim] : [manifest.generation]));
   if (!statements.length && receipt) {
     const inserted = await receiptStatement.run();
     if (inserted.meta.changes !== 1) throw new RecordError(409, 'SYNC_CONFLICT', '内容已更新，请重试；本机草稿已保留');
     return manifest.revision;
   }
+  const conditions = ["key='content'", "json_extract(value,'$.storage')='records-v1'", "json_extract(value,'$.generation')=?"], params = [manifest.generation];
+  if (expected) {
+    const rows = JSON.stringify([...expected].map(([key, row]) => ({key, ...row})));
+    if (bytes(rows) > 1800000) throw new RecordError(409, 'BATCH_REQUIRED', '本次读取范围大，请分批保存');
+    conditions.push("NOT EXISTS (SELECT 1 FROM json_each(?) e LEFT JOIN admin_content_items t ON t.generation=? AND t.key=json_extract(e.value,'$.key') WHERE t.digest IS NOT json_extract(e.value,'$.digest') OR t.revision IS NOT json_extract(e.value,'$.revision'))");
+    params.push(rows, manifest.generation);
+  } else { conditions.push('revision=?'); params.push(manifest.revision); }
+  if (receipt) { conditions.push('NOT EXISTS (SELECT 1 FROM admin_content_receipts WHERE generation=? AND id=?)'); params.push(manifest.generation, receipt.id); }
+  // D1 executes the admission, changes, receipt and additive counters in one transaction.
+  statements.unshift(db.prepare("UPDATE admin_state SET value=json_set(value,'$._writeClaim',?) WHERE " + conditions.join(' AND ')).bind(claim, ...params));
   if (receiptStatement) statements.push(receiptStatement);
-  const marker = { storage: 'records-v1', generation: manifest.generation, counts, bytes: Math.max(0, (manifest.bytes || 0) + delta) };
-  statements.push(db.prepare("UPDATE admin_state SET value=?,revision=revision+1 WHERE key='content' AND revision=?").bind(JSON.stringify(marker), manifest.revision));
+  statements.push(db.prepare("UPDATE admin_state SET value=json_set(json_remove(value,'$._writeClaim'),'$.counts',json_patch(COALESCE(json_extract(value,'$.counts'),'{}'),(SELECT json_group_object(e.key,COALESCE(json_extract(admin_state.value,'$.counts.'||e.key),0)+e.value) FROM json_each(?) e)),'$.bytes',MAX(0,COALESCE(json_extract(value,'$.bytes'),0)+?)),revision=revision+1 WHERE key='content' AND json_extract(value,'$.generation')=? AND json_extract(value,'$._writeClaim')=?").bind(JSON.stringify(counts), delta, manifest.generation, claim));
+  statements.push(db.prepare("SELECT revision FROM admin_state WHERE key='content'"));
   const results = await db.batch(statements);
-  if (results.at(-1).meta.changes !== 1) throw new RecordError(409, 'SYNC_CONFLICT', '另一台设备刚保存了内容，请重试；本机草稿已保留');
+  if (results[0].meta.changes !== 1 || results.at(-2).meta.changes !== 1) throw new RecordError(409, 'SYNC_CONFLICT', '另一台设备刚修改了同一条内容，请重试；本机草稿已保留');
+  const revision = results.at(-1).results[0].revision;
+  if (receipt && Object.hasOwn(receipt.value, 'baseRevision')) receipt.value.baseRevision = revision - 1;
+  if (receipt && Object.hasOwn(receipt.value, 'revision')) receipt.value.revision = revision;
   return revision;
 }
 
