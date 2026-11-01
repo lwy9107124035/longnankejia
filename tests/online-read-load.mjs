@@ -51,6 +51,7 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
       }
       sample.status = response.status; sample.bytes = bytes.length;
       sample.colo = response.headers.get('cf-ray')?.split('-').at(-1) || null; sample.cache = response.headers.get('cf-cache-status');
+      sample.mediaCache = response.headers.get('X-Media-Cache');
       const serverTiming = response.headers.get('server-timing')?.match(/content;dur=([\d.]+)/);
       if (serverTiming) sample.serverMs = Number(serverTiming[1]);
       assert.equal(response.status, 200); assert.ok((response.headers.get('content-type') || '').startsWith(target.type));

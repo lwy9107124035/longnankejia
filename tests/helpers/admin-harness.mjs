@@ -4,6 +4,12 @@ import { onRequestGet, onRequestPost, onRequestOptions } from '../../functions/a
 import { onRequestGet as onMedia, onRequestHead as onMediaHead } from '../../functions/api/media/[id].js';
 import { onRequestPost as onUploads } from '../../functions/api/admin/uploads.js';
 
+export async function httpResponse(response, method) {
+  if (method !== 'HEAD') return response;
+  await response.body?.cancel();
+  return new Response(null, {status:response.status,headers:response.headers});
+}
+
 export function captureQueryPlans(backend, matches = () => true) {
   const prepare = backend.db.prepare.bind(backend.db), plans = [];
   backend.db.prepare = sql => {
@@ -63,7 +69,7 @@ export function createAdminBackend({ password = 'admin123', filename = ':memory:
     const request = new Request(new URL(url, 'http://127.0.0.1:8931'), options);
     const media = new URL(request.url).pathname.startsWith('/api/media/');
     const handler = new URL(request.url).pathname === '/api/admin/uploads' ? onUploads : media ? (request.method === 'HEAD' ? onMediaHead : onMedia) : { GET: onRequestGet, POST: onRequestPost, OPTIONS: onRequestOptions }[request.method];
-    return handler({ request, env });
+    return httpResponse(await handler({ request, env }), request.method);
   }
   async function call(body, bearer, headers = {}) {
     const response = await fetchApi('/api/admin/sync', {

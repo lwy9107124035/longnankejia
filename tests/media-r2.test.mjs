@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAdminBackend } from './helpers/admin-harness.mjs';
+import { createAdminBackend, httpResponse } from './helpers/admin-harness.mjs';
 import { createMediaBucket } from './helpers/media-r2.mjs';
 import { storeMedia, readMedia, migrateD1Media, expandRecordMedia, archiveHistoryMedia, expandHistoryMedia, mediaResponse } from '../functions/_lib/admin-media.js';
 import { onRequestGet, onRequestHead } from '../functions/api/media/[id].js';
@@ -38,13 +38,13 @@ test('real R2 binary images retain legacy identity, expand history and fall back
   const request = new Request('http://localhost' + uploaded.url);
   const env = { ADMIN_DB: backend.db, ADMIN_MEDIA: bucket };
   assert.deepEqual(Buffer.from(await (await onRequestGet({ request, env })).arrayBuffer()), bytes);
-  const head = await onRequestHead({ request: new Request(request, { method: 'HEAD' }), env });
+  const head = await httpResponse(await onRequestHead({ request: new Request(request, { method: 'HEAD' }), env }), 'HEAD');
   assert.equal(head.headers.get('Content-Length'), String(bytes.length)); assert.equal(await head.text(), '');
   assert.equal((await expandRecordMedia(backend.db, { imageUrl: uploaded.url }, bucket)).imageUrl, data);
   const history = await archiveHistoryMedia(backend.db, { _history: [{ before: { image: data } }] }, 0, bucket);
   assert.deepEqual(await expandHistoryMedia(backend.db, history._history[0].before, bucket), { image: data });
   await bucket.delete('media/' + uploaded.id);
-  assert.deepEqual(Buffer.from(await mediaResponse(await readMedia(backend.db, uploaded.id, bucket), request).arrayBuffer()), bytes);
+  assert.deepEqual(Buffer.from(await mediaResponse(await readMedia(backend.db, uploaded.id, bucket)).arrayBuffer()), bytes);
   const fresh = await storeMedia(backend.db, 'data:image/jpeg;base64,AQID', bucket);
   assert.equal(backend.sqlite.prepare('SELECT key FROM admin_state WHERE key = ?').get('media:' + fresh.id + ':manifest'), undefined);
   for (const spelling of ['AQI', 'AQJ=', 'AQ', 'AR==']) {

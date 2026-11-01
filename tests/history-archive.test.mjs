@@ -127,6 +127,6 @@ test('restoring an archived undo patch recovers the original text and image thro
   assert.equal(saved.kepuCustom[0].name, original.name);
   const id = saved.kepuCustom[0].imageUrl.split('/').at(-1);
   const media = await readMedia(backend.db, id, bucket);
-  assert.deepEqual(Buffer.from(await mediaResponse(media, new Request('http://localhost')).arrayBuffer()), imageBytes);
+  assert.deepEqual(Buffer.from(await mediaResponse(media).arrayBuffer()), imageBytes);
   assert.ok(saved._history[0].undone);
 });

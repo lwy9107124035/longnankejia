@@ -240,9 +240,10 @@ async function readData(db, request, env) {
   }
   const known = since !== null && await db.prepare("SELECT revision FROM admin_state WHERE key = 'content'").first();
   const unchanged = known && String(known.revision) === since;
-  let content, paging;
+  let content, paging, publicTokens;
   if (!unchanged && manifest && params.get('format') === 'pages') {
-    const snapshot = await initialRecordPages(db, manifest);
+    const [snapshot, tokens] = await Promise.all([initialRecordPages(db, manifest), user ? null : state(db, 'tokens', [])]);
+    publicTokens = tokens;
     manifest = snapshot.manifest;
     const value = structuredClone(DEFAULTS), pages = {}, summaryKeys = [], hashes = {};
     for (const field of Object.keys(globalThis.HeritageContent.defaults)) {
@@ -253,7 +254,7 @@ async function readData(db, request, env) {
     content = { value, revision: manifest.revision, bytes: manifest.bytes };
     paging = { model: 'records-v1', pages, summaryKeys, hashes, counts: await recordCounts(db, manifest) };
   } else content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
-  const tokens = await state(db, 'tokens', []);
+  const tokens = publicTokens || await state(db, 'tokens', []);
   const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), ...paging, capabilities: { mediaUploads: !!env.ADMIN_MEDIA, separateImageDatabase: !!env.ADMIN_MEDIA_DB }, revision: content.revision, ...(unchanged && { unchanged: true }) };
   if (!unchanged) result.storage = { metadataBytes: content.bytes, metadataLimit: manifest ? null : MAX_CONTENT_BYTES, ...(manifest && { model: 'records-v1', maxRecordBytes: MAX_RECORD_BYTES }) };
   if (user) {

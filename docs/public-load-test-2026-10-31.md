@@ -143,3 +143,11 @@
 本地离线复用维护脚本重核最后完整备份，188条及181图摘要全部通过，原有两个基线删除告警保留。`.cache/maintenance/backup-integrity-offline-20261031T1540Z.json`标明offlineOnly/noNetwork，不当作实时线上健康报告，不覆盖故障报告或原快照。Cloudflare官方说明日限额会使查询失败，UTC午夜重置，存储数据不因此改变：[官方说明](https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/)。北京时间对应11月1日08:00，恢复须再实测。
 
 此前codex压测也消耗同一账户额度，较晚加入的预算保护未能防住这次正式访问受影响。所有云端D1负载仍停止。补充前置`assertProductionReady`：新日预算通过后，还须正式接口恢复、完整公开备份成功、容量测量完成且无新问题/预警，才能创建codex临时会话、188夹具或索引；备份耗时后再次验证许可未过期/跨日。已调查的两个原删除ID仅作为不变告警比对，不更新基线、不擅自恢复。新3项预算/帮助/正式前置及相关25项测试通过，`production-preflight-tests-20261031.txt`；未重复跑全量UI或云端负载。仅提交codex工具和记录，不推main、不改密码密钥、不开付费，不部署临时旧数据充当最新数据。
+
+## 11月1日恢复后首轮及媒体补修
+
+正式恢复385/188、完整181图备份及新日预算核验后，受保护四机[41289142162](https://github.com/lwy9107124035/longnankejia/actions/runs/41289142162)实际执行6024请求，零错误，峰值1000实际共同活跃；P95=3858ms，目录3170ms、旧图4048ms，仍未通过3秒。三路保存及同条一成一冲突正确，但完整确认窗口超过共同活跃区间，严格判失败。原四份及aggregate在`.cache/remote-read-load-load-fixture-3fce04c53b7c0b867c3acffb/`。两历史索引已在codex创建，临时资料/会话已清理629/0，原79行/凭据及main原响应不变，独立证据`.cache/post-distributed-verification-1793522107991.json`。
+
+公开媒体补修仅缓存主机及摘要地址对应的完整图片GET，合并仍在执行的D1读取，减少新库miss后旧库重复查询；R2流各请求独立。错误、HEAD、Range和私有状态不存缓存，失败记录脱敏枚举后回读原存储。不可变图片可以缓存，正文和管理员同步仍no-store。Cache API在Pages及pages.dev均可用，缓存按数据中心保存，不能当作跨地区复制：[官方文档](https://developers.cloudflare.com/workers/runtime-apis/cache/)。新编码身份和字节、负缓存拒绝、跨绑定/主机隔离、冷/热HEAD长度、Range和底层不可用等真实本地workerd回归通过。
+
+匿名目录将token脱敏元数据与原子目录batch并行，管理员和条件刷新规则保持。当前完整Node200/200（`.cache/media-cache-all-node-20261101.txt`），相关46项通过；首次新媒体用例4红和中间HEAD长度失败均保留，不将源码测试误称云端性能通过。待本次codex部署后验证真实边缘命中，再在预算和正式前置都通过的条件下复验。main不推，未启用R2、付费套餐或Smart Placement，真实手机/微信/AI峰值仍未验收。

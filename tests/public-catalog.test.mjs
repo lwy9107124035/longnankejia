@@ -30,6 +30,20 @@ function holdFirstRead(db, matches) {
 }
 const catalog = '/api/admin/sync?format=pages';
 
+test('anonymous token redaction metadata loads while the atomic catalog batch is pending', {timeout:5000}, async t=>{
+  const {backend}=await fixture(t),batch=backend.db.batch.bind(backend.db),prepare=backend.db.prepare.bind(backend.db);
+  let entered,release,tokenReads=0;
+  const started=new Promise(resolve=>{entered=resolve;}),gate=new Promise(resolve=>{release=resolve;});t.after(release);
+  backend.db.batch=async statements=>{const rows=await batch(statements);entered();await gate;return rows;};
+  backend.db.prepare=sql=>{const statement=prepare(sql),bind=statement.bind.bind(statement),first=statement.first.bind(statement);let params=[];
+    statement.bind=(...values)=>{params=values;return bind(...values);};
+    statement.first=()=>{if(params[0]==='tokens')tokenReads++;return first();};return statement;
+  };
+  const pending=backend.fetchApi(catalog);await started;await new Promise(setImmediate);
+  const overlapped=tokenReads===1;release();const response=await pending,data=await response.json();
+  assert.equal(response.status,200);assert.equal(data.kepuCustom[0].name,'旧内容');assert.equal(Object.hasOwn(data,'tokens'),false);assert.equal(overlapped,true);
+});
+
 test('simultaneous anonymous catalog requests share database work and create their own responses', async t => {
   const { backend } = await fixture(t);
   const held = holdFirstRead(backend.db, sql => sql.includes("WHERE key='content'")); t.after(held.release);

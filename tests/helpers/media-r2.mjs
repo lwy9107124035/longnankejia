@@ -17,7 +17,7 @@ export async function createMediaBucket(t, { persistPath } = {}) {
   return runtime.getR2Bucket('ADMIN_MEDIA');
 }
 
-export async function createMediaRuntime(t, { api = false, persistPath } = {}) {
+export async function createMediaRuntime(t, { api = false, persistPath, r2 = true } = {}) {
   const root = process.cwd();
   const script = api ? `import { onRequestPost as upload } from '../../functions/api/admin/uploads.js';
     import { onRequestPost as sync } from '../../functions/api/admin/sync.js';
@@ -42,8 +42,8 @@ export async function createMediaRuntime(t, { api = false, persistPath } = {}) {
   if (api) files.push('functions/api/admin/uploads.js', 'functions/api/admin/sync.js', 'functions/api/media/[id].js', 'functions/_lib/admin-records.js', 'functions/_lib/admin-content.js', 'functions/_lib/admin-history-archive.js', 'functions/_lib/read-limited.js');
   const modules = [{ type: 'ESModule', path: path.join(root, 'tests/helpers/media-r2-worker.js'), contents: script },
     ...files.map(file => ({ type: 'ESModule', path: path.join(root, file), contents: fs.readFileSync(path.join(root, file), 'utf8') }))];
-  const runtime = createRuntime(t, { modules, modulesRoot: root, d1Databases: ['ADMIN_DB'], bindings: { ADMIN_BOOTSTRAP_PASSWORD: 'admin123' }, ...(persistPath && { resourcePersistencePath: persistPath }) });
-  const db = await runtime.getD1Database('ADMIN_DB'), bucket = await runtime.getR2Bucket('ADMIN_MEDIA');
+  const runtime = createRuntime(t, { modules, modulesRoot: root, d1Databases: ['ADMIN_DB'], r2Buckets:r2 ? ['ADMIN_MEDIA'] : [], bindings: { ADMIN_BOOTSTRAP_PASSWORD: 'admin123' }, ...(persistPath && { resourcePersistencePath: persistPath }) });
+  const db = await runtime.getD1Database('ADMIN_DB'), bucket = r2 ? await runtime.getR2Bucket('ADMIN_MEDIA') : null;
   const migration = (api ? ['0001_admin.sql', '0002_content_records.sql', '0003_media_uploads.sql'] : ['0003_media_uploads.sql'])
     .map(file => fs.readFileSync(path.join(root, 'migrations/admin', file), 'utf8')).join('\n');
   await db.batch(migration.split(';').map(sql => sql.trim()).filter(Boolean).map(sql => db.prepare(sql)));

@@ -173,7 +173,8 @@ export async function storeRecordMedia(db, value, cache = new Map(), bucket) {
   return result;
 }
 
-export function mediaResponse(media, request) {
+export function mediaResponse(media) {
+  // The HTTP transport suppresses HEAD bodies while retaining this representation's length.
   if (media.rangeInvalid) return new Response(null, { status: 416, headers: { 'Content-Range': 'bytes */' + media.totalLength, 'Cache-Control': 'no-store' } });
   const headers = { 'Content-Type': media.type, 'Cache-Control': 'public, max-age=31536000, immutable',
     'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Length': String(media.length), 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes',
@@ -182,7 +183,6 @@ export function mediaResponse(media, request) {
   if (Number.isSafeInteger(media.base64Length) && media.base64Length > 0 && /^[a-zA-Z0-9+/=]{1,4}$/.test(media.base64Tail || '')) {
     headers['X-Media-Base64-Length'] = String(media.base64Length); headers['X-Media-Base64-Tail'] = media.base64Tail;
   }
-  if (request.method === 'HEAD') return new Response(null, { headers });
   let index = 0, offset = 0;
   return new Response(media.body || new ReadableStream({
     pull(controller) {
