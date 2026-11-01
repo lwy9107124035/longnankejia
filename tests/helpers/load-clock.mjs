@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readLimited} from '../../functions/_lib/read-limited.js';
+import {setTimeout as sleep} from 'node:timers/promises';
 
 export function clockBounds(samples) {
   assert.ok(samples.length >= 3, 'Clock calibration requires independent observations');
@@ -23,6 +24,8 @@ export async function calibrateLoadClock(origin) {
     const timestamp = raw.match(/^ts=(\d+(?:\.\d+)?)$/m);
     assert.ok(response.status === 200 && timestamp, 'Cloud clock reference unavailable');
     samples.push({start,end,serverTime:Math.floor(Number(timestamp[1]))*1000});
+    // Fast runners must observe a second boundary rather than collect twelve copies of one timestamp.
+    if(index < 11) await sleep(Math.max(0,100-(localNow()-start)));
   }
   const bounds = clockBounds(samples), offset = (bounds.lower+bounds.upper)/2;
   return {now:() => localNow()+offset, earliest:() => Math.floor(localNow()+bounds.lower), latest:() => Math.ceil(localNow()+bounds.upper),

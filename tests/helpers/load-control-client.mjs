@@ -16,7 +16,9 @@ export async function controlRequest(url,options) {
 }
 export async function warmControlConnections(origin) {
   await Promise.all(Array.from({length:5},async()=>{
-    const response=await requestBytes(new URL('/',origin),{timeoutMs:1500},1024*1024);
+    let response;
+    try {response=await requestBytes(new URL('/',origin),{timeoutMs:2500},1024*1024);}
+    catch {throw Error('Control connection calibration failed before timed writes');}
     if(response.status!==200||!response.contentType.startsWith('text/html'))throw Error('Control connection calibration failed');
   }));
   // Return consumed sockets to the pool before starting the timed writes.

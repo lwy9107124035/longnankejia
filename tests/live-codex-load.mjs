@@ -34,6 +34,7 @@ if (!cleanupOnly) {
   const notification = fs.existsSync('.cache/maintenance/notification-state.json') ? JSON.parse(fs.readFileSync('.cache/maintenance/notification-state.json','utf8')) : {};
   assertProductionReady(production, notification.pendingDeletionConfirmation || []);
   assertLoadPermit(loadPermit, 15000);
+  if(controlTransport === 'fetch') await warmControlConnections(origin);
 }
 const prefix = cleanupOnly || 'load-fixture-' + randomBytes(12).toString('hex');
 const actorBearers = Array.from({ length: cleanupOnly ? 1 : 3 }, () => randomBytes(32).toString('hex')), bearer = actorBearers[0];
@@ -146,7 +147,7 @@ async function remoteLoad(revision, initial) {
   console.log('Four-generator load started: ' + run.databaseId + '; peak ' + startAt); const writes = []; let lastStatus = 0, warmed = false;
   while (clock.now() < scheduled + 6 * 60000) {
     const now = clock.now(), remaining = scheduled + 500 - now;
-    if (controlTransport === 'fetch' && !warmed && remaining > 0 && remaining <= 3000) {
+    if (controlTransport === 'fetch' && !warmed && remaining > 0 && remaining <= 3500) {
       const startedAt = new Date().toISOString(); await warmControlConnections(origin); warmed = true;
       result.controlWarmup = {startedAt,finishedAt:new Date().toISOString(),staticRequests:5}; continue;
     }
