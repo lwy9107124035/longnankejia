@@ -9,6 +9,7 @@ const encoder = new TextEncoder();
 const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
 const CHUNK_CHARS = 400000;
 const publicContentReads = new WeakMap();
+const scheduledPublicVersions = new WeakMap();
 class ApiError extends Error {
   constructor(status, code, message, extra = {}) { super(message); Object.assign(this, { status, code, extra }); }
 }
@@ -188,7 +189,7 @@ async function getData(db, request, env, context) {
   const url = new URL(request.url);
   if (request.headers.has('Authorization') || url.searchParams.has('revision') || !['pages', 'records', 'record', 'search'].includes(url.searchParams.get('format'))) return readData(db, request, env);
   url.searchParams.sort();
-  const manifest = globalThis.caches?.open ? await recordsManifest(db) : undefined;
+  const manifest = globalThis.caches?.open ? await publicVersion(db, context) : undefined;
   const key = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB + ':' + (manifest ? manifest.generation + ':' + manifest.revision : 'legacy');
   let reads = publicContentReads.get(db);
   if (!reads) { reads = new Map(); publicContentReads.set(db, reads); }
@@ -202,6 +203,19 @@ async function getData(db, request, env, context) {
     reads.delete(key);
     if (!reads.size && publicContentReads.get(db) === reads) publicContentReads.delete(db);
   }
+}
+function publicVersion(db, context) {
+  let promise = scheduledPublicVersions.get(db);
+  if (!promise) {
+    promise = new Promise((resolve, reject) => setTimeout(() => {
+      // Only arrivals before dispatch share a query; later arrivals need a new version check.
+      scheduledPublicVersions.delete(db);
+      recordsManifest(db).then(resolve, reject);
+    }, 0));
+    scheduledPublicVersions.set(db, promise);
+  }
+  context.waitUntil?.(Promise.allSettled([promise]));
+  return promise;
 }
 async function readPublicSnapshot(db, request, env, context, manifest) {
   const url = new URL(request.url);

@@ -48,6 +48,26 @@ test('cache keys isolate database generations even when hosts and content revisi
   const first=await (await request(a.env)).json(),second=await (await request(b.env)).json();assert.equal(first.revision,second.revision);assert.equal(first.kepuCustom[0].name,'甲站0');assert.equal(second.kepuCustom[0].name,'乙站0');assert.equal(storage.entries.size,2);
 });
 
+test('arrivals batch before version-query dispatch while requests after another-isolate save obtain a new query', {timeout:10000},async t=>{
+  cache(t);const site=await backend(t);await request(site.env);
+  const prepare=site.db.prepare.bind(site.db);let calls=0,started,release;
+  const firstStarted=new Promise(resolve=>{started=resolve;}),blocked=new Promise(resolve=>{release=resolve;});
+  t.after(()=>release());
+  site.db.prepare=sql=>{
+    const statement=prepare(sql);
+    if(sql==="SELECT value, revision FROM admin_state WHERE key='content'") {
+      const first=statement.first.bind(statement);
+      statement.first=async()=>{const number=++calls,value=await first();if(number===1){started();await blocked;}return value;};
+    }
+    return statement;
+  };
+  const waiting=Array.from({length:50},()=>request(site.env));await firstStarted;assert.equal(calls,1);
+  const changed={...content().kepuCustom[0],name:'查询发出后另一个实例保存'},digest=await schema.cellHash(changed,true);
+  site.sqlite.exec('BEGIN');site.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,revision=2 WHERE key=?').run(JSON.stringify(changed),digest,'kepuCustom/snapshot-0');site.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'; COMMIT");
+  const fresh=await (await request(site.env)).json();assert.equal(fresh.revision,2);assert.equal(fresh.kepuCustom[0].name,changed.name);assert.equal(calls,2);
+  release();const previous=await Promise.all(waiting.map(async response=>(await (await response).json()).revision));assert.ok(previous.every(revision=>revision===1));
+});
+
 test('cache failures fall back to real data, and unavailable current-version reads never serve an old snapshot',async t=>{
   const storage=cache(t),site=await backend(t),warn=console.warn,error=console.error;t.after(()=>{console.warn=warn;console.error=error;});console.warn=()=>{};console.error=()=>{};
   storage.readFailure=true;storage.writeFailure=true;assert.equal((await request(site.env)).status,200);assert.equal(storage.entries.size,0);
@@ -63,6 +83,7 @@ test('real Worker cache avoids detail-table reads but still requires a fresh ver
   let cached;
   for(let i=0;i<20;i++) {cached=await runtime.fetch('http://localhost'+catalog);if(cached.status===200)break;await cached.arrayBuffer();await sleep(10);}
   assert.equal(cached.status,200);const body=await cached.json();assert.equal(body.kepuCustom[0].name,'公开原文0');assert.match(cached.headers.get('Cache-Control'),/no-store/);assert.equal(Object.hasOwn(body,'tokens'),false);
+  const simultaneous=await Promise.all(Array.from({length:50},async()=>{const reply=await runtime.fetch('http://localhost'+catalog);assert.equal(reply.status,200);return (await reply.json()).revision;}));assert.ok(simultaneous.every(revision=>revision===1));
   const unchanged=await (await runtime.fetch('http://localhost'+catalog+'&revision=1')).json();assert.equal(unchanged.unchanged,true);
   assert.equal((await runtime.fetch('http://localhost'+catalog+'&revision=0')).status,503);
   assert.equal((await runtime.fetch('http://localhost'+catalog,{headers:{Authorization:'Bearer '+root.bearer}})).status,503);
