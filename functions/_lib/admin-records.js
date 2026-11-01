@@ -206,8 +206,10 @@ export async function writeRecordState(db, manifest, previous, next, { receipt }
   for (const keys of groups(removals)) statements.push(db.prepare('DELETE FROM admin_content_items WHERE generation=? AND key IN (SELECT value FROM json_each(?)) AND ' + guard).bind(manifest.generation, JSON.stringify(keys), manifest.revision, manifest.generation));
   if (statements.length > 40) throw new RecordError(409, 'BATCH_REQUIRED', '本次变更多，请刷新页面后分批保存');
   if (!statements.length && !receipt) return manifest.revision;
-  const receiptStatement = receipt && db.prepare('INSERT INTO admin_content_receipts(generation,id,owner,request_hash,value,created_at) SELECT ?,?,?,?,?,? WHERE ' + guard + ' ON CONFLICT(generation,id) DO NOTHING')
-    .bind(manifest.generation, receipt.id, receipt.owner, receipt.hash, JSON.stringify(receipt.value), Date.now(), manifest.revision, manifest.generation);
+  // A receipt-only observation is valid at its read snapshot and must not contend with unrelated content edits.
+  const receiptGuard = statements.length ? guard : "EXISTS (SELECT 1 FROM admin_state WHERE key='content' AND json_extract(value,'$.generation')=?)";
+  const receiptStatement = receipt && db.prepare('INSERT INTO admin_content_receipts(generation,id,owner,request_hash,value,created_at) SELECT ?,?,?,?,?,? WHERE ' + receiptGuard + ' ON CONFLICT(generation,id) DO NOTHING')
+    .bind(manifest.generation, receipt.id, receipt.owner, receipt.hash, JSON.stringify(receipt.value), Date.now(), ...(statements.length ? [manifest.revision, manifest.generation] : [manifest.generation]));
   if (!statements.length && receipt) {
     const inserted = await receiptStatement.run();
     if (inserted.meta.changes !== 1) throw new RecordError(409, 'SYNC_CONFLICT', '内容已更新，请重试；本机草稿已保留');

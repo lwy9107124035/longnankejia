@@ -89,6 +89,17 @@ test('a pure conflict persists its replay receipt without changing content revis
   assert.equal((await readRecordState(backend.db,before,['kepuCustom/conflict-receipt'])).value.kepuCustom[0].detail,'完整正文');
 });
 
+test('a receipt-only conflict never retries or interferes with a different record saved after its read snapshot',async t=>{
+  const backend=setup(t),bearer=await login(backend),value=structuredClone(schema.defaults);
+  value.kepuCustom=[{id:'observed',name:'已保存资料',detail:'原正文'},{id:'unrelated',name:'其他资料',detail:'旧正文'}];
+  await migrateRecordStorage(backend.db,{value,revision:0});const changed={...value.kepuCustom[1],detail:'新正文'},digest=await schema.cellHash(changed,true);
+  const prepare=backend.db.prepare.bind(backend.db);let receiptWrites=0;
+  backend.db.prepare=sql=>{const statement=prepare(sql);if(sql.startsWith('INSERT INTO admin_content_receipts')){const run=statement.run.bind(statement);statement.run=async()=>{if(++receiptWrites===1){backend.sqlite.exec('BEGIN');backend.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,revision=2 WHERE key=?').run(JSON.stringify(changed),digest,'kepuCustom/unrelated');backend.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'; COMMIT");}return run();};}return statement;};
+  const reply=await backend.call({action:'update_content',operationId:'receipt-observation-concurrent',changes:[{key:'kepuCustom/observed',baseHash:await schema.cellHash(null),value:{id:'observed',name:'冲突资料',detail:'不应覆盖'}}]},bearer);
+  assert.equal(reply.status,200);assert.equal(receiptWrites,1);assert.deepEqual(reply.data.conflicts,['kepuCustom/observed']);assert.equal((await recordsManifest(backend.db)).revision,2);
+  const saved=await loadContentState(backend.db);assert.equal(saved.value.kepuCustom.find(row=>row.id==='observed').detail,'原正文');assert.equal(saved.value.kepuCustom.find(row=>row.id==='unrelated').detail,'新正文');
+});
+
 test('staging failure or a concurrent legacy edit cannot switch the live manifest', async t => {
   const backend = setup(t), before = await loadContentState(backend.db);
   backend.sqlite.exec("CREATE TRIGGER fail_staging BEFORE INSERT ON admin_content_items BEGIN SELECT RAISE(ABORT,'synthetic failure'); END");
