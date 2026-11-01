@@ -29,12 +29,14 @@ test('production binds the migrated database without resetting or requiring boot
   assert.equal(result.config.d1_databases[0].database_id, production);
   assert.equal(result.config.d1_databases[0].binding, 'ADMIN_DB');
   assert.equal(result.config.vars, undefined);
+  assert.equal(result.config.placement, undefined);
 });
 test('codex continues using its independent preview database', t => {
   const result = run(t, 'codex');
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.config.name, 'longnankejia-dev');
   assert.equal(result.config.d1_databases[0].database_id, preview);
+  assert.deepEqual(result.config.placement, { mode: 'smart' });
 });
 test('production refuses a missing database rather than creating an empty default-password state', t => {
   const result = run(t, 'main', { MAIN_ADMIN_D1_ID: '' });
