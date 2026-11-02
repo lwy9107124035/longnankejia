@@ -14,6 +14,7 @@ import {controlRequest,warmControlConnections} from './helpers/load-control-clie
 import {calibrateLoadClock} from './helpers/load-clock.mjs';
 import {githubLoadControl as gh} from './helpers/github-load-control.mjs';
 import {retainedRowsFingerprint,verifyRecordAccounting,cleanupSessionIds} from './helpers/load-integrity.mjs';
+import {ensureCodexReadReplication} from './helpers/codex-read-replication.mjs';
 if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Persistent fetch is the default; LOAD_CONTROL_TRANSPORT=curl selects cold-connection diagnostics. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.ok(process.argv.length === 3 && ['--run','--probe-saves'].includes(process.argv[2]), 'Only --run, --probe-saves or --help is supported');
 const saveProbe = process.argv[2] === '--probe-saves';
@@ -25,7 +26,7 @@ const origin = 'https://codex.longnankejia-dev.pages.dev', schema = globalThis.H
 const cleanupOnly = process.env.CLEANUP_LOAD_PREFIX;
 if (cleanupOnly) assert.match(cleanupOnly, /^load-fixture-[a-f0-9]{24}$/);
 const clock = cleanupOnly ? null : await calibrateLoadClock(origin);
-let loadPermit,productionBefore;
+let loadPermit,productionBefore,readReplication;
 if (!cleanupOnly) {
   const usage = await readD1Usage(account); fs.mkdirSync('.cache', { recursive: true });
   fs.writeFileSync('.cache/load-budget-check-' + Date.now() + '.json', JSON.stringify(usage, null, 2), { flag: 'wx' });
@@ -39,6 +40,7 @@ if (!cleanupOnly) {
   productionBefore=production;
   assertLoadPermit(loadPermit, 15000);
   if(controlTransport === 'fetch') await warmControlConnections(origin);
+  if(!saveProbe)readReplication=await ensureCodexReadReplication(account,loadPermit);
 }
 const prefix = cleanupOnly || 'load-fixture-' + randomBytes(12).toString('hex');
 const actorBearers = Array.from({ length: cleanupOnly ? 1 : 3 }, () => randomBytes(32).toString('hex')), bearer = actorBearers[0];
@@ -63,6 +65,7 @@ const db = createRestDatabase(async body => {
   }
 }, { apply: true });
 const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, controlTransport, articles, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionsToRemove };
+if(readReplication)result.readReplication=readReplication;
 if(clock) result.clockCalibration = clock.report;
 const stateFile = '.cache/' + (cleanupOnly ? 'load-cleanup-' + Date.now() + '-' : 'load-control-') + prefix + '.json';
 const ids = Array.from({ length: saveProbe ? 4 : 188 }, (_, i) => prefix + '-' + String(i).padStart(3, '0'));

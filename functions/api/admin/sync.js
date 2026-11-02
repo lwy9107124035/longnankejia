@@ -211,7 +211,8 @@ async function getData(db, request, env, context) {
   if (!reads) { reads = new Map(); publicContentReads.set(db, reads); }
   if (reads.has(key)) return reads.get(key);
   // Share parsed public data only while a read is running, never request/response objects or sessions.
-  const promise = manifest ? readPublicSnapshot(db, request, env, manifest) : readData(db, request, env, manifest);
+  const snapshotDb = group?.bookmark ? db.withSession(group.bookmark) : db;
+  const promise = manifest ? readPublicSnapshot(snapshotDb, request, env, manifest) : readData(snapshotDb, request, env, manifest);
   reads.set(key, promise);
   context.waitUntil?.(Promise.allSettled([promise]));
   try { return await promise; }
@@ -224,10 +225,16 @@ function publicVersion(db, context) {
   let group = scheduledPublicVersions.get(db);
   if (!group) {
     group = {size:0};
-    group.promise = new Promise((resolve, reject) => setTimeout(() => {
+    group.promise = new Promise((resolve, reject) => setTimeout(async () => {
       // Only arrivals before dispatch share a query; later arrivals need a new version check.
       scheduledPublicVersions.delete(db);
-      recordsManifest(db).then(manifest => resolve({manifest, size:group.size}), reject);
+      try {
+        const session = db.withSession ? db.withSession('first-primary') : db;
+        const manifest = await recordsManifest(session);
+        const bookmark = session.getBookmark?.();
+        if (db.withSession && !bookmark) throw new Error('Fresh database bookmark unavailable');
+        resolve({manifest, size:group.size, bookmark});
+      } catch (error) { reject(error); }
     }, 50));
     scheduledPublicVersions.set(db, group);
   }

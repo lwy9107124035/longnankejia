@@ -63,3 +63,19 @@ test('monitoring failures preserve authorization codes and never reveal raw priv
     await assert.rejects(cloudflareRead('/accounts',undefined,options(request)),error=>!error.message.includes('PRIVATE'));
   }
 });
+
+test('read replication provisioning is budget guarded, codex only and verified without broad database updates',async()=>{
+  const {ensureCodexReadReplication}=await import('./helpers/codex-read-replication.mjs');
+  const {createLoadPermit}=await import('./helpers/load-budget.mjs');
+  const permit=createLoadPermit({at:new Date().toISOString(),periodStart:new Date().toISOString().slice(0,10)+'T00:00:00Z',scope:'all account databases',rowsRead:0,rowsWritten:0});
+  let enabled=false,calls=0,puts=0;const account='c'.repeat(32);
+  const read=async path=>{calls++;assert.equal(path,'/accounts/'+account+'/d1/database/'+TARGETS.codex.id);return {uuid:TARGETS.codex.id,read_replication:{mode:enabled?'auto':'disabled'}};};
+  const request=async(url,options)=>{puts++;assert.equal(url,'https://api.cloudflare.com/client/v4/accounts/'+account+'/d1/database/'+TARGETS.codex.id);assert.equal(options.method,'PUT');assert.deepEqual(JSON.parse(options.body),{read_replication:{mode:'auto'}});enabled=true;return Response.json({success:true});};
+  const options={read,request,token:()=> 'synthetic-private-token'};
+  assert.deepEqual(await ensureCodexReadReplication(account,permit,options),{mode:'auto',changed:true});assert.equal(puts,1);assert.equal(calls,2);
+  assert.deepEqual(await ensureCodexReadReplication(account,permit,options),{mode:'auto',changed:false});assert.equal(puts,1);
+  await assert.rejects(ensureCodexReadReplication(account,{...permit,checkedAt:'2000-01-01T00:00:00Z'},options),/expired/);assert.equal(calls,3);
+  await assert.rejects(ensureCodexReadReplication(account,permit,{...options,read:async()=>({uuid:TARGETS.main.id,read_replication:{mode:'disabled'}})}),/identity mismatch/);assert.equal(puts,1);
+  enabled=false;
+  await assert.rejects(ensureCodexReadReplication(account,permit,{...options,request:async()=>Response.json({success:false,errors:[{message:'synthetic-private-token'}]})}),error=>error.message==='Preview read replication update rejected');
+});

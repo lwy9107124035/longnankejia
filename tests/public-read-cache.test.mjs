@@ -136,3 +136,17 @@ test('real Worker cache avoids detail-table reads but still requires a fresh ver
   assert.equal((await runtime.fetch('http://localhost'+catalog,{headers:{Authorization:'Bearer '+root.bearer}})).status,503);
   await runtime.db.prepare("UPDATE admin_state SET revision=2 WHERE key='content'").run();assert.equal((await runtime.fetch('http://localhost'+catalog)).status,503);
 });
+
+test('public snapshots hand a fresh primary bookmark to a separate read session and never use an unconstrained replica',async t=>{
+  cache(t);const site=await backend(t),constraints=[],db=site.db;
+  db.withSession=constraint=>{constraints.push(constraint);assert.ok(['first-primary','synthetic-current-bookmark'].includes(constraint));
+    return {prepare:db.prepare.bind(db),batch:db.batch.bind(db),getBookmark:()=>constraint==='first-primary'?'synthetic-current-bookmark':'synthetic-later-bookmark'};
+  };
+  const response=await request(site.env,'/api/admin/sync?format=record&key=kepuCustom/snapshot-0'),value=await response.json();
+  assert.equal(response.status,200);assert.equal(value.rows[0].value.name,'公开原文0');
+  assert.deepEqual(constraints,['first-primary','synthetic-current-bookmark']);
+  constraints.length=0;
+  assert.equal((await request(site.env,catalog+'&revision=1')).status,200);assert.deepEqual(constraints,[]);
+  db.withSession=()=>{throw Error('Synthetic primary unavailable');};
+  assert.equal((await request(site.env,catalog)).status,503,'An unavailable fresh primary must not silently use an older replica or cached body');
+});
