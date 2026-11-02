@@ -282,10 +282,17 @@ export async function migrateRecordStorage(db, current, { generation = crypto.ra
   return { ...marker, revision: current.revision + 1, rows: prepared.length };
 }
 
+function pageValue(summary) {
+  return summary ? "CASE WHEN kind IN ('kbCustom','kbEdited','kepuCustom','kepuEdited') THEN json_remove(value,'$.detail','$.answer') ELSE value END" : 'value';
+}
+function byteBoundedPage(selection, byKind=false) {
+  const order=(byKind?'PARTITION BY kind ':'')+'ORDER BY key';
+  return 'SELECT key,kind,digest,CASE WHEN runningBytes<=1800000 OR position=1 THEN value ELSE NULL END AS value FROM (SELECT *,SUM(length(CAST(value AS BLOB))) OVER ('+order+') AS runningBytes,ROW_NUMBER() OVER ('+order+') AS position FROM ('+selection+')) ORDER BY '+(byKind?'kind,':'')+'key';
+}
 function pageStatement(db, clause, params, after, limit, summary) {
-  const selector = summary ? "CASE WHEN kind IN ('kbCustom','kbEdited','kepuCustom','kepuEdited') THEN json_remove(value,'$.detail','$.answer') ELSE value END" : 'value';
   // Keep one extra key to detect continuation without returning another large value.
-  return db.prepare('SELECT key,kind,digest,CASE WHEN runningBytes<=1800000 OR position=1 THEN value ELSE NULL END AS value FROM (SELECT *,SUM(length(CAST(value AS BLOB))) OVER (ORDER BY key) AS runningBytes,ROW_NUMBER() OVER (ORDER BY key) AS position FROM (SELECT key,kind,digest,' + selector + ' AS value FROM admin_content_items WHERE ' + clause + ' AND key>? ORDER BY key LIMIT ?))').bind(...params, after, limit + 1);
+  const selection='SELECT key,kind,digest,'+pageValue(summary)+' AS value FROM admin_content_items WHERE '+clause+' AND key>? ORDER BY key LIMIT ?';
+  return db.prepare(byteBoundedPage(selection)).bind(...params, after, limit + 1);
 }
 const boundedPage = (rows, limit) => rows.filter(row => row.value !== null).slice(0, limit);
 function encodeRecordCursor(value) {
@@ -318,15 +325,19 @@ export async function recordSnapshot(db, manifest, key) {
 }
 
 export async function initialRecordPages(db, manifest) {
+  // Keep kinds outermost so each indexed 51-key list is resolved before fetching record values.
+  const selection="WITH kinds(kindName) AS (SELECT value FROM json_each(?)) SELECT key,kind,digest,"+pageValue(true)+" AS value FROM kinds CROSS JOIN admin_content_items WHERE generation=? AND key IN (SELECT key FROM admin_content_items candidate WHERE candidate.generation=? AND candidate.kind=kinds.kindName AND candidate.value!='null' ORDER BY key LIMIT 51)";
   const result = await db.batch([
     db.prepare("SELECT value,revision FROM admin_state WHERE key='content'"),
-    ...fields.map(field => pageStatement(db, "generation=? AND kind=? AND value!='null'", [manifest.generation, field], '', 50, true)),
+    db.prepare(byteBoundedPage(selection,true)).bind(JSON.stringify(fields),manifest.generation,manifest.generation),
     db.prepare("SELECT value FROM admin_state WHERE key='tokens'")
   ]);
   const current = snapshotManifest(result[0].results[0], manifest);
+  const byKind=new Map(fields.map(field=>[field,[]]));
+  for(const row of result[1].results)byKind.get(row.kind).push(row);
   const pages = {};
-  for (const [index, field] of fields.entries()) {
-    const rows = boundedPage(result[index + 1].results, 50), total = current.counts[field] || 0;
+  for (const field of fields) {
+    const rows = boundedPage(byKind.get(field), 50), total = current.counts[field] || 0;
     const value = { generation: current.generation, revision: current.revision, key: rows.at(-1)?.key || '', field, query: '', category: '', media: '', since: null };
     pages[field] = { rows: pageRows(rows, true), cursor: rows.length && total > rows.length ? encodeRecordCursor(value) : '' };
   }

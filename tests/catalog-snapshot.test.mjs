@@ -2,7 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createAdminBackend, captureQueryPlans } from './helpers/admin-harness.mjs';
-import { migrateRecordStorage } from '../functions/_lib/admin-records.js';
+import { migrateRecordStorage, initialRecordPages } from '../functions/_lib/admin-records.js';
+
+test('one bounded catalog query preserves independent page sizes, continuations and byte limits for every kind',async t=>{
+  const backend=createAdminBackend();t.after(()=>backend.close());backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql',import.meta.url),'utf8'));
+  const content=structuredClone(globalThis.HeritageContent.defaults);
+  content.kbCustom=Array.from({length:70},(_,i)=>({id:'bounded-'+String(i).padStart(3,'0'),title:'知识'+i,answer:'知识正文'}));
+  content.kepuCustom=Array.from({length:70},(_,i)=>({id:'bounded-'+String(i).padStart(3,'0'),name:'科普'+i,detail:'科普正文'}));
+  const manifest=await migrateRecordStorage(backend.db,{value:content,revision:0}),batch=backend.db.batch.bind(backend.db),sizes=[];
+  backend.db.batch=statements=>{sizes.push(statements.length);return batch(statements);};
+  const plans=captureQueryPlans(backend,sql=>sql.includes('AS runningBytes'));
+  const snapshot=await initialRecordPages(backend.db,manifest);
+  assert.deepEqual(sizes,[3],'Catalog, version and redaction metadata must use only three statements');
+  for(const field of ['kbCustom','kepuCustom']){
+    const page=snapshot.pages[field];assert.equal(page.rows.length,50);assert.ok(page.cursor);assert.equal(snapshot.manifest.counts[field],70);
+    assert.equal(page.rows[0].key,field+'/bounded-000');assert.equal(page.rows.at(-1).key,field+'/bounded-049');
+    assert.ok(page.rows.every(row=>!Object.hasOwn(row.value,'answer')&&!Object.hasOwn(row.value,'detail')));
+  }
+  assert.match(plans[0],/SEARCH candidate USING INDEX admin_content_live/);
+  assert.match(plans[0],/SEARCH admin_content_items USING INDEX .*generation=\? AND key=\?/);
+  const imageUrl='data:image/jpeg;base64,'+Buffer.alloc(700000,1).toString('base64');
+  for(const field of ['kbCustom','kepuCustom'])for(let i=0;i<2;i++){
+    const value={...content[field][i],imageUrl};backend.sqlite.prepare('UPDATE admin_content_items SET value=? WHERE generation=? AND key=?').run(JSON.stringify(value),manifest.generation,field+'/'+value.id);
+  }
+  const bounded=await initialRecordPages(backend.db,manifest);
+  for(const field of ['kbCustom','kepuCustom']){assert.equal(bounded.pages[field].rows.length,1);assert.ok(bounded.pages[field].cursor);}
+});
 
 test('list redaction uses the invitation metadata from the same transaction as its records',async t=>{
   const backend=createAdminBackend();t.after(()=>backend.close());backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql',import.meta.url),'utf8'));

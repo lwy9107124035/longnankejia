@@ -608,3 +608,10 @@
 - 最终诊断版本9943cfe已推codex，CI41401214454成功，实际236接口+8工具=244/244。少量只读GET证据.cache/nov2-public-read-route-probe.json：首次实际D1返回primary，版本114ms/快照168ms；第二次edge-cache，版本111ms/快照7ms。副本auto不等于已经将所有查询分流，禁止据此宣传全地区副本或峰值已稳定。普通小样本不能解释/覆盖前一轮8.55秒尾延迟。
 - 独立最终核对.cache/post-distributed-verification-1793601575064.json：原79行、密码/邀请码摘要及revision未变；合成内容0、合成会话0、逐项计数/字节匹配，无瞬态写标记；codex1400/0，正文物理65875968B、图片94208B，无新增容量预警；main385/188原始SHA不变。06:41Z正式JSON200/no-store，181图完整公开备份，无新警告，仅原两个删除意图待确认ID，基线不改。最新全账户UTC日统计1219564读/49458写（小时统计可能滞后，套餐仍未知），原始.cache/nov2-final-account-usage.json。
 - 追加归档最新维护报告并更新同一notification-state，保留旧503/网络中断原报告及两个删除告警；本次网络检测已恢复，不重复旧故障通知。后续先诊断短突发版本/快照阶段和实际route，再准备可复现最小修补；没有明确新修补不重复同样千人负载。main继续等待本聊天新的明确发布授权；真机/微信/公众号界面及真实AI千人未验收，不声明“全部修复/全部验收”。全程遵守禁止操作电脑。
+
+## 2026-11-02 继续：目录 SQL 数量与查询计划
+
+- 只读查询既有压测时段的Cloudflare统计，没有重新加压。证据.cache/nov2-historical-burst-sql-analytics.json：06:31短突发时，primary/APAC的bounded_page统计count2818、合计SQL执行1366ms、分组P95最高0.71ms，current_version统计count2043；此前整体目录响应约8.54秒。统计是云端自适应分析，不等同逐请求追踪；多次SQL与排队/网络开销需区分，不把普通SQL执行时长当完整延迟。原始SQL/绑定参数及凭据均未保存或输出。
+- 确认初始目录每次事务包含十类页面+版本+脱敏元数据共12条SQL。改为三条：版本、一条按类别取键再定位记录的有界目录、脱敏元数据。每类最多51候选项，独立50条分页/1.8MB限制/游标/总数/摘要/同一事务和归属脱敏保持；普通单页查询复用同一大小边界。
+- 旧代码查询数红证据.cache/nov2-catalog-query-count-before.txt。第一版UNION方案本机SQLite通过但真实workerd返回too many terms in compound SELECT（.cache/nov2-catalog-combined-sql-workerd.txt），未发布；改为json_each类别+CROSS JOIN，锁定类别外循环，避免优化器仅按generation扫描全代记录。中间未固定顺序方案被查询计划回归拒绝；最终计划验证类别live索引取51键、主键精确取值，独立大图边界和分页均通过（.cache/nov2-indexed-catalog-query-plan.txt）。真实workerd查询及完整245/245回归通过，证据.cache/nov2-indexed-catalog-full-tests.txt。没有因本地通过就跳过真实D1运行时，也没有放宽原断言。
+- 下一步只推codex并等CI/部署；新鲜账户预算和正式健康/容量/181图完整备份通过后，针对这项实际查询减量做一轮原六目标短突发验收，采集已部署分段时间和真实路由。保持3秒/完整千人确认窗口，不重复同样负载碰运气，不动main、密码、邀请码或密钥。
