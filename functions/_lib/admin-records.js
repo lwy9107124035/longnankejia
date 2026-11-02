@@ -18,6 +18,9 @@ export class RecordError extends Error {
 
 export async function recordsManifest(db) {
   const row = await db.prepare("SELECT value, revision FROM admin_state WHERE key='content'").first();
+  return recordManifestFromRow(row);
+}
+export function recordManifestFromRow(row) {
   if (!row) return null;
   const manifest = JSON.parse(row.value);
   return manifest.storage === 'records-v1' ? { ...manifest, revision: row.revision } : null;

@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import { createAdminBackend, captureQueryPlans } from './helpers/admin-harness.mjs';
 import { migrateRecordStorage, recordSummaries, recordSummarySnapshot, pageRecoveryHistory } from '../functions/_lib/admin-records.js';
 import {setupEnvironment} from './helpers/store-harness.mjs';
+import {createHash} from 'node:crypto';
+import {onRequestPost} from '../functions/api/admin/sync.js';
 
 async function savedCardBackend(t) {
   const backend=createAdminBackend();t.after(()=>backend.close());
@@ -18,14 +20,16 @@ async function savedCardBackend(t) {
 
 test('durable save acknowledgements survive an unavailable optional summary and replay without duplicate history',async t=>{
   for(const compact of [true,false]) {
-    const backend=await savedCardBackend(t),prepare=backend.db.prepare.bind(backend.db);let summaryReads=0;
+    const backend=await savedCardBackend(t),prepare=backend.db.prepare.bind(backend.db);let summaryReads=0,standaloneVersionReads=0;
     backend.db.prepare=sql=>{
+      if(sql==="SELECT value, revision FROM admin_state WHERE key='content'")standaloneVersionReads++;
       if(sql.includes("kind='auditLogs' ORDER BY")){summaryReads++;throw Error('synthetic summary unavailable');}
       return prepare(sql);
     };
     const body={action:'update_content',operationId:'durable-acknowledgement-test',...(compact&&{ackFormat:'compact-v1'}),
       changes:[{key:'kepuCustom/ack-card',baseHash:await globalThis.HeritageContent.cellHash(backend.card,true),value:{...backend.card,name:'新名称'}}]};
     const saved=await backend.call(body,backend.bearer);assert.equal(saved.status,200);
+    assert.equal(standaloneVersionReads,0,'Save auth already read the content version');
     assert.deepEqual(saved.data.accepted,['kepuCustom/ack-card']);assert.equal(saved.data.auditAppend.length,1);assert.equal(saved.data.recoveryAppend.length,1);
     assert.equal(saved.data.auditLogs,undefined);assert.equal(summaryReads,compact?0:1);
     if(!compact)assert.equal(saved.data.metadataPending,true);
@@ -33,6 +37,29 @@ test('durable save acknowledgements survive an unavailable optional summary and 
     assert.deepEqual(replay.data.auditAppend,saved.data.auditAppend);
     assert.equal(backend.sqlite.prepare("SELECT COUNT(*) AS count FROM admin_content_items WHERE kind='_history'").get().count,1);
     const invalid=await backend.call({...body,ackFormat:'unsupported'},backend.bearer);assert.equal(invalid.status,400);assert.equal(invalid.data.code,'INVALID_ACK_FORMAT');
+  }
+});
+
+test('the combined save auth/version read rejects sessions or invitations revoked while receiving the body',async t=>{
+  for(const editor of [false,true]) {
+    const backend=await savedCardBackend(t);let bearer=backend.bearer;
+    const invite={id:'synthetic-editor',token:'SYNTHETIC-INVITE',name:'合成协管员'};
+    if(editor) {
+      backend.sqlite.prepare("INSERT INTO admin_state(key,value,revision) VALUES('tokens',?,0) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify([invite]));
+      bearer='a'.repeat(64);
+      backend.sqlite.prepare('INSERT INTO admin_sessions(id,role,name,token_id,expires_at) VALUES(?,?,?,?,?)')
+        .run(createHash('sha256').update(bearer).digest('hex'),'editor','合成协管员',invite.id,Date.now()+60000);
+    }
+    const payload={action:'update_content',ackFormat:'compact-v1',operationId:'revoked-during-body-test',changes:[{key:'kepuCustom/ack-card',baseHash:await globalThis.HeritageContent.cellHash(backend.card,true),value:{...backend.card,name:'不应保存'}}]};
+    const stream=new ReadableStream({pull(controller){
+      if(editor)backend.sqlite.prepare("UPDATE admin_state SET value=? WHERE key='tokens'").run(JSON.stringify([{...invite,paused:true}]));
+      else backend.sqlite.exec('DELETE FROM admin_sessions');
+      controller.enqueue(new TextEncoder().encode(JSON.stringify(payload)));controller.close();
+    }},{highWaterMark:0});
+    const response=await onRequestPost({env:backend.env,request:new Request('http://127.0.0.1:8931/api/admin/sync',{method:'POST',duplex:'half',body:stream,headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer}})});
+    assert.equal(response.status,401);
+    assert.equal(JSON.parse(backend.sqlite.prepare("SELECT value FROM admin_content_items WHERE key='kepuCustom/ack-card'").get().value).name,'原名称');
+    assert.equal(backend.sqlite.prepare("SELECT COUNT(*) AS count FROM admin_content_items WHERE kind='_history'").get().count,0);
   }
 });
 

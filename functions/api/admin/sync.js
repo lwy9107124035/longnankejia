@@ -2,7 +2,7 @@
 import { DEFAULTS, validateContent, validateChanges, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 import { storeMedia, migrateD1Media, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
-import { recordsManifest, readRecordState, recordChangeSnapshot, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummarySnapshot, pageRecords, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
+import { recordsManifest, recordManifestFromRow, readRecordState, recordChangeSnapshot, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummarySnapshot, pageRecords, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
 import { archiveHistoryBefore, expandArchivedHistory } from '../../_lib/admin-history-archive.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
@@ -120,17 +120,21 @@ async function credentials(db, env) {
   return saved;
 }
 function activeInvite(invite) { return invite && !invite.revoked && !invite.paused && (!invite.expiresAt || invite.expiresAt > Date.now()); }
-async function session(db, request, required = true) {
+async function session(db, request, required = true, withContent = false) {
   const authorization = request.headers.get('Authorization') || '';
   if (!authorization && !required) return null;
   const bearer = authorization.match(/^Bearer ([a-f0-9]{64})$/);
-  let found = bearer && await db.prepare('SELECT * FROM admin_sessions WHERE id = ? AND expires_at > ?').bind(await digest(bearer[1]), Date.now()).first();
+  const query = withContent
+    ? "SELECT s.*,c.value AS content_value,c.revision AS content_revision,t.value AS tokens_value FROM admin_sessions s LEFT JOIN admin_state c ON c.key='content' LEFT JOIN admin_state t ON t.key='tokens' AND s.role='editor' WHERE s.id=? AND s.expires_at>?"
+    : 'SELECT * FROM admin_sessions WHERE id = ? AND expires_at > ?';
+  let found = bearer && await db.prepare(query).bind(await digest(bearer[1]), Date.now()).first();
   if (found && found.role === 'editor') {
-    const invites = await state(db, 'tokens', []);
+    const invites = withContent ? { value: JSON.parse(found.tokens_value || '[]') } : await state(db, 'tokens', []);
     if (!activeInvite(invites.value.find(t => t.id === found.token_id))) found = null;
   }
   if (!found) throw new ApiError(401, 'SESSION_EXPIRED', '登录已失效，请重新登录。');
-  return { role: found.role, name: found.name, tokenId: found.token_id, sessionId: found.id, expiresAt: found.expires_at };
+  return { role: found.role, name: found.name, tokenId: found.token_id, sessionId: found.id, expiresAt: found.expires_at,
+    ...(withContent && { contentManifest: recordManifestFromRow(found.content_value == null ? null : { value: found.content_value, revision: found.content_revision }) }) };
 }
 export async function authorizeAdmin(request, env) {
   const origin = request.headers.get('Origin');
@@ -332,7 +336,7 @@ async function readData(db, request, env, knownManifest) {
 async function postData(db, env, request, body) {
   const mediaDb = env.ADMIN_MEDIA_DB || db;
   if (body.action === 'login') return login(db, env, request, body);
-  const user = body.action === 'update_content' ? await measureSave(request, 'save_auth', () => session(db, request)) : await session(db, request);
+  const user = body.action === 'update_content' ? await measureSave(request, 'save_auth', () => session(db, request, true, true)) : await session(db, request);
   switch (body.action) {
     case 'storage_info': {
       requireSuper(user);
@@ -382,7 +386,7 @@ async function postData(db, env, request, body) {
       if (body.ackFormat !== undefined && body.ackFormat !== 'compact-v1') throw new ApiError(400, 'INVALID_ACK_FORMAT', '请刷新页面后重试，草稿已保留');
       if (body.hashFormat !== undefined && body.hashFormat !== 'media-identity-v1') throw new ApiError(400, 'INVALID_HASH_FORMAT', '请刷新页面后重试，草稿已保留');
       if (Array.isArray(body.changes) && body.changes.some(change => ['apiConfig', 'workflowConfig'].includes(change?.key))) requireSuper(user);
-      const initialManifest = await measureSave(request, 'save_version', () => recordsManifest(db));
+      const initialManifest = user.contentManifest;
       let tokens = initialManifest ? null : await state(db, 'tokens', []);
       const mediaCache = new Map();
       for (let attempt = 0; attempt < 5; attempt++) {
