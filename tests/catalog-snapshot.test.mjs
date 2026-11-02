@@ -4,6 +4,24 @@ import fs from 'node:fs';
 import { createAdminBackend, captureQueryPlans } from './helpers/admin-harness.mjs';
 import { migrateRecordStorage } from '../functions/_lib/admin-records.js';
 
+test('list redaction uses the invitation metadata from the same transaction as its records',async t=>{
+  const backend=createAdminBackend();t.after(()=>backend.close());backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql',import.meta.url),'utf8'));
+  const oldToken='NFYJ-INV-SYNTHETIC-LIST-OLD',newToken='NFYJ-INV-SYNTHETIC-LIST-NEW';
+  backend.sqlite.prepare("UPDATE admin_state SET value=? WHERE key='tokens'").run(JSON.stringify([{id:'list-author-old',token:oldToken}]));
+  const content=structuredClone(globalThis.HeritageContent.defaults),card={id:'list-author-card',name:'合成作者资料',detail:'正文',creatorTokenId:oldToken};content.kepuCustom=[card];
+  await migrateRecordStorage(backend.db,{value:content,revision:0});
+  const batch=backend.db.batch.bind(backend.db);let changed=false;
+  backend.db.batch=async statements=>{
+    if(!changed){changed=true;const value={...card,creatorTokenId:newToken},digest=await globalThis.HeritageContent.cellHash(value,true);
+      backend.sqlite.exec('BEGIN');backend.sqlite.prepare("UPDATE admin_state SET value=?,revision=revision+1 WHERE key='tokens'").run(JSON.stringify([{id:'list-author-new',token:newToken}]));
+      backend.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,owner=?,revision=2 WHERE key=?').run(JSON.stringify(value),digest,'list-author-new','kepuCustom/list-author-card');backend.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'; COMMIT");}
+    return batch(statements);
+  };
+  const response=await backend.fetchApi('/api/admin/sync?format=records&field=kepuCustom');assert.equal(response.status,200);
+  const data=await response.json();assert.equal(data.revision,2);assert.equal(data.rows[0].value.creatorTokenId,'list-author-new');
+  assert.equal(JSON.stringify(data).includes(newToken),false);assert.equal(JSON.stringify(data).includes(oldToken),false);
+});
+
 for (const format of ['pages', 'records']) test(`a concurrent save cannot mix ${format} counts and page rows or invalidate an already coherent snapshot`, async t => {
   const backend = createAdminBackend(); t.after(() => backend.close());
   backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql', import.meta.url), 'utf8'));
@@ -11,7 +29,7 @@ for (const format of ['pages', 'records']) test(`a concurrent save cannot mix ${
   content.kepuCustom = Array.from({ length: 70 }, (_, i) => ({ id: 'snapshot-' + String(i).padStart(3, '0'), name: '快照资料' + i, detail: '完整正文' }));
   await migrateRecordStorage(backend.db, { value: content, revision: 0 });
   const root = (await backend.call({ action: 'login', credential: 'admin123', clientId: 'snapshot-reader' })).data;
-  const prepare = backend.db.prepare.bind(backend.db), batch = backend.db.batch.bind(backend.db); let written = false, writes = 0;
+  const prepare = backend.db.prepare.bind(backend.db), batch = backend.db.batch.bind(backend.db); let written = false, writes = 0,standaloneTokenReads=0;
   async function writeDuringRead() {
     if (written) return; written = true;
     const id = 'snapshot-new-' + ++writes;
@@ -20,12 +38,16 @@ for (const format of ['pages', 'records']) test(`a concurrent save cannot mix ${
   }
   backend.db.prepare = sql => {
     const statement = prepare(sql), all = statement.all.bind(statement);
+    let stateKey;const bind=statement.bind.bind(statement),first=statement.first.bind(statement);
+    statement.bind=(...values)=>{stateKey=values[0];return bind(...values);};
+    statement.first=async()=>{if(sql==='SELECT value, revision FROM admin_state WHERE key = ?'&&stateKey==='tokens')standaloneTokenReads++;return first();};
     statement.all = async () => { const result = await all(); if (sql.includes('AS runningBytes')) await writeDuringRead(); return result; };
     return statement;
   };
   backend.db.batch = async statements => { await writeDuringRead(); return batch(statements); };
   const response = await backend.fetchApi('/api/admin/sync?format=' + format + '&field=kepuCustom&summary=1');
   assert.equal(response.status, 200);
+  assert.equal(standaloneTokenReads,0,'Page rows and their redaction metadata must share one transaction');
   const data = await response.json(); assert.equal(written, true); assert.equal(data.revision, 2);
   const rows = format === 'pages' ? data.kepuCustom : data.rows.map(row => row.value), marker = format === 'pages' ? data.pages.kepuCustom : data.cursor;
   assert.equal(format === 'pages' ? data.counts.kepuCustom : data.total, 71);

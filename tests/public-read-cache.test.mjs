@@ -48,6 +48,20 @@ test('cache keys isolate database generations even when hosts and content revisi
   const first=await (await request(a.env)).json(),second=await (await request(b.env)).json();assert.equal(first.revision,second.revision);assert.equal(first.kepuCustom[0].name,'甲站0');assert.equal(second.kepuCustom[0].name,'乙站0');assert.equal(storage.entries.size,2);
 });
 
+test('a snapshot that advances during a concurrent save is published under its actual revision',async t=>{
+  const storage=cache(t),site=await backend(t),batch=site.db.batch.bind(site.db),prepare=site.db.prepare.bind(site.db);let changed=false;
+  site.db.batch=async statements=>{
+    if(!changed){changed=true;const row={...content().kepuCustom[0],name:'读取中已保存的新名称'},digest=await schema.cellHash(row,true);
+      site.sqlite.exec('BEGIN');site.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,revision=2 WHERE key=?').run(JSON.stringify(row),digest,'kepuCustom/snapshot-0');site.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'; COMMIT");}
+    return batch(statements);
+  };
+  const url='/api/admin/sync?format=record&key=kepuCustom/snapshot-0',first=await(await request(site.env,url)).json();
+  assert.equal(first.revision,2);assert.equal(first.rows[0].value.name,'读取中已保存的新名称');
+  assert.equal(storage.entries.size,1);assert.equal(new URL([...storage.entries.keys()][0]).searchParams.get('_revision'),'2');
+  site.db.prepare=sql=>{if(sql!=="SELECT value, revision FROM admin_state WHERE key='content'")throw Error('The snapshot was unnecessarily rebuilt');return prepare(sql);};
+  const second=await request(site.env,url);assert.equal(second.status,200);assert.equal((await second.json()).revision,2);
+});
+
 test('cold snapshot publication stays shared through cache writes and unrelated administrator requests',async t=>{
   cache(t);const site=await backend(t),root=(await site.call({action:'login',credential:'admin123',clientId:'cold-publication'})).data;
   const open=globalThis.caches.open.bind(globalThis.caches);let release,started;

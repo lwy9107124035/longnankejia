@@ -2,7 +2,7 @@
 import { DEFAULTS, validateContent, validateChanges, updatedContent, safeContent, safeAudit, audit, rollback, contributions, applyChanges, restoreOperation, recoveryHistory } from '../../_lib/admin-content.js';
 import { readLimited } from '../../_lib/read-limited.js';
 import { storeMedia, migrateD1Media, archiveHistoryMedia, expandHistoryMedia, expandRecordMedia, storeRecordMedia } from '../../_lib/admin-media.js';
-import { recordsManifest, recordManifestFromRow, readRecordState, recordChangeSnapshot, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummarySnapshot, pageRecords, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
+import { recordsManifest, recordManifestFromRow, readRecordState, recordChangeSnapshot, readRecordKinds, readRollbackState, rollbackRecordKeys, writeRecordState, recordMetadata, recordSummarySnapshot, pageRecordSnapshot, recordSnapshot, initialRecordPages, pageRecoveryHistory, pageContributions, recordCounts, publicRecordCounts, searchKnowledgeRecords, MAX_RECORD_BYTES, RecordError } from '../../_lib/admin-records.js';
 import { archiveHistoryBefore, expandArchivedHistory } from '../../_lib/admin-history-archive.js';
 const LOCK_MS = 60000;
 const encoder = new TextEncoder();
@@ -253,9 +253,10 @@ async function readPublicSnapshot(db, request, env, manifest) {
     }
   } catch (error) { console.warn('Public snapshot cache read failed:', error.name); }
   const data = await readData(db, request, env, manifest);
-  if (cache && data.ok && data.model === 'records-v1' && data.revision === revision) {
+  if (cache && data.ok && data.model === 'records-v1' && Number.isSafeInteger(data.revision) && data.revision >= revision) {
+    url.searchParams.set('_revision',String(data.revision));
     // Only a public body for this freshly checked version is stored; HTTP responses still use no-store.
-    const task = Promise.resolve().then(() => cache.put(key, Response.json(data, {headers:{'Cache-Control':'public, max-age=300'}})))
+    const task = Promise.resolve().then(() => cache.put(new Request(url), Response.json(data, {headers:{'Cache-Control':'public, max-age=300'}})))
       .catch(error => { console.warn('Public snapshot cache write failed:', error.name); });
     await task;
   }
@@ -285,10 +286,12 @@ async function readData(db, request, env, knownManifest) {
       const current = await recordSnapshot(db, manifest, key);
       manifest = current.manifest; tokens = { value: current.tokens };
       result = { ok: true, model: 'records-v1', revision: manifest.revision, rows: [{ key, value: globalThis.HeritageContent.contentCells(current.value).get(key) ?? null, summary: false }] };
-    } else {
+    } else if(params.get('format')==='search') {
       tokens = await state(db, 'tokens', []);
-      result = params.get('format') === 'search' ? await searchKnowledgeRecords(db, manifest, params.get('q') || '')
-        : await pageRecords(db, manifest, { field: params.get('field') || undefined, cursor: params.get('cursor') || '', query: (params.get('q') || '').slice(0, 500), category: params.get('category') || '', media: params.get('media') || '', summary: params.get('summary') === '1', since: params.has('since') ? Number(params.get('since')) : undefined });
+      result=await searchKnowledgeRecords(db, manifest, params.get('q') || '');
+    } else {
+      const snapshot=await pageRecordSnapshot(db, manifest, { field: params.get('field') || undefined, cursor: params.get('cursor') || '', query: (params.get('q') || '').slice(0, 500), category: params.get('category') || '', media: params.get('media') || '', summary: params.get('summary') === '1', since: params.has('since') ? Number(params.get('since')) : undefined });
+      manifest=snapshot.manifest;tokens={value:snapshot.tokens};result=snapshot.page;
     }
     const pageContent = structuredClone(DEFAULTS);
     for (const row of result.rows) globalThis.HeritageContent.setContentCell(pageContent, row.key, row.value);
@@ -299,10 +302,10 @@ async function readData(db, request, env, knownManifest) {
   }
   const known = since !== null && await db.prepare("SELECT revision FROM admin_state WHERE key = 'content'").first();
   const unchanged = known && String(known.revision) === since;
-  let content, paging, publicTokens;
+  let content, paging, snapshotTokens;
   if (!unchanged && manifest && params.get('format') === 'pages') {
-    const [snapshot, tokens] = await Promise.all([initialRecordPages(db, manifest), user ? null : state(db, 'tokens', [])]);
-    publicTokens = tokens;
+    const snapshot=await initialRecordPages(db,manifest);
+    snapshotTokens={value:snapshot.tokens};
     manifest = snapshot.manifest;
     const value = structuredClone(DEFAULTS), pages = {}, summaryKeys = [], hashes = {};
     for (const field of Object.keys(globalThis.HeritageContent.defaults)) {
@@ -313,7 +316,7 @@ async function readData(db, request, env, knownManifest) {
     content = { value, revision: manifest.revision, bytes: manifest.bytes };
     paging = { model: 'records-v1', pages, summaryKeys, hashes, counts: await recordCounts(db, manifest) };
   } else content = unchanged ? { value: {}, revision: known.revision } : await state(db, 'content', DEFAULTS);
-  const tokens = publicTokens || await state(db, 'tokens', []);
+  const tokens = snapshotTokens || await state(db, 'tokens', []);
   const result = { ok: true, ...(!unchanged && safeContent(content.value, tokens.value)), ...paging, capabilities: { mediaUploads: !!env.ADMIN_MEDIA, separateImageDatabase: !!env.ADMIN_MEDIA_DB }, revision: content.revision, ...(unchanged && { unchanged: true }) };
   if (!unchanged) result.storage = { metadataBytes: content.bytes, metadataLimit: manifest ? null : MAX_CONTENT_BYTES, ...(manifest && { model: 'records-v1', maxRecordBytes: MAX_RECORD_BYTES }) };
   if (user) {

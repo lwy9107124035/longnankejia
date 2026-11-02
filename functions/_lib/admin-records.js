@@ -314,7 +314,8 @@ export async function recordSnapshot(db, manifest, key) {
 export async function initialRecordPages(db, manifest) {
   const result = await db.batch([
     db.prepare("SELECT value,revision FROM admin_state WHERE key='content'"),
-    ...fields.map(field => pageStatement(db, "generation=? AND kind=? AND value!='null'", [manifest.generation, field], '', 50, true))
+    ...fields.map(field => pageStatement(db, "generation=? AND kind=? AND value!='null'", [manifest.generation, field], '', 50, true)),
+    db.prepare("SELECT value FROM admin_state WHERE key='tokens'")
   ]);
   const current = snapshotManifest(result[0].results[0], manifest);
   const pages = {};
@@ -323,10 +324,10 @@ export async function initialRecordPages(db, manifest) {
     const value = { generation: current.generation, revision: current.revision, key: rows.at(-1)?.key || '', field, query: '', category: '', media: '', since: null };
     pages[field] = { rows: pageRows(rows, true), cursor: rows.length && total > rows.length ? encodeRecordCursor(value) : '' };
   }
-  return { manifest: current, pages };
+  return { manifest: current, pages, tokens:JSON.parse(result.at(-1).results[0]?.value||'[]') };
 }
 
-export async function pageRecords(db, manifest, { field, cursor = '', limit = 50, summary = false, query = '', category = '', media = '', since } = {}) {
+export async function pageRecordSnapshot(db, manifest, { field, cursor = '', limit = 50, summary = false, query = '', category = '', media = '', since } = {}) {
   if (field && !fields.includes(field)) throw new RecordError(400, 'INVALID_PAGE', '内容类型不正确');
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RecordError(400, 'INVALID_PAGE', '每页应为1到100条');
   let after = '';
@@ -360,7 +361,8 @@ export async function pageRecords(db, manifest, { field, cursor = '', limit = 50
   const result = await db.batch([
     db.prepare("SELECT value,revision FROM admin_state WHERE key='content'"),
     pageStatement(db, clause, params, after, limit, summary),
-    ...(!counted ? [db.prepare('SELECT COUNT(*) AS count FROM admin_content_items WHERE ' + clause).bind(...params)] : [])
+    ...(!counted ? [db.prepare('SELECT COUNT(*) AS count FROM admin_content_items WHERE ' + clause).bind(...params)] : []),
+    db.prepare("SELECT value FROM admin_state WHERE key='tokens'")
   ]);
   const current = snapshotManifest(result[0].results[0], manifest);
   if (cursor && current.revision !== manifest.revision) throw new RecordError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
@@ -369,7 +371,8 @@ export async function pageRecords(db, manifest, { field, cursor = '', limit = 50
   const candidates = result[1].results, rows = boundedPage(candidates, limit), more = candidates.length > rows.length;
   const cursorValue = { generation: manifest.generation, revision: manifest.revision, key: rows.at(-1)?.key || '', field: field || '', query, category, media, since: since ?? null };
   const nextCursor = more ? encodeRecordCursor(cursorValue) : '';
-  return { ok: true, model: 'records-v1', revision: manifest.revision, total, rows: pageRows(rows, summary), cursor: nextCursor };
+  return {manifest,tokens:JSON.parse(result.at(-1).results[0]?.value||'[]'),
+    page:{ ok: true, model: 'records-v1', revision: manifest.revision, total, rows: pageRows(rows, summary), cursor: nextCursor }};
 }
 
 export async function recordCounts(db, manifest) {
