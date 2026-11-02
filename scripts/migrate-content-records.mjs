@@ -107,11 +107,11 @@ export function readWranglerToken(options = {}) {
   if (!token) throw new Error('Wrangler OAuth authorization is unavailable; authenticate Wrangler first');
   return token;
 }
-export function remoteRequest(options) {
-  const token = readWranglerToken(options);
+export function remoteRequest(options, {spawnProcess=spawn} = {}) {
   const url = 'https://api.cloudflare.com/client/v4/accounts/' + options.accountId + '/d1/database/' + TARGETS[options.target].id + '/query';
   return body => new Promise((resolve, reject) => {
-    const child = spawn(process.platform === 'win32' ? 'curl.exe' : 'curl', ['--config', '-'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const token = readWranglerToken(options);
+    const child = spawnProcess(process.platform === 'win32' ? 'curl.exe' : 'curl', ['--config', '-'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     let output = '', length = 0, oversized = false, inputFailed = false;
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', chunk => { length += Buffer.byteLength(chunk); if (length > 64 * 1024 * 1024) { oversized = true; child.kill(); } else output += chunk; });
@@ -120,8 +120,12 @@ export function remoteRequest(options) {
     child.stdin.on('error', () => { inputFailed = true; });
     child.on('close', code => {
       if (oversized) { reject(new Error('D1 response exceeded the local backup limit')); return; }
-      if (inputFailed || code !== 0) { reject(new Error('D1 transport did not confirm the request (exit ' + code + '); inspect with a dry run before retrying writes')); return; }
-      try { resolve(JSON.parse(output)); } catch { reject(new Error('D1 returned invalid JSON')); }
+      if (inputFailed || code !== 0 && code !== 22) { reject(new Error('D1 transport did not confirm the request (exit ' + code + '); inspect with a dry run before retrying writes')); return; }
+      try {
+        const envelope=JSON.parse(output);
+        if(code===22 && !(envelope.success===false && Array.isArray(envelope.errors)))throw Error('Unconfirmed HTTP rejection');
+        resolve(envelope);
+      } catch { reject(new Error('D1 returned invalid or unconfirmed JSON')); }
     });
     // No retry: a failed transport may have lost the acknowledgement of a committed write.
     child.stdin.end(curlConfiguration(url, token, body));

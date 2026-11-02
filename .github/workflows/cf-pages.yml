@@ -85,7 +85,7 @@ jobs:
 
       - name: Verify load clock calibration
         if: github.ref_name == 'codex' || github.ref_name == 'main'
-        run: node --test tests/load-clock.test.mjs tests/github-load-control.test.mjs tests/load-integrity.test.mjs
+        run: node --test tests/load-clock.test.mjs tests/github-load-control.test.mjs tests/load-integrity.test.mjs tests/load-recovery.test.mjs
 
       - name: Bind persistent administrator storage
         if: github.ref_name == 'codex' || github.ref_name == 'main'

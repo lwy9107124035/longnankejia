@@ -48,6 +48,30 @@ test('cache keys isolate database generations even when hosts and content revisi
   const first=await (await request(a.env)).json(),second=await (await request(b.env)).json();assert.equal(first.revision,second.revision);assert.equal(first.kepuCustom[0].name,'甲站0');assert.equal(second.kepuCustom[0].name,'乙站0');assert.equal(storage.entries.size,2);
 });
 
+test('cold snapshot publication stays shared through cache writes and unrelated administrator requests',async t=>{
+  cache(t);const site=await backend(t),root=(await site.call({action:'login',credential:'admin123',clientId:'cold-publication'})).data;
+  const open=globalThis.caches.open.bind(globalThis.caches);let release,started;
+  const publication=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
+  globalThis.caches.open=async name=>{const value=await open(name);return {...value,put:async(...args)=>{started();await publication;return value.put(...args);}};};
+  const prepare=site.db.prepare.bind(site.db);let dataReads=0,versions=0,nextVersion,afterVersion;
+  site.db.prepare=sql=>{
+    if(sql.startsWith('SELECT key,kind,value FROM admin_content_items WHERE generation=? AND key=?'))dataReads++;
+    const statement=prepare(sql);
+    if(sql==="SELECT value, revision FROM admin_state WHERE key='content'") {
+      const first=statement.first.bind(statement);statement.first=async()=>{const row=await first();versions++;if(versions===nextVersion)afterVersion();return row;};
+    }
+    return statement;
+  };
+  const url='/api/admin/sync?format=record&key=kepuCustom/snapshot-0',first=request(site.env,url),waiting=[];
+  try {
+    await entered;assert.equal((await site.call({action:'storage_info'},root.bearer)).status,200);
+    const dispatched=new Promise(resolve=>{afterVersion=resolve;});nextVersion=versions+1;
+    waiting.push(...Array.from({length:50},()=>request(site.env,url)));await dispatched;await sleep(20);
+    assert.equal(dataReads,1,'A not-yet-published snapshot must not be rebuilt');
+  } finally {release();await Promise.allSettled([first,...waiting]);}
+  for(const response of await Promise.all([first,...waiting]))assert.equal(response.status,200);
+});
+
 test('arrivals batch before version-query dispatch while requests after another-isolate save obtain a new query', {timeout:10000},async t=>{
   cache(t);const site=await backend(t);await request(site.env);
   const prepare=site.db.prepare.bind(site.db);let calls=0,started,release;
@@ -72,8 +96,8 @@ test('a short staggered burst shares bounded fresh-version batches instead of on
   cache(t);const site=await backend(t);await request(site.env);
   const prepare=site.db.prepare.bind(site.db);let calls=0;
   site.db.prepare=sql=>{if(sql==="SELECT value, revision FROM admin_state WHERE key='content'")calls++;return prepare(sql);};
-  const bodies=await Promise.all(Array.from({length:100},(_,i)=>sleep(i*2).then(async()=>{const response=await request(site.env);assert.equal(response.status,200);assert.match(response.headers.get('Cache-Control'),/no-store/);return response.json();})));
-  assert.ok(calls<=3,'100 arrivals spread over 200ms must use at most three version queries, observed '+calls);assert.ok(bodies.every(body=>body.revision===1));
+  const bodies=await Promise.all(Array.from({length:100},(_,i)=>sleep(i).then(async()=>{const response=await request(site.env);assert.equal(response.status,200);assert.match(response.headers.get('Cache-Control'),/no-store/);return response.json();})));
+  assert.ok(calls<=4,'100 staggered arrivals must use at most four version queries, observed '+calls);assert.ok(bodies.every(body=>body.revision===1));
   const response=await request(site.env,catalog,{'cf-placement':'remote-ICN'});assert.equal(response.headers.get('X-Function-Placement'),'remote-ICN');
 });
 

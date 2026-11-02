@@ -6,14 +6,14 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { getProjectAccount } from '../scripts/_lib/cloudflare-read.mjs';
 import { readD1Usage } from '../scripts/d1-usage.mjs';
 import { createRestDatabase, remoteRequest, TARGETS } from '../scripts/migrate-content-records.mjs';
-import { checkHealth } from '../scripts/maintenance-health.mjs';
+import { checkHealth,readDatabaseCapacity } from '../scripts/maintenance-health.mjs';
 import '../js/content-schema.js';
 import { createLoadPermit, assertLoadPermit, assertProductionReady } from './helpers/load-budget.mjs';
 import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './helpers/read-load-reports.mjs';
 import {controlRequest,warmControlConnections} from './helpers/load-control-client.mjs';
 import {calibrateLoadClock} from './helpers/load-clock.mjs';
 import {githubLoadControl as gh} from './helpers/github-load-control.mjs';
-import {retainedRowsFingerprint,verifyRecordAccounting} from './helpers/load-integrity.mjs';
+import {retainedRowsFingerprint,verifyRecordAccounting,cleanupSessionIds} from './helpers/load-integrity.mjs';
 if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Persistent fetch is the default; LOAD_CONTROL_TRANSPORT=curl selects cold-connection diagnostics. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.ok(process.argv.length === 3 && ['--run','--probe-saves'].includes(process.argv[2]), 'Only --run, --probe-saves or --help is supported');
 const saveProbe = process.argv[2] === '--probe-saves';
@@ -42,22 +42,33 @@ if (!cleanupOnly) {
 const prefix = cleanupOnly || 'load-fixture-' + randomBytes(12).toString('hex');
 const actorBearers = Array.from({ length: cleanupOnly ? 1 : 3 }, () => randomBytes(32).toString('hex')), bearer = actorBearers[0];
 const sessionIds = actorBearers.map(value => createHash('sha256').update(value).digest('hex')), sessionId = sessionIds[0];
+const cleanupLedgers=cleanupOnly?fs.readdirSync('.cache').filter(file=>file==='load-control-'+prefix+'.json'||file.startsWith('load-cleanup-')&&file.endsWith('-'+prefix+'.json'))
+  .map(file=>JSON.parse(fs.readFileSync('.cache/'+file,'utf8'))):[];
+const sessionsToRemove=cleanupSessionIds(prefix,sessionIds,cleanupLedgers);
 const transport = remoteRequest({ target: 'codex', accountId: account });
+let authorizationRefreshed=false;
 const db = createRestDatabase(async body => {
   const readOnly = (body.batch || [body]).every(statement => /^SELECT\b/i.test(statement.sql));
   for (let attempt = 0; ; attempt++) {
     try { return await transport(body); }
-    catch (error) { if (!readOnly || attempt >= 2) throw error; await sleep(1000); }
+    catch (error) {
+      if(!readOnly)throw error;
+      if(/codes (?:\d+,)*9109(?:,\d+)*/.test(error.message)) {
+        if(authorizationRefreshed)throw error;
+        authorizationRefreshed=true;await readDatabaseCapacity(TARGETS.codex.id);continue;
+      }
+      if(attempt>=2)throw error;await sleep(1000);
+    }
   }
 }, { apply: true });
-const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, controlTransport, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionIds };
+const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, controlTransport, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionsToRemove };
 if(clock) result.clockCalibration = clock.report;
 const stateFile = '.cache/' + (cleanupOnly ? 'load-cleanup-' + Date.now() + '-' : 'load-control-') + prefix + '.json';
 const ids = Array.from({ length: saveProbe ? 4 : 188 }, (_, i) => prefix + '-' + String(i).padStart(3, '0'));
 const value = (id, i) => ({ id, name: '合成并发验收' + i + ' ' + prefix, category: 'craft', detail: ('这是独立测试资料，不能作为文化资料引用。' + i + '\n').repeat(130),
   imageUrl: i % 2 ? '/api/media/a5de70330e575fa03c530091f07430a2d959b70aa3df14b8804e7a3c4e2c5a6a' : '/api/media/a80e375c338e604e10af745832bcd141b155c762adf56fefe58799175a372825' });
 fs.mkdirSync('.cache', { recursive: true });
-fs.writeFileSync(stateFile, JSON.stringify({ prefix, ids, sessionHash: sessionId, sessionHashes: sessionIds, createdAt: result.startedAt }, null, 2), { flag: 'wx' });
+fs.writeFileSync(stateFile, JSON.stringify({ prefix, ids, sessionHash: sessionId, sessionHashes: sessionsToRemove, createdAt: result.startedAt }, null, 2), { flag: 'wx' });
 async function app(body, query = 'format=pages', auth = true, attempt = 0) {
   try {
   const url = origin + '/api/admin/sync' + (body ? '' : '?' + query);
@@ -251,17 +262,17 @@ finally {
     const final = await app(); result.afterRevision = final.revision; result.afterCount = final.counts.kepuCustom ?? 0; result.cleanup = true;
   } catch (error) { result.cleanupError = error.message; }
   let removedSessions = 0;
-  for (const sessionId of sessionIds) try {
+  for (const sessionId of sessionsToRemove) try {
     for (let attempt = 0; ; attempt++) {
       let failure;
-      try { await db.prepare('DELETE FROM admin_sessions WHERE id=?').bind(sessionId).run(); } catch (error) { failure = error; }
+      try { await db.prepare("DELETE FROM admin_sessions WHERE id=? AND name='合成并发维护验收'").bind(sessionId).run(); } catch (error) { failure = error; }
       if (!await db.prepare('SELECT id FROM admin_sessions WHERE id=?').bind(sessionId).first()) { removedSessions++; break; }
       if (attempt >= 2) throw failure || Error('Temporary session deletion was not confirmed');
       await sleep(1000);
     }
   }
   catch (error) { result.sessionCleanupError = error.message; }
-  result.sessionRemoved = removedSessions === sessionIds.length;
+  result.sessionRemoved = removedSessions === sessionsToRemove.length;
   if(productionBefore) try {
     const after=await checkHealth({origin:'https://longnankejia.pages.dev',baseline:JSON.parse(fs.readFileSync('docs/production-baseline.json','utf8')),
       snapshotDir:'.cache/maintenance/backups',databaseName:TARGETS.main.id});

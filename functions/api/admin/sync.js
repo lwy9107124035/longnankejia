@@ -126,10 +126,10 @@ async function session(db, request, required = true, withContent = false) {
   const bearer = authorization.match(/^Bearer ([a-f0-9]{64})$/);
   const query = withContent
     ? "SELECT s.*,c.value AS content_value,c.revision AS content_revision,t.value AS tokens_value FROM admin_sessions s LEFT JOIN admin_state c ON c.key='content' LEFT JOIN admin_state t ON t.key='tokens' AND s.role='editor' WHERE s.id=? AND s.expires_at>?"
-    : 'SELECT * FROM admin_sessions WHERE id = ? AND expires_at > ?';
+    : "SELECT s.*,t.value AS tokens_value FROM admin_sessions s LEFT JOIN admin_state t ON t.key='tokens' AND s.role='editor' WHERE s.id=? AND s.expires_at>?";
   let found = bearer && await db.prepare(query).bind(await digest(bearer[1]), Date.now()).first();
   if (found && found.role === 'editor') {
-    const invites = withContent ? { value: JSON.parse(found.tokens_value || '[]') } : await state(db, 'tokens', []);
+    const invites = { value: JSON.parse(found.tokens_value || '[]') };
     if (!activeInvite(invites.value.find(t => t.id === found.token_id))) found = null;
   }
   if (!found) throw new ApiError(401, 'SESSION_EXPIRED', '登录已失效，请重新登录。');
@@ -210,12 +210,12 @@ async function getData(db, request, env, context) {
   if (!reads) { reads = new Map(); publicContentReads.set(db, reads); }
   if (reads.has(key)) return reads.get(key);
   // Share parsed public data only while a read is running, never request/response objects or sessions.
-  const promise = manifest ? readPublicSnapshot(db, request, env, context, manifest) : readData(db, request, env, manifest);
+  const promise = manifest ? readPublicSnapshot(db, request, env, manifest) : readData(db, request, env, manifest);
   reads.set(key, promise);
   context.waitUntil?.(Promise.allSettled([promise]));
   try { return await promise; }
   finally {
-    reads.delete(key);
+    if (reads.get(key) === promise) reads.delete(key);
     if (!reads.size && publicContentReads.get(db) === reads) publicContentReads.delete(db);
   }
 }
@@ -227,14 +227,14 @@ function publicVersion(db, context) {
       // Only arrivals before dispatch share a query; later arrivals need a new version check.
       scheduledPublicVersions.delete(db);
       recordsManifest(db).then(manifest => resolve({manifest, size:group.size}), reject);
-    }, 100));
+    }, 50));
     scheduledPublicVersions.set(db, group);
   }
   group.size++;
   context.waitUntil?.(Promise.allSettled([group.promise]));
   return group.promise;
 }
-async function readPublicSnapshot(db, request, env, context, manifest) {
+async function readPublicSnapshot(db, request, env, manifest) {
   const url = new URL(request.url);
   url.pathname = '/_nfyj_public_snapshot';
   url.searchParams.set('_generation', manifest.generation);
@@ -256,7 +256,7 @@ async function readPublicSnapshot(db, request, env, context, manifest) {
     // Only a public body for this freshly checked version is stored; HTTP responses still use no-store.
     const task = Promise.resolve().then(() => cache.put(key, Response.json(data, {headers:{'Cache-Control':'public, max-age=300'}})))
       .catch(error => { console.warn('Public snapshot cache write failed:', error.name); });
-    if (context.waitUntil) context.waitUntil(task); else await task;
+    await task;
   }
   return data;
 }
@@ -598,7 +598,10 @@ async function handle(context) {
       try { body = JSON.parse(text); } catch { throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。'); }
       if (!body || Array.isArray(body) || typeof body !== 'object') throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。');
       try { result = await postData(env.ADMIN_DB, env, request, body); }
-      finally { publicContentReads.delete(env.ADMIN_DB); }
+      finally {
+        const reads = publicContentReads.get(env.ADMIN_DB);
+        if (reads) for (const key of reads.keys()) if (key.endsWith(':legacy')) reads.delete(key);
+      }
     } else throw new ApiError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法。');
     const response = json(200, result, request);
     const measurements = saveMeasurements.get(request);

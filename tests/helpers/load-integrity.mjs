@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 
+export function cleanupSessionIds(prefix,activeIds,ledgers) {
+  assert.match(prefix,/^load-fixture-[a-f0-9]{24}$/);
+  const ids=[...activeIds];
+  for(const ledger of ledgers) {
+    assert.equal(ledger.prefix,prefix,'Cleanup ledger does not match the selected fixture');
+    ids.push(...(Array.isArray(ledger.sessionHashes)?ledger.sessionHashes:ledger.sessionHash?[ledger.sessionHash]:[]));
+  }
+  assert.ok(ids.length<=1000&&ids.every(id=>typeof id==='string'&&/^[a-f0-9]{64}$/.test(id)),'Invalid recorded cleanup session IDs');
+  return [...new Set(ids)];
+}
+
 export async function retainedRowsFingerprint(db,keys) {
   assert.ok(Array.isArray(keys)&&keys.length>0&&keys.length<=1000&&new Set(keys).size===keys.length
     &&keys.every(key=>typeof key==='string'&&key.length>0&&!key.includes('load-fixture-')), 'Invalid retained-row key set');
