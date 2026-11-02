@@ -155,7 +155,7 @@ async function remoteLoad(revision, initial) {
   result.coordinatedStart = startAt;
   console.log('Four-generator load started: ' + run.databaseId + '; peak ' + startAt); const writes = []; let lastStatus = 0, warmed = false;
   while (clock.now() < scheduled + 6 * 60000) {
-    const now = clock.now(), remaining = scheduled + 500 - now;
+    const now = clock.now(), remaining = scheduled + 400 - now;
     if (controlTransport === 'fetch' && !warmed && remaining > 0 && remaining <= 3500) {
       const startedAt = new Date().toISOString(); await warmControlConnections(origin); warmed = true;
       result.controlWarmup = {startedAt,finishedAt:new Date().toISOString(),staticRequests:5}; continue;
@@ -163,7 +163,7 @@ async function remoteLoad(revision, initial) {
     if (!writes.length && remaining <= 0) {
       assert.ok(controlTransport !== 'fetch' || warmed, 'Control client missed the connection calibration window');
       writes.push(await saveThreeSessions(initial));
-      console.log('Three independent sessions saved during the coordinated peak');
+      console.log('Three independent sessions confirmed; full-peak timing awaits the reports');
     }
     // A control request can occupy 30 seconds; keep it outside the write barrier.
     if ((writes.length || remaining > 35000) && now - lastStatus >= 15000) {

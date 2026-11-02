@@ -6,8 +6,8 @@ test('control timings separate server work from client transport without exposin
   const result=parseControlResponse('{"ok":true}\n200\n0.75\ncontent;dur=123.4');
   assert.deepEqual(result,{status:200,data:{ok:true},timing:{clientMs:750,serverMs:123.4}});
   assert.equal(parseControlResponse('{"ok":false}\n503\n0.1\n').timing.serverMs,null);
-  assert.deepEqual(parseControlResponse('{}\n200\n1\ncontent;dur=800, save_auth;dur=20, save_read;dur=100.5, save_attempts;desc="2"').timing,
-    {clientMs:1000,serverMs:800,phases:{save_auth:20,save_read:100.5},attempts:2});
+  assert.deepEqual(parseControlResponse('{}\n200\n1\ncontent;dur=800, save_gate;dur=10, save_auth;dur=20, save_read;dur=100.5, save_attempts;desc="2"').timing,
+    {clientMs:1000,serverMs:800,phases:{save_gate:10,save_auth:20,save_read:100.5},attempts:2});
   assert.throws(()=>parseControlResponse('SYNTHETIC-PRIVATE-CREDENTIAL\n200\n0.1\n'),error=>error.message==='Control response JSON is invalid');
   assert.throws(()=>parseControlResponse('{}\ninvalid\n0.1\n'));
 });
@@ -52,6 +52,8 @@ test('peak saves require confirmed responses within the full overlap, not just t
   const window = { startedAt: '2026-11-01T00:00:00.100Z', finishedAt: '2026-11-01T00:00:00.900Z', actors: 3, accepted: 3, sameRecordAccepted: 1, sameRecordConflict: 1 };
   const times = ['2026-11-01T00:00:00.200Z', '2026-11-01T00:00:00.300Z', '2026-11-01T00:00:00.400Z'];
   assert.equal(confirmPeakWrites(report, [window], times), true);
+  assert.equal(confirmPeakWrites(report,[{...window,timings:[{recovered:true}]}],times),false);
+  assert.equal(confirmPeakWrites(report,[{...window,timings:[{clientMs:100,serverMs:80}]}],times),true);
   for (const change of [{ finishedAt: '2026-11-01T00:00:01.001Z' }, { startedAt: '2026-10-31T23:59:59.999Z' }, { finishedAt: '2026-11-01T00:00:00.099Z' }, { finishedAt: 'invalid' }, { actors: 2 }]) {
     assert.equal(confirmPeakWrites(report, [{ ...window, ...change }], times), false);
   }

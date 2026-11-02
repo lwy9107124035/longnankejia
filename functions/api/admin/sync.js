@@ -120,6 +120,12 @@ async function credentials(db, env) {
   return saved;
 }
 function activeInvite(invite) { return invite && !invite.revoked && !invite.paused && (!invite.expiresAt || invite.expiresAt > Date.now()); }
+function authenticatedSession(found, invites) {
+  if (!found || found.expires_at <= Date.now() || found.role === 'editor' && !activeInvite(invites.find(t => t.id === found.token_id))) {
+    throw new ApiError(401, 'SESSION_EXPIRED', '登录已失效，请重新登录。');
+  }
+  return {role:found.role,name:found.name,tokenId:found.token_id,sessionId:found.id,expiresAt:found.expires_at};
+}
 async function session(db, request, required = true, withContent = false) {
   const authorization = request.headers.get('Authorization') || '';
   if (!authorization && !required) return null;
@@ -127,14 +133,9 @@ async function session(db, request, required = true, withContent = false) {
   const query = withContent
     ? "SELECT s.*,c.value AS content_value,c.revision AS content_revision,t.value AS tokens_value FROM admin_sessions s LEFT JOIN admin_state c ON c.key='content' LEFT JOIN admin_state t ON t.key='tokens' AND s.role='editor' WHERE s.id=? AND s.expires_at>?"
     : "SELECT s.*,t.value AS tokens_value FROM admin_sessions s LEFT JOIN admin_state t ON t.key='tokens' AND s.role='editor' WHERE s.id=? AND s.expires_at>?";
-  let found = bearer && await db.prepare(query).bind(await digest(bearer[1]), Date.now()).first();
-  if (found && found.role === 'editor') {
-    const invites = { value: JSON.parse(found.tokens_value || '[]') };
-    if (!activeInvite(invites.value.find(t => t.id === found.token_id))) found = null;
-  }
-  if (!found) throw new ApiError(401, 'SESSION_EXPIRED', '登录已失效，请重新登录。');
-  return { role: found.role, name: found.name, tokenId: found.token_id, sessionId: found.id, expiresAt: found.expires_at,
-    ...(withContent && { contentManifest: recordManifestFromRow(found.content_value == null ? null : { value: found.content_value, revision: found.content_revision }) }) };
+  const found = bearer && await db.prepare(query).bind(await digest(bearer[1]), Date.now()).first();
+  const user=authenticatedSession(found,JSON.parse(found?.tokens_value||'[]'));
+  return {...user,...(withContent&&{contentRow:found.content_value==null?null:{value:found.content_value,revision:found.content_revision}})};
 }
 export async function authorizeAdmin(request, env) {
   const origin = request.headers.get('Origin');
@@ -333,10 +334,11 @@ async function readData(db, request, env, knownManifest) {
   }
   return result;
 }
-async function postData(db, env, request, body) {
+async function postData(db, env, request, body, preauthorized) {
   const mediaDb = env.ADMIN_MEDIA_DB || db;
   if (body.action === 'login') return login(db, env, request, body);
-  const user = body.action === 'update_content' ? await measureSave(request, 'save_auth', () => session(db, request, true, true)) : await session(db, request);
+  const prefetched=body.action==='update_content'&&preauthorized&&recordManifestFromRow(preauthorized.contentRow);
+  let user=prefetched?preauthorized:body.action === 'update_content' ? await measureSave(request, 'save_auth', () => session(db, request, true, true)) : await session(db, request);
   switch (body.action) {
     case 'storage_info': {
       requireSuper(user);
@@ -386,7 +388,7 @@ async function postData(db, env, request, body) {
       if (body.ackFormat !== undefined && body.ackFormat !== 'compact-v1') throw new ApiError(400, 'INVALID_ACK_FORMAT', '请刷新页面后重试，草稿已保留');
       if (body.hashFormat !== undefined && body.hashFormat !== 'media-identity-v1') throw new ApiError(400, 'INVALID_HASH_FORMAT', '请刷新页面后重试，草稿已保留');
       if (Array.isArray(body.changes) && body.changes.some(change => ['apiConfig', 'workflowConfig'].includes(change?.key))) requireSuper(user);
-      const initialManifest = user.contentManifest;
+      const initialManifest = prefetched || recordManifestFromRow(user.contentRow);
       let tokens = initialManifest ? null : await state(db, 'tokens', []);
       const mediaCache = new Map();
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -402,9 +404,12 @@ async function postData(db, env, request, body) {
         }
         let current, found;
         if (manifest) {
-          const snapshot = await measureSave(request, 'save_read', () => recordChangeSnapshot(db, manifest, body.changes.map(change => change.key), operation?.id));
+          const snapshot = await measureSave(request, 'save_read', () => recordChangeSnapshot(db, manifest, body.changes.map(change => change.key), operation?.id,user.sessionId));
           manifest = snapshot.manifest; current = snapshot.current; tokens = {value:snapshot.tokens}; found = snapshot.receipt;
+          user=authenticatedSession(snapshot.session,snapshot.tokens);
+          if(operation)operation.owner=user.tokenId||'super_admin';
         } else current = await measureSave(request, 'save_read', () => state(db, 'content', DEFAULTS));
+        if(body.changes.some(change=>!change.key.includes('/')))requireSuper(user);
         if (operation) {
           if (found) {
             if (found.owner !== operation.owner || found.request_hash !== operation.hash) throw new ApiError(409, 'OPERATION_MISMATCH', '保存编号已用于其他内容，请刷新后重试');
@@ -585,9 +590,9 @@ async function handle(context) {
     else if (request.method === 'POST') {
       if (!request.headers.get('Content-Type')?.includes('application/json')) throw new ApiError(415, 'INVALID_TYPE', '请求需要使用 JSON。');
       // Login stays available with an expired bearer; only validated sessions get the large upload budget.
-      let authenticated = false;
+      let authenticated = null;
       if (request.headers.has('Authorization')) {
-        try { authenticated = !!(await session(env.ADMIN_DB, request)); }
+        try { authenticated = await measureSave(request,'save_gate',()=>session(env.ADMIN_DB, request,true,true)); }
         catch (error) { if (!(error instanceof ApiError) || error.status !== 401) throw error; }
       }
       let bytes;
@@ -597,7 +602,7 @@ async function handle(context) {
       let body;
       try { body = JSON.parse(text); } catch { throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。'); }
       if (!body || Array.isArray(body) || typeof body !== 'object') throw new ApiError(400, 'INVALID_JSON', '请求内容格式不正确。');
-      try { result = await postData(env.ADMIN_DB, env, request, body); }
+      try { result = await postData(env.ADMIN_DB, env, request, body,authenticated); }
       finally {
         const reads = publicContentReads.get(env.ADMIN_DB);
         if (reads) for (const key of reads.keys()) if (key.endsWith(':legacy')) reads.delete(key);

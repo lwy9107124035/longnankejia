@@ -62,15 +62,18 @@ export async function readRecordState(db, manifest, keys) {
   const { results } = await recordStateStatement(db, manifest, keys).all();
   return assembledState(results, manifest, keys);
 }
-export async function recordChangeSnapshot(db, manifest, keys, operationId) {
-  const [state, rows, receipt] = await db.batch([
+export async function recordChangeSnapshot(db, manifest, keys, operationId, sessionId) {
+  const results = await db.batch([
     db.prepare("SELECT key,value,revision FROM admin_state WHERE key IN ('content','tokens')"),
     recordStateStatement(db, manifest, keys),
-    ...(operationId ? [db.prepare('SELECT owner,request_hash,value FROM admin_content_receipts WHERE generation=? AND id=?').bind(manifest.generation, operationId)] : [])
+    ...(operationId ? [db.prepare('SELECT owner,request_hash,value FROM admin_content_receipts WHERE generation=? AND id=?').bind(manifest.generation, operationId)] : []),
+    ...(sessionId ? [db.prepare('SELECT * FROM admin_sessions WHERE id=? AND expires_at>?').bind(sessionId,Date.now())] : [])
   ]);
+  const [state,rows]=results,receipt=operationId?results[2]:null;
   const current = snapshotManifest(state.results.find(row => row.key === 'content'), manifest);
   return { manifest: current, current: assembledState(rows.results, current, keys, true),
-    tokens: JSON.parse(state.results.find(row => row.key === 'tokens')?.value || '[]'), receipt: receipt?.results[0] };
+    tokens: JSON.parse(state.results.find(row => row.key === 'tokens')?.value || '[]'), receipt: receipt?.results[0],
+    session:sessionId?results[2+(operationId?1:0)].results[0]:undefined };
 }
 export async function readRecordKinds(db, manifest, kinds, owner) {
   if (!kinds.length || kinds.some(kind => !privateKinds.includes(kind))) throw new TypeError('Only private metadata kinds may be selected');

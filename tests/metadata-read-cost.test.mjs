@@ -20,15 +20,18 @@ async function savedCardBackend(t) {
 
 test('durable save acknowledgements survive an unavailable optional summary and replay without duplicate history',async t=>{
   for(const compact of [true,false]) {
-    const backend=await savedCardBackend(t),prepare=backend.db.prepare.bind(backend.db);let summaryReads=0,standaloneVersionReads=0;
+    const backend=await savedCardBackend(t),prepare=backend.db.prepare.bind(backend.db);let summaryReads=0,standaloneVersionReads=0,standaloneAuthReads=0;
     backend.db.prepare=sql=>{
       if(sql==="SELECT value, revision FROM admin_state WHERE key='content'")standaloneVersionReads++;
       if(sql.includes("kind='auditLogs' ORDER BY")){summaryReads++;throw Error('synthetic summary unavailable');}
-      return prepare(sql);
+      const statement=prepare(sql);
+      if(sql.includes('FROM admin_sessions')){const first=statement.first.bind(statement);statement.first=async()=>{standaloneAuthReads++;return first();};}
+      return statement;
     };
     const body={action:'update_content',operationId:'durable-acknowledgement-test',...(compact&&{ackFormat:'compact-v1'}),
       changes:[{key:'kepuCustom/ack-card',baseHash:await globalThis.HeritageContent.cellHash(backend.card,true),value:{...backend.card,name:'新名称'}}]};
     const saved=await backend.call(body,backend.bearer);assert.equal(saved.status,200);
+    assert.equal(standaloneAuthReads,1,'Post-body authorization belongs in the content read transaction');
     assert.equal(standaloneVersionReads,0,'Save auth already read the content version');
     assert.deepEqual(saved.data.accepted,['kepuCustom/ack-card']);assert.equal(saved.data.auditAppend.length,1);assert.equal(saved.data.recoveryAppend.length,1);
     assert.equal(saved.data.auditLogs,undefined);assert.equal(summaryReads,compact?0:1);

@@ -8,7 +8,7 @@ export function parseControlResponse(raw) {
   let data;
   try { data = JSON.parse(lines.join('\n')); } catch { throw Error('Control response JSON is invalid'); }
   const match = timing.match(/content;dur=([\d.]+)/);
-  const phases = Object.fromEntries([...timing.matchAll(/\b(save_(?:auth|version|read|prepare|commit|metadata));dur=(\d+(?:\.\d+)?)/g)].map(item=>[item[1],Number(item[2])]));
+  const phases = Object.fromEntries([...timing.matchAll(/\b(save_(?:gate|auth|version|read|prepare|commit|metadata));dur=(\d+(?:\.\d+)?)/g)].map(item=>[item[1],Number(item[2])]));
   const attempts = timing.match(/save_attempts;desc="([1-5])"/);
   return {status, data, timing:{clientMs:Math.round(seconds * 1000), serverMs:match ? Number(match[1]) : null,
     ...(Object.keys(phases).length && {phases}), ...(attempts && {attempts:Number(attempts[1])})}};
@@ -21,6 +21,7 @@ export function confirmPeakWrites(report, windows, serverTimes) {
   const start = Date.parse(report.allUsersActiveFrom), end = Date.parse(report.allUsersActiveUntil), window = windows[0];
   return Number.isFinite(start) && Number.isFinite(end) && end >= start && windows.length === 1
     && window.actors === 3 && window.accepted === 3 && window.sameRecordAccepted === 1 && window.sameRecordConflict === 1
+    && !(window.timings || []).some(timing => timing.recovered)
     && Date.parse(window.startedAt) >= start && Date.parse(window.finishedAt) <= end && Date.parse(window.finishedAt) >= Date.parse(window.startedAt)
     && serverTimes.length === 3 && serverTimes.every(time => Date.parse(time) >= start && Date.parse(time) <= end);
 }
