@@ -13,19 +13,26 @@ export async function cloudflareRead(apiPath, body, {token,request=fetch}={}) {
   } catch { throw Error('Cloudflare read transport was not confirmed'); }
   let result;
   try { result=JSON.parse(new TextDecoder().decode(bytes)); } catch { throw Error('Cloudflare read response is invalid'); }
-  if (!response.ok || result.errors?.length || !body && result.success !== true) throw Error('Cloudflare read rejected: ' + (result.errors || []).map(error => error.code).filter(Number.isFinite).join(','));
+  if (!response.ok || result.errors?.length || !body && result.success !== true) {
+    const codes=(result.errors||[]).map(error=>error.code).filter(Number.isFinite).join(',');
+    const text=(result.errors||[]).map(error=>error.message||'').join(' ').toLowerCase();
+    const kind=/rate.?limit|quota|too many|limit exceeded/.test(text)?'rate_limit':/authoriz|permission|authenticat/.test(text)?'authorization'
+      :/timeout|timed out/.test(text)?'timeout':/internal|temporar|try again/.test(text)?'provider':/invalid|unsupported|parse|schema|validation/.test(text)?'query':'unknown';
+    throw Error('Cloudflare read rejected: '+(codes||'HTTP '+response.status+'; kind='+kind));
+  }
   return body ? result : result.result;
 }
 
 export async function getProjectAccount({ accountId = process.env.CLOUDFLARE_ACCOUNT_ID, read = cloudflareRead, refresh = readDatabaseCapacity } = {}) {
   async function locate() {
+    const rejectedCodes=[];
     const accounts = accountId ? [{ id: accountId }] : await read('/accounts');
     for (const account of accounts) {
       if (!/^[a-f0-9]{32}$/i.test(account.id || '')) throw Error('Cloudflare account identifier is invalid');
       try { const database = await read('/accounts/' + account.id + '/d1/database/' + TARGETS.codex.id); if (database.uuid === TARGETS.codex.id) return account.id; }
-      catch (error) { if (!/10000|7404/.test(error.message)) throw error; }
+      catch (error) { if (!/10000|7404/.test(error.message)) throw error; rejectedCodes.push(...error.message.match(/10000|7404/g)); }
     }
-    throw Error('Cloudflare authorization for the codex database is unavailable');
+    throw Error('Cloudflare authorization for the codex database is unavailable'+(rejectedCodes.length?' (codes '+[...new Set(rejectedCodes)].join(',')+')':''));
   }
   try { return await locate(); }
   catch (error) {

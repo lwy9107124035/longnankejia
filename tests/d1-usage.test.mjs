@@ -57,6 +57,8 @@ test('monitoring uses bounded HTTPS with bearer in headers and permits only meta
 test('monitoring failures preserve authorization codes and never reveal raw private replies',async()=>{
   const options=request=>({token:'synthetic-only',request});
   await assert.rejects(cloudflareRead('/accounts',undefined,options(async()=>Response.json({success:false,errors:[{code:9109,message:'PRIVATE'}]}))),/^Error: Cloudflare read rejected: 9109$/);
+  await assert.rejects(cloudflareRead('/graphql',{query:'query {}'},options(async()=>Response.json({errors:[{message:'PRIVATE too many queries'}]}))),/HTTP 200; kind=rate_limit/);
+  await assert.rejects(cloudflareRead('/graphql',{query:'query {}'},options(async()=>Response.json({errors:[{message:'PRIVATE insufficient permissions'}]},{status:403}))),/HTTP 403; kind=authorization/);
   for(const request of [async()=>{throw Error('PRIVATE');},async()=>new Response('PRIVATE'),async()=>new Response('PRIVATE',{headers:{'Content-Length':String(9*1024*1024)}})]) {
     await assert.rejects(cloudflareRead('/accounts',undefined,options(request)),error=>!error.message.includes('PRIVATE'));
   }

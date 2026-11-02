@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createAdminBackend } from './helpers/admin-harness.mjs';
 import { storeMedia } from '../functions/_lib/admin-media.js';
 import { loadContentState } from '../functions/api/admin/sync.js';
-import { parseArgs, openLocalDatabase, createRestDatabase, migrateDatabase, curlConfiguration, readWranglerToken, TARGETS } from '../scripts/migrate-content-records.mjs';
+import { parseArgs, openLocalDatabase, createRestDatabase, migrateDatabase, curlConfiguration, TARGETS } from '../scripts/migrate-content-records.mjs';
 
 async function setup(t) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'content-record-migration-')), filename = path.join(folder, 'local.sqlite');

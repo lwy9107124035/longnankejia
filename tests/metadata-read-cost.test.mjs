@@ -3,6 +3,52 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createAdminBackend, captureQueryPlans } from './helpers/admin-harness.mjs';
 import { migrateRecordStorage, recordSummaries, recordSummarySnapshot, pageRecoveryHistory } from '../functions/_lib/admin-records.js';
+import {setupEnvironment} from './helpers/store-harness.mjs';
+
+async function savedCardBackend(t) {
+  const backend=createAdminBackend();t.after(()=>backend.close());
+  backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql',import.meta.url),'utf8'));
+  const content=structuredClone(globalThis.HeritageContent.defaults);
+  content.kepuCustom=[{id:'ack-card',name:'原名称',detail:'原始完整正文'}];
+  content.auditLogs=[{id:'prior-log',action:'既有日志',detail:'',time:1}];
+  await migrateRecordStorage(backend.db,{value:content,revision:0});
+  const login=await backend.call({action:'login',credential:'admin123',clientId:'ack-test'});
+  return {...backend,bearer:login.data.bearer,card:content.kepuCustom[0]};
+}
+
+test('durable save acknowledgements survive an unavailable optional summary and replay without duplicate history',async t=>{
+  for(const compact of [true,false]) {
+    const backend=await savedCardBackend(t),prepare=backend.db.prepare.bind(backend.db);let summaryReads=0;
+    backend.db.prepare=sql=>{
+      if(sql.includes("kind='auditLogs' ORDER BY")){summaryReads++;throw Error('synthetic summary unavailable');}
+      return prepare(sql);
+    };
+    const body={action:'update_content',operationId:'durable-acknowledgement-test',...(compact&&{ackFormat:'compact-v1'}),
+      changes:[{key:'kepuCustom/ack-card',baseHash:await globalThis.HeritageContent.cellHash(backend.card,true),value:{...backend.card,name:'新名称'}}]};
+    const saved=await backend.call(body,backend.bearer);assert.equal(saved.status,200);
+    assert.deepEqual(saved.data.accepted,['kepuCustom/ack-card']);assert.equal(saved.data.auditAppend.length,1);assert.equal(saved.data.recoveryAppend.length,1);
+    assert.equal(saved.data.auditLogs,undefined);assert.equal(summaryReads,compact?0:1);
+    if(!compact)assert.equal(saved.data.metadataPending,true);
+    const replay=await backend.call(body,backend.bearer);assert.equal(replay.status,200);assert.equal(replay.data.replayed,true);
+    assert.deepEqual(replay.data.auditAppend,saved.data.auditAppend);
+    assert.equal(backend.sqlite.prepare("SELECT COUNT(*) AS count FROM admin_content_items WHERE kind='_history'").get().count,1);
+    const invalid=await backend.call({...body,ackFormat:'unsupported'},backend.bearer);assert.equal(invalid.status,400);assert.equal(invalid.data.code,'INVALID_ACK_FORMAT');
+  }
+});
+
+test('the client immediately retains old and new audit/recovery rows with compact save confirmations',async t=>{
+  const backend=await savedCardBackend(t),device=setupEnvironment(backend);
+  const login=await device.store.verifyLogin('admin123');device.store.saveSession(login);assert.ok(await device.store.syncWithCloud());
+  const requests=[],fetch=device.sandbox.fetch;
+  device.sandbox.fetch=(url,options={})=>{if(options.body){const body=JSON.parse(options.body);if(body.action==='update_content')requests.push(body);}return fetch(url,options);};
+  for(const name of ['第一次校正','第二次校正']) {
+    device.store.updateHeritageCard('ack-card',{name});assert.ok(await device.store.syncCustomToCloud());
+  }
+  assert.ok(requests.length>=2&&requests.every(request=>request.ackFormat==='compact-v1'));
+  assert.equal(device.store.getSyncStatus().pending,false);
+  const logs=device.store.getAuditLogs();assert.ok(logs.some(log=>log.id==='prior-log'));assert.equal(new Set(logs.map(log=>log.id)).size,logs.length);
+  assert.equal(device.store.getRecoveryHistory().length,2);
+});
 
 test('save summaries and their revision use one round trip and cannot mix a later audit transaction',async t=>{
   const backend=createAdminBackend();t.after(()=>backend.close());backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql',import.meta.url),'utf8'));

@@ -541,3 +541,12 @@
 - 改用已有GitHub节点作为控制器：新增仅codex/手动acceptance-load作业、同模式不自动取消、检测其他codex作业避免重复；仍调用node tests/live-codex-load.mjs --run、原全账户预算/完整正式备份/物理容量/静态预检/3秒与保守峰值ACK守卫原样。使用仓库既有Cloudflare密钥与作业短期GITHUB_TOKEN内存header，不更换或新增秘密，不开通服务/账单、不复制正式资料到预览；公开备份不上传artifact。官方依据https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow（workflow_dispatch允许GITHUB_TOKEN触发）和https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax（作业级actions:write）已核对。只有控制作业具有actions写权限，部署/读取作业不扩权。
 - 原始79行的keys-only fixture取自已核验rev59备份，包含25历史/52审计/apiConfig/workflowConfig，仅键无值或凭据。新增SQLite实测指纹覆盖值/版本变更、缺行、原代际隔离；控制器清理后在云端核对79行/凭据/计数与bytes/无瞬态标记，并再次做main完整健康备份与前后摘要核对。两个已知删除告警作为单独版本化待确认清单供云端前置使用，保留正式基线/告警，并非认可删除意图。
 - 相关28/28通过；最后会计校验变更的8项针对回归也通过，YAML解析通过。没有改网站业务函数/前端；不要声称千人峰值已验收。下一步显式只提交codex，等完整CI；再按唯一受保护入口由云端手动作业启动一次。若现有API token权限/网络/预算/完整前置不满足则仍拒绝，不绕守卫或索要/打印密钥。main仍禁止发布和写入，禁止桌面操作，真机/微信/AI峰值仍未验收。
+
+## 2026-11-02 保存后503复现与持久确认补修（待codex发布）
+
+- 787effd的CI41379487747通过并部署；云端原型41379655678在getProjectAccount授权前置被拒绝，未执行用量/夹具/会话/索引或写入。仓库D1变量与预期UUID相同；prepare_admin_d1明确允许预置D1的Pages-only部署授权，因此不能把部署成功当D1查询权限。未打印/提取CI密钥、未扩权/更换真实密钥；已移除不可用原型入口、临时actions写权限及环境token读取支持，不留未授权路径。此前原型232项CI结果保留，下一轮测试数变化包含移除仅原型分支测试，不删除保存安全检查。
+- 本机静态诊断五路均约0.85秒成功后，仅做受保护四条保存探针；第一次在账户GraphQL无数字错误码处拒绝（`.cache/nov2-protected-save-probe.txt`），无写入。维护读取补安全错误分类（HTTP/授权/限流/查询/超时等固定枚举），保留9109单次恢复和D1拒绝数字码，不回显原错误消息/凭据；相关12项通过。只读用量恢复93读/0写后，新探针`.cache/nov2-protected-save-probe-recovered.txt`通过：三独立保存一次尝试、同条一成一冲突、清理1028/0、会话0、原79行/凭据/统计和main385/188/完整备份不变。
+- 此探针仍不是性能通过：一个保存client3202ms，server2846ms，其中提交后save_metadata=1916ms；另一路版本读取839ms。检查发现原save代码在内容/审计/历史/幂等回执已原子提交后，仍等待辅助日志摘要；辅助查询失败会返回503，导致已保存却被告知上传失败。**真实旧处理器复现**`.cache/compact-ack-old-handler-proof-20261102.json`基于787effd源代码，HTTP503且alreadyPersisted=true/receiptPersisted=true（全合成/真实SQLite）。最初测试注入误用了不存在statement.sql，旧红文件保留但不作为此结论证据；改用prepare拦截后独立旧处理器复现确证。
+- 补修：新页面可选ackFormat=compact-v1，仍校验权限/行hash并原子提交全部内容与审计/历史/回执，立即返回持久ACK；自己新日志/恢复摘要和回执同存，客户端与旧缓存按ID去重合并，不清空旧历史。记录计数本来就是可选ACK字段，仍由客户端自身变更及后续版本同步核对；不复用过期计数。旧页面正常保留完整摘要；若提交后辅助摘要查询失败，明确记录脱敏告警并返回成功ACK+metadataPending，内容未提交/事务失败仍返回原错误。旧快照分支不新增大份摘要，旧离线草稿的hashFormat兼容保持。
+- 新两项实际SQLite/Store测试覆盖compact零辅助查询、旧客户端摘要故障不误报、幂等重放不增历史、未知格式拒绝、两次校正保留旧审计并恢复记录不重复。最终相关29/29（`.cache/durable-ack-targeted-final-20261102.txt`），Functions编译成功（`.cache/compact-ack-functions-build-20261102.txt`）。主流程并未改为异步提交，不降低3秒/峰值窗口；main和原密码/邀请码/密钥均未动，全程无桌面操作。
+- 下一步：显式只提交codex并等完整CI，再重新读取当日全账户用量与正式完整前置，通过唯一入口先小探针验证去掉辅助往返后的耗时；改善后才一轮四机千人+三会话严格峰值。网络/预算/授权失败仍停止，不循环相同负载；真机/微信/AI峰值仍不能声称通过。

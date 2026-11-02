@@ -1,5 +1,5 @@
 name: Deploy to Cloudflare Pages
-run-name: ${{ inputs.mode == 'acceptance-load' && 'Codex guarded acceptance' || startsWith(inputs.mode, 'read-') && format('{0} {1}', inputs.mode, inputs.load_prefix) || format('Deploy {0}', github.ref_name) }}
+run-name: ${{ startsWith(inputs.mode, 'read-') && format('{0} {1}', inputs.mode, inputs.load_prefix) || format('Deploy {0}', github.ref_name) }}
 
 # 固定入口：main → longnankejia；其余工作分支 → longnankejia-dev。
 # API 密钥仅作为 Pages Functions 的服务端 secret binding 使用，不写入静态 JS。
@@ -11,7 +11,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [deploy, read-load, read-probe, read-static, read-distributed, read-distributed-static, acceptance-load]
+        options: [deploy, read-load, read-probe, read-static, read-distributed, read-distributed-static]
         default: deploy
       load_prefix:
         type: string
@@ -27,46 +27,9 @@ permissions:
 
 concurrency:
   group: cf-${{ github.ref_name }}-${{ inputs.mode || 'deploy' }}
-  cancel-in-progress: ${{ inputs.mode != 'acceptance-load' }}
+  cancel-in-progress: true
 
 jobs:
-  acceptance:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'acceptance-load' && github.ref_name == 'codex'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Install the existing read-only capacity tool
-        run: |
-          npm install --no-save --prefix .cache/test-runtime wrangler@4.137.0
-          echo "$GITHUB_WORKSPACE/.cache/test-runtime/node_modules/.bin" >> "$GITHUB_PATH"
-      - name: Verify acceptance safeguards
-        run: node --test tests/load-integrity.test.mjs tests/load-budget.test.mjs tests/load-clock.test.mjs tests/github-load-control.test.mjs tests/load-control-client.test.mjs tests/read-load-reports.test.mjs
-      - name: Run the guarded codex acceptance entry
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          GH_TOKEN: ${{ github.token }}
-          BROWSER: none
-          WRANGLER_SEND_METRICS: 'false'
-        run: node tests/ci-live-codex-load.mjs
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: codex-guarded-acceptance
-          path: |
-            .cache/load-control-load-fixture-*.json
-            .cache/load-budget-check-*.json
-            .cache/maintenance/pre-load-*.json
-            .cache/maintenance/post-load-*.json
-            .cache/remote-read-load-*/
-          retention-days: 7
   read_load:
     if: github.event_name == 'workflow_dispatch' && startsWith(inputs.mode, 'read-') && github.ref_name == 'codex'
     runs-on: ubuntu-latest

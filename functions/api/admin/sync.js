@@ -379,6 +379,7 @@ async function postData(db, env, request, body) {
       await db.prepare('DELETE FROM admin_sessions WHERE id = ?').bind(user.sessionId).run();
       return { ok: true };
     case 'update_content': {
+      if (body.ackFormat !== undefined && body.ackFormat !== 'compact-v1') throw new ApiError(400, 'INVALID_ACK_FORMAT', '请刷新页面后重试，草稿已保留');
       if (body.hashFormat !== undefined && body.hashFormat !== 'media-identity-v1') throw new ApiError(400, 'INVALID_HASH_FORMAT', '请刷新页面后重试，草稿已保留');
       if (Array.isArray(body.changes) && body.changes.some(change => ['apiConfig', 'workflowConfig'].includes(change?.key))) requireSuper(user);
       const initialManifest = await measureSave(request, 'save_version', () => recordsManifest(db));
@@ -421,6 +422,7 @@ async function postData(db, env, request, body) {
             const provenance = value && typeof value === 'object' ? Object.fromEntries(['creatorName', 'creatorTokenId', 'createdAt'].filter(prop => Object.hasOwn(value, prop)).map(prop => [prop, value[prop]])) : {};
             return { key, provenance };
           }) };
+        if (manifest && user.role === 'super_admin') Object.assign(reply, { auditAppend: safeAudit(result.next, tokens.value), recoveryAppend: recoveryHistory(result.next) });
         let revision = current.revision;
         try {
           if (manifest) {
@@ -431,14 +433,21 @@ async function postData(db, env, request, body) {
           if (error.code === 'SYNC_CONFLICT' && attempt < 4) continue;
           throw error;
         }
-        const logs = user.role === 'super_admin' ? safeAudit(result.next, tokens.value) : [];
-        const metadata = manifest && user.role === 'super_admin' ? await measureSave(request, 'save_metadata', () => recordSummarySnapshot(db, manifest, tokens.value)) : null;
-        const savedManifest = metadata ? metadata.manifest : manifest && await measureSave(request, 'save_metadata', () => recordsManifest(db));
+        const savedReply = { ...reply, revision, updates: result.conflicts.map(key => ({ key, value: values.get(key) ?? null })) };
+        if (manifest && body.ackFormat === 'compact-v1') return savedReply;
+        let metadata, savedManifest;
+        try {
+          metadata = manifest && user.role === 'super_admin' ? await measureSave(request, 'save_metadata', () => recordSummarySnapshot(db, manifest, tokens.value)) : null;
+          savedManifest = metadata ? metadata.manifest : manifest && await measureSave(request, 'save_metadata', () => recordsManifest(db));
+        } catch (error) {
+          // The content and receipt are already durable; optional display data cannot undo that acknowledgement.
+          console.warn('Admin save summary unavailable after commit:', error.name);
+          return { ...savedReply, metadataPending: true };
+        }
         const summaries = metadata?.summaries;
-        return { ...reply, revision, ...(savedManifest && savedManifest.revision === revision && { counts: publicRecordCounts(savedManifest.counts) }), auditLogs: logs,
+        return { ...savedReply, ...(savedManifest && savedManifest.revision === revision && { counts: publicRecordCounts(savedManifest.counts) }), auditLogs: user.role === 'super_admin' ? reply.auditAppend || safeAudit(result.next, tokens.value) : [],
           recovery: user.role === 'super_admin' ? recoveryHistory(result.next) : undefined,
-          ...summaries,
-          updates: result.conflicts.map(key => ({ key, value: values.get(key) ?? null })) };
+          ...summaries };
       }
       break;
     }

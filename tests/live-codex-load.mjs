@@ -85,7 +85,7 @@ async function app(body, query = 'format=pages', auth = true, attempt = 0) {
   }
 }
 async function write(changes, actor = bearer) {
-  const body = { action: 'update_content', hashFormat: 'media-identity-v1', operationId: randomBytes(32).toString('hex'), changes };
+  const body = { action: 'update_content', ackFormat: 'compact-v1', hashFormat: 'media-identity-v1', operationId: randomBytes(32).toString('hex'), changes };
   for (let attempt = 0; ; attempt++) {
     try { return { ...await app(body, 'format=pages', actor), testOperationId: body.operationId }; }
     catch (error) {

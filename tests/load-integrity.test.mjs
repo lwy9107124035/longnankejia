@@ -2,8 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import {spawnSync} from 'node:child_process';
-import {createD1Adapter,readWranglerToken} from '../scripts/migrate-content-records.mjs';
+import {createD1Adapter} from '../scripts/migrate-content-records.mjs';
 import {retainedRowsFingerprint,verifyRecordAccounting} from './helpers/load-integrity.mjs';
 
 test('retained-row checks detect edits, deletion and revision changes without exporting private values',async t=>{
@@ -22,13 +21,7 @@ test('retained-row checks detect edits, deletion and revision changes without ex
   await assert.rejects(verifyRecordAccounting(db),/counts disagree/);
   await assert.rejects(retainedRowsFingerprint(db,['b','b']));
 });
-test('CI authorization uses an existing API token in memory and the retained fixture contains only the original keys',()=>{
-  assert.equal(readWranglerToken({apiToken:'SYNTHETIC-EXISTING-CI-TOKEN'}),'SYNTHETIC-EXISTING-CI-TOKEN');
-  assert.throws(()=>readWranglerToken({apiToken:'SYNTHETIC\nINVALID'}),error=>!error.message.includes('SYNTHETIC'));
+test('the retained fixture contains only the 79 original keys without credential or content values',()=>{
   const keys=JSON.parse(fs.readFileSync(new URL('./fixtures/codex-retained-row-keys.json',import.meta.url)));
   assert.equal(keys.length,79);assert.equal(new Set(keys).size,79);assert.ok(keys.every(key=>typeof key==='string'));
-});
-test('the cloud controller rejects an unsupported branch before credentials, network or fixtures are accessed',()=>{
-  const output=spawnSync(process.execPath,['tests/ci-live-codex-load.mjs'],{encoding:'utf8',env:{...process.env,GITHUB_ACTIONS:'true',GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch'}});
-  assert.notEqual(output.status,0);assert.match(output.stderr,/Only the codex branch/);
 });

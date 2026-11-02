@@ -157,6 +157,13 @@
   var lastSyncedAt = 0;
   var cloudIncomplete = false;
   var recoveryRows = [];
+  function appendMetadataRows(added, current, limit) {
+    var seen = new Set();
+    return added.concat(Array.isArray(current) ? current : []).filter(function (row) {
+      if (!row || typeof row.id !== 'string' || seen.has(row.id)) return false;
+      seen.add(row.id); return true;
+    }).slice(0, limit);
+  }
   var draftDb = null;
   var durableDraft = true;
   // Keep pre-upgrade local edits until an authenticated upload or an explicit discard.
@@ -701,7 +708,7 @@
             changes.push(operation); requestBytes += bytes;
           }
           var operationId = await globalThis.HeritageContent.cellHash({ revision: cloudRevision, changes: changes }, true);
-          var writeRequest = { action: 'update_content', operationId: operationId, revision: cloudRevision, changes: changes };
+          var writeRequest = { action: 'update_content', ackFormat: 'compact-v1', operationId: operationId, revision: cloudRevision, changes: changes };
           if (canonicalHashes) writeRequest.hashFormat = 'media-identity-v1';
           var data = await cloudRequest(writeRequest);
           var acknowledged = changes.filter(function (change) { return data.accepted.indexOf(change.key) >= 0; });
@@ -732,7 +739,9 @@
           lastReadSession = null;
           if (data.content && Array.isArray(data.content.auditLogs)) write(LS.audit_logs, data.content.auditLogs);
           if (Array.isArray(data.auditLogs)) write(LS.audit_logs, data.auditLogs);
+          else if (Array.isArray(data.auditAppend)) write(LS.audit_logs, appendMetadataRows(data.auditAppend, read(LS.audit_logs, []), 200));
           if (Array.isArray(data.recovery)) recoveryRows = data.recovery;
+          else if (Array.isArray(data.recoveryAppend)) recoveryRows = appendMetadataRows(data.recoveryAppend, recoveryRows, 50);
           write('nfyj_cloud_revision', cloudRevision);
           var remaining = changedCells(); pending = remaining.length > 0;
           conflictKeys = Array.from(new Set(conflictKeys.concat(data.conflicts))).filter(function (key) { return remaining.some(function (change) { return change.key === key; }); });

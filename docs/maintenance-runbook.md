@@ -64,8 +64,10 @@ node scripts/maintenance-health.mjs --baseline docs/production-baseline.json --r
 
 保存诊断可用同一受保护入口`node tests/live-codex-load.mjs --probe-saves`，仅4条合成记录，不启动公开负载，也必须通过新预算和正式健康/完整备份前置。默认控制客户端使用持久fetch；`LOAD_CONTROL_TRANSPORT=curl`仅用于显式对照冷连接开销，不自动切换或掩盖错误。正式四机负载前5个静态GET校准连接，不读D1；确认目标前3.5秒开始、每请求最多2.5秒，错过窗口停止，不延长峰值用户空闲时间。此准备阶段不计入业务延迟，原始3秒与完整确认窗口判定不变。各生成器CDN时钟校准12样本至少间隔100ms，避免高速采样全部落在一个整秒内而过于不确定；确定活跃窗口计入完整误差。探针`probeCorrectnessPass`只表示保存/冲突正确，不代表千人性能通过。
 
-## 云端控制器（仅codex）
+## 2026-11-02 控制器授权与保存确认
 
-本机代理/TLS造成静态连接准备反复失败时，不提高业务3秒或峰值确认阈值。先通过相关CI，再在现有cf-pages.yml手动选择acceptance-load且ref=codex；该作业只调用同一个tests/live-codex-load.mjs --run，由它重新读取当前UTC日全账户用量和完整正式前置。API token沿用既有CI secret、GITHUB_TOKEN仅作业内短期使用；不新建秘密/服务，不上传完整公开备份或私有行值。只允许该作业actions:write以启动并核验四个只读生成器；同模式不自动取消，检测其他codex作业以拒绝重叠。
+云端控制器原型41379655678被现有CI授权前置拒绝，未创建夹具/会话。该实验入口及临时actions写权限已移除，不扩展原Pages部署密钥权限，也不转存Wrangler OAuth。继续使用既有唯一tests/live-codex-load.mjs --run；只有本机连接预检、新鲜全账户UTC用量和完整正式健康/容量/备份全通过才加压。原失败证据保留。
 
-两个已调查但未确认删除意图的旧ID清单为docs/maintenance-pending-deletions.json，不能扩大为忽略所有缺条或改基线。原79行keys-only为tests/fixtures/codex-retained-row-keys.json，清理后核对原值/版本指纹、凭据、逐项计数/字节与main前后摘要和完整备份；不输出明文凭据。artifact仅保存负载结果/预算/前后健康报告/不含bearer的控制状态，不保存私有值或完整图片备份。失败/取消后须确认远端停止再精确清理，不能把控制器CI绿冒充综合峰值验收通过。若现有CI token没有用量或D1权限，仍停止，不修改真实密钥或绕预算。
+keys-only fixture tests/fixtures/codex-retained-row-keys.json用于清理后核对原79行值/版本指纹，不含原值或凭据。控制器同轮验证凭据、逐项计数/字节和无瞬态写标记，再检查main前后摘要及完整备份，不以旧报告代替新检查。
+
+逐条存储的新页面使用compact-v1保存确认，只等待原子内容/审计/历史/幂等回执提交；自己的日志/恢复摘要随提交回执增量合并，旧缓存不清空。旧客户端保留完整摘要响应；如果提交后辅助摘要不可读，则返回已持久化的成功确认和metadataPending，不把成功上传误报成503。读取/提交本身失败仍正常报错，不能将未提交请求说成成功。
