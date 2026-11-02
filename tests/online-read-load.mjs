@@ -70,6 +70,11 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
       sample.mediaCache = response.headers.get('X-Media-Cache');
       const batchSize = Number(response.headers.get('X-Read-Version-Batch'));
       if (Number.isSafeInteger(batchSize) && batchSize > 0) sample.versionBatchSize = batchSize;
+      for(const [field,header] of [['versionMs','X-Public-Version-Ms'],['snapshotMs','X-Public-Snapshot-Ms']]) {
+        const value=response.headers.get(header);if(/^\d+(?:\.\d+)?$/.test(value||''))sample[field]=Number(value);
+      }
+      const route=response.headers.get('X-Public-Snapshot-Route');
+      if(['primary','replica','edge-cache','unknown'].includes(route))sample.snapshotRoute=route;
       const placement = response.headers.get('X-Function-Placement');
       if (/^(?:local|remote)-[A-Z]{3}$/.test(placement || '')) sample.functionPlacement = placement;
       const serverTiming = response.headers.get('server-timing')?.match(/content;dur=([\d.]+)/);

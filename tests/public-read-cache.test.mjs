@@ -150,3 +150,15 @@ test('public snapshots hand a fresh primary bookmark to a separate read session 
   db.withSession=()=>{throw Error('Synthetic primary unavailable');};
   assert.equal((await request(site.env,catalog)).status,503,'An unavailable fresh primary must not silently use an older replica or cached body');
 });
+
+for(const primary of [true,false])test(`public read diagnostics distinguish ${primary?'primary':'replica'} snapshots from cached bodies without exposing bookmarks`,async t=>{
+  cache(t);const site=await backend(t),batch=site.db.batch.bind(site.db);
+  const root=(await site.call({action:'login',credential:'admin123',clientId:'read-diagnostics'})).data.bearer;
+  site.db.batch=async statements=>(await batch(statements)).map(result=>({...result,meta:{...result.meta,served_by_primary:primary}}));
+  const first=await request(site.env);
+  assert.equal(first.status,200);assert.equal(first.headers.get('X-Public-Snapshot-Route'),primary?'primary':'replica');
+  for(const name of ['X-Public-Version-Ms','X-Public-Snapshot-Ms'])assert.match(first.headers.get(name),/^\d+\.\d$/);
+  const body=await first.json();assert.equal(Object.hasOwn(body,'route'),false);assert.equal(Object.hasOwn(body,'bookmark'),false);
+  const second=await request(site.env);assert.equal(second.status,200);assert.equal(second.headers.get('X-Public-Snapshot-Route'),'edge-cache');
+  const admin=await request(site.env,catalog,{Authorization:'Bearer '+root});assert.equal(admin.status,200);assert.equal(admin.headers.has('X-Public-Snapshot-Route'),false);assert.equal(admin.headers.has('X-Public-Version-Ms'),false);
+});

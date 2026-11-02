@@ -11,6 +11,8 @@ const CHUNK_CHARS = 400000;
 const publicContentReads = new WeakMap();
 const scheduledPublicVersions = new WeakMap();
 const publicVersionBatchSizes = new WeakMap();
+const publicReadMeasurements = new WeakMap();
+const publicSnapshotRoutes = new WeakMap();
 const saveMeasurements = new WeakMap();
 async function measureSave(request, name, work) {
   let measurements = saveMeasurements.get(request);
@@ -203,13 +205,19 @@ async function getData(db, request, env, context) {
   const url = new URL(request.url);
   if (request.headers.has('Authorization') || url.searchParams.has('revision') || !['pages', 'records', 'record', 'search'].includes(url.searchParams.get('format'))) return readData(db, request, env);
   url.searchParams.sort();
+  const versionStarted=performance.now();
   const group = globalThis.caches?.open ? await publicVersion(db, context) : undefined;
+  const measurements={versionMs:performance.now()-versionStarted};
+  publicReadMeasurements.set(request,measurements);
+  const snapshotStarted=performance.now();
   const manifest = group?.manifest;
   if (group) publicVersionBatchSizes.set(request, group.size);
   const key = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB + ':' + (manifest ? manifest.generation + ':' + manifest.revision : 'legacy');
   let reads = publicContentReads.get(db);
   if (!reads) { reads = new Map(); publicContentReads.set(db, reads); }
-  if (reads.has(key)) return reads.get(key);
+  if (reads.has(key)) {
+    const value=await reads.get(key);measurements.snapshotMs=performance.now()-snapshotStarted;return value;
+  }
   // Share parsed public data only while a read is running, never request/response objects or sessions.
   const snapshotDb = group?.bookmark ? db.withSession(group.bookmark) : db;
   const promise = manifest ? readPublicSnapshot(snapshotDb, request, env, manifest) : readData(snapshotDb, request, env, manifest);
@@ -217,6 +225,7 @@ async function getData(db, request, env, context) {
   context.waitUntil?.(Promise.allSettled([promise]));
   try { return await promise; }
   finally {
+    measurements.snapshotMs=performance.now()-snapshotStarted;
     if (reads.get(key) === promise) reads.delete(key);
     if (!reads.size && publicContentReads.get(db) === reads) publicContentReads.delete(db);
   }
@@ -256,7 +265,9 @@ async function readPublicSnapshot(db, request, env, manifest) {
     const found = await cache.match(key);
     if (found) {
       const value = await found.json();
-      if (value.ok === true && value.model === 'records-v1' && value.revision === revision) return value;
+      if (value.ok === true && value.model === 'records-v1' && value.revision === revision) {
+        publicSnapshotRoutes.set(value,'edge-cache');return value;
+      }
     }
   } catch (error) { console.warn('Public snapshot cache read failed:', error.name); }
   const data = await readData(db, request, env, manifest);
@@ -286,12 +297,13 @@ async function readData(db, request, env, knownManifest) {
   }
   if (manifest && manifest.bytes > MAX_CONTENT_BYTES && !params.has('format')) throw new ApiError(409, 'CLIENT_UPGRADE_REQUIRED', '内容存储已升级，请刷新页面后继续使用；本机草稿已保留');
   if (manifest && ['records', 'record', 'search'].includes(params.get('format'))) {
-    let result, tokens;
+    let result, tokens,route;
     if (params.get('format') === 'record') {
       const key = params.get('key') || '';
       if (!Object.keys(DEFAULTS).some(field => key === field || key.startsWith(field + '/')) || key.startsWith('auditLogs')) throw new ApiError(400, 'INVALID_RECORD', '内容编号不正确');
       const current = await recordSnapshot(db, manifest, key);
       manifest = current.manifest; tokens = { value: current.tokens };
+      route=current.route;
       result = { ok: true, model: 'records-v1', revision: manifest.revision, rows: [{ key, value: globalThis.HeritageContent.contentCells(current.value).get(key) ?? null, summary: false }] };
     } else if(params.get('format')==='search') {
       tokens = await state(db, 'tokens', []);
@@ -299,20 +311,23 @@ async function readData(db, request, env, knownManifest) {
     } else {
       const snapshot=await pageRecordSnapshot(db, manifest, { field: params.get('field') || undefined, cursor: params.get('cursor') || '', query: (params.get('q') || '').slice(0, 500), category: params.get('category') || '', media: params.get('media') || '', summary: params.get('summary') === '1', since: params.has('since') ? Number(params.get('since')) : undefined });
       manifest=snapshot.manifest;tokens={value:snapshot.tokens};result=snapshot.page;
+      route=snapshot.route;
     }
     const pageContent = structuredClone(DEFAULTS);
     for (const row of result.rows) globalThis.HeritageContent.setContentCell(pageContent, row.key, row.value);
     const redacted = globalThis.HeritageContent.contentCells(safeContent(pageContent, tokens.value));
     result.rows = await Promise.all(result.rows.map(async row => ({ ...row, value: redacted.get(row.key) ?? null, hash: row.hash || await globalThis.HeritageContent.cellHash(row.value, true) })));
     if (params.get('format') === 'search' && (await recordsManifest(db)).revision !== manifest.revision) throw new ApiError(409, 'PAGE_CHANGED', '内容已更新，请刷新列表');
+    if(route)publicSnapshotRoutes.set(result,route);
     return result;
   }
   const known = since !== null && await db.prepare("SELECT revision FROM admin_state WHERE key = 'content'").first();
   const unchanged = known && String(known.revision) === since;
-  let content, paging, snapshotTokens;
+  let content, paging, snapshotTokens,route;
   if (!unchanged && manifest && params.get('format') === 'pages') {
     const snapshot=await initialRecordPages(db,manifest);
     snapshotTokens={value:snapshot.tokens};
+    route=snapshot.route;
     manifest = snapshot.manifest;
     const value = structuredClone(DEFAULTS), pages = {}, summaryKeys = [], hashes = {};
     for (const field of Object.keys(globalThis.HeritageContent.defaults)) {
@@ -342,6 +357,7 @@ async function readData(db, request, env, knownManifest) {
       result.lockouts = locks.results.map(l => ({ id: l.id, device: l.device, attempts: l.attempts, lockedUntil: l.locked_until, lockedAt: l.updated_at, status: l.locked_until > Date.now() ? 'locked' : 'unlocked' }));
     }
   }
+  if(route)publicSnapshotRoutes.set(result,route);
   return result;
 }
 async function postData(db, env, request, body, preauthorized) {
@@ -625,6 +641,12 @@ async function handle(context) {
     if (request.method === 'GET') {
       const size = publicVersionBatchSizes.get(request);
       if (size) response.headers.set('X-Read-Version-Batch', String(size));
+      const read=publicReadMeasurements.get(request),route=publicSnapshotRoutes.get(result);
+      if(read) {
+        response.headers.set('X-Public-Version-Ms',read.versionMs.toFixed(1));
+        response.headers.set('X-Public-Snapshot-Ms',read.snapshotMs.toFixed(1));
+        if(route)response.headers.set('X-Public-Snapshot-Route',route);
+      }
     }
     const placement = request.headers.get('cf-placement');
     if (/^(?:local|remote)-[A-Z]{3}$/.test(placement || '')) response.headers.set('X-Function-Placement', placement);

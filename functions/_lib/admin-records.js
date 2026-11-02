@@ -301,14 +301,20 @@ function snapshotManifest(row, manifest) {
   return current;
 }
 
+function snapshotRoute(results) {
+  const routes=results.map(result=>result.meta?.served_by_primary);
+  return routes.every(value=>value===true)?'primary':routes.every(value=>value===false)?'replica':'unknown';
+}
+
 export async function recordSnapshot(db, manifest, key) {
-  const [state, record] = await db.batch([
+  const results = await db.batch([
     db.prepare("SELECT key,value,revision FROM admin_state WHERE key IN ('content','tokens')"),
     db.prepare('SELECT key,kind,value FROM admin_content_items WHERE generation=? AND key=?').bind(manifest.generation, key)
   ]);
+  const [state,record]=results;
   const current = snapshotManifest(state.results.find(row => row.key === 'content'), manifest);
   return { manifest: current, tokens: JSON.parse(state.results.find(row => row.key === 'tokens')?.value || '[]'),
-    value: assembledState(record.results, current).value };
+    value: assembledState(record.results, current).value, route:snapshotRoute(results) };
 }
 
 export async function initialRecordPages(db, manifest) {
@@ -324,7 +330,7 @@ export async function initialRecordPages(db, manifest) {
     const value = { generation: current.generation, revision: current.revision, key: rows.at(-1)?.key || '', field, query: '', category: '', media: '', since: null };
     pages[field] = { rows: pageRows(rows, true), cursor: rows.length && total > rows.length ? encodeRecordCursor(value) : '' };
   }
-  return { manifest: current, pages, tokens:JSON.parse(result.at(-1).results[0]?.value||'[]') };
+  return { manifest: current, pages, tokens:JSON.parse(result.at(-1).results[0]?.value||'[]'),route:snapshotRoute(result) };
 }
 
 export async function pageRecordSnapshot(db, manifest, { field, cursor = '', limit = 50, summary = false, query = '', category = '', media = '', since } = {}) {
@@ -371,7 +377,7 @@ export async function pageRecordSnapshot(db, manifest, { field, cursor = '', lim
   const candidates = result[1].results, rows = boundedPage(candidates, limit), more = candidates.length > rows.length;
   const cursorValue = { generation: manifest.generation, revision: manifest.revision, key: rows.at(-1)?.key || '', field: field || '', query, category, media, since: since ?? null };
   const nextCursor = more ? encodeRecordCursor(cursorValue) : '';
-  return {manifest,tokens:JSON.parse(result.at(-1).results[0]?.value||'[]'),
+  return {manifest,tokens:JSON.parse(result.at(-1).results[0]?.value||'[]'),route:snapshotRoute(result),
     page:{ ok: true, model: 'records-v1', revision: manifest.revision, total, rows: pageRows(rows, summary), cursor: nextCursor }};
 }
 
