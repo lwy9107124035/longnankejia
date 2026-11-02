@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './helpers/read-load-reports.mjs';
+import { aggregateReadLoads, confirmPeakWrites, confirmAfterAckReads, readLoadTargets, parseControlResponse } from './helpers/read-load-reports.mjs';
 
 test('control timings separate server work from client transport without exposing malformed private bodies',()=>{
   const result=parseControlResponse('{"ok":true}\n200\n0.75\ncontent;dur=123.4');
@@ -37,6 +37,16 @@ test('distributed acceptance requires complete synchronized journeys, matching i
   const failed = structuredClone(reports); failed[0].samples[0].ok = false; failed[0].samples[0].status = 503; assert.equal(aggregateReadLoads(failed).failures, 1);
   const duplicate = structuredClone(reports); duplicate[3].shard = 2; assert.throws(() => aggregateReadLoads(duplicate));
   const excess = structuredClone(reports); excess.forEach(r => { r.httpRequests = 4000; }); assert.throws(() => aggregateReadLoads(excess));
+  const multiple=structuredClone(reports);
+  multiple.forEach(report=>{
+    report.articles=3;report.httpRequests=2522;report.phases[0].finishedAt='2026-10-31T08:00:03.000Z';
+    for(let user=0;user<250;user++)for(const [i,target] of readLoadTargets(3).slice(6).entries())report.samples.push({user,target,phase:250,ok:true,status:200,ms:100,
+      startedAt:new Date(Date.parse(start)+(6+i)*150).toISOString(),finishedAt:new Date(Date.parse(start)+(6+i)*150+100).toISOString()});
+  });
+  const longer=aggregateReadLoads(multiple);assert.equal(longer.pass,true);assert.equal(longer.peakRequests,10000);assert.equal(longer.httpRequests,10088);assert.equal(longer.articles,3);
+  assert.throws(()=>readLoadTargets(2));
+  const mixed=structuredClone(multiple);mixed[0].articles=1;assert.throws(()=>aggregateReadLoads(mixed));
+  const incomplete=structuredClone(multiple);incomplete[0].samples.pop();assert.throws(()=>aggregateReadLoads(incomplete));
   const late = structuredClone(reports); late[3].phases[0].startedAt = '2026-10-31T08:00:02.000Z'; assert.equal(aggregateReadLoads(late).pass, false);
   const staticReports = reports.map(report => ({ ...report, requestBudget: 251, httpRequests: undefined,
     phases: [{ ...report.phases[0], samples: report.samples.filter(sample => sample.target === 'html') }] }));
@@ -45,6 +55,16 @@ test('distributed acceptance requires complete synchronized journeys, matching i
     startedAt: '2026-10-31T08:00:00.200Z', finishedAt: '2026-10-31T08:00:00.300Z' }));
   const staggered = aggregateReadLoads(staticReports, { staticOnly: true });
   assert.equal(staggered.concurrentUsers, 750); assert.equal(staggered.pass, false);
+});
+
+test('post-ack public reads require actual later requests with the committed values and revision',()=>{
+  const window={finishedAt:'2026-11-02T00:00:01Z',revisions:[4,5,6,7,7]};
+  const row={phase:250,target:'detail-3',startedAtEarliest:'2026-11-02T00:00:01.010Z',edited:true,revision:7};
+  assert.deepEqual(confirmAfterAckReads([{samples:[row]}],window),{count:1,allCurrent:true});
+  assert.equal(confirmAfterAckReads([{samples:[{...row,revision:6}]}],window).allCurrent,false);
+  assert.equal(confirmAfterAckReads([{samples:[{...row,edited:false}]}],window).allCurrent,false);
+  assert.equal(confirmAfterAckReads([{samples:[{...row,startedAtEarliest:'2026-11-02T00:00:00.999Z'}]}],window).allCurrent,false);
+  assert.equal(confirmAfterAckReads([{samples:[row]}],{...window,revisions:[undefined,5,6]}).allCurrent,false);
 });
 
 test('peak saves require confirmed responses within the full overlap, not just timestamps prepared before committing', () => {

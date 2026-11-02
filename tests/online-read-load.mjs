@@ -5,6 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { assertLoadPermit } from './helpers/load-budget.mjs';
 import {calibrateLoadClock} from './helpers/load-clock.mjs';
+import {readLoadTargets} from './helpers/read-load-reports.mjs';
 
 const origin = 'https://codex.longnankejia-dev.pages.dev';
 const allowedPhases = [1, 10, 25, 50, 100, 250, 500, 1000];
@@ -13,8 +14,9 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, reportPath, duringPeak,
   generator = 'single Windows host via configured proxy; HTTP virtual users, not physical phones', peakPauseMs = 0, latencyDiagnostic = false,
-  permit, phaseUsers = allowedPhases, shard = 0, shardCount = 1, requestBudget = 15000, startAt }) {
+  permit, phaseUsers = allowedPhases, shard = 0, shardCount = 1, requestBudget = 15000, startAt, articles=1 }) {
   assertLoadPermit(permit, requestBudget * shardCount);
+  const targetNames=readLoadTargets(articles);
   const clock = await calibrateLoadClock(origin);
   assert.ok([1, 4].includes(shardCount) && Number.isInteger(shard) && shard >= 0 && shard < shardCount);
   assert.ok(phaseUsers.length && phaseUsers.every(users => allowedPhases.includes(users)));
@@ -28,15 +30,21 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
     { name: 'legacy-image', path: '/api/media/a5de70330e575fa03c530091f07430a2d959b70aa3df14b8804e7a3c4e2c5a6a', type: 'image/jpeg' },
     { name: 'new-image', path: '/api/media/a80e375c338e604e10af745832bcd141b155c762adf56fefe58799175a372825', type: 'image/jpeg' }
   ];
+  if(articles===3)for(let article=2;article<=3;article++) {
+    const key='kepuCustom/'+prefix+'-'+String(article-1).padStart(3,'0');
+    targets.push({name:'detail-'+article,path:'/api/admin/sync?format=record&key='+encodeURIComponent(key),type:'application/json',detailKey:key},
+      {...targets[article===2?4:5],name:'cover-'+article});
+  }
+  assert.deepEqual(targets.map(target=>target.name),targetNames);
   const report = { startedAt: new Date().toISOString(), origin, generator, latencyDiagnostic, shard, shardCount, coordinatedStart: startAt,
-    realIphone: false, realWechat: false, realOfficialAccount: false, paidAiCalls: 0, fixtureCount, fixtureRevision: revision, fixturePrefix: prefix,
+    realIphone: false, realWechat: false, realOfficialAccount: false, paidAiCalls: 0, articles, fixtureCount, fixtureRevision: revision, fixturePrefix: prefix,
     clockCalibration:clock.report, requestBudget, requestTimeoutMs: 10000, proposedRequestP95Ms: 3000, targetUsersConfirmed: true, targetUsers: 1000, phases: [], samples: [] };
   let inFlight = 0, nextRequest = clock.report.httpRequests, stopped = false;
   const images = new Map();
   async function request(target, phase, signal, user) {
     if (++nextRequest > report.requestBudget) throw Error('Read-only load request budget exhausted');
     const started = performance.now(); inFlight++; phase.peakInFlight = Math.max(phase.peakInFlight, inFlight);
-    const sample = { phase: phase.users, target: target.name, user, startedAt: new Date(clock.now()).toISOString(), startedAtLatest:new Date(clock.latest()).toISOString() };
+    const sample = { phase: phase.users, target: target.name, user, startedAt: new Date(clock.now()).toISOString(), startedAtLatest:new Date(clock.latest()).toISOString(),startedAtEarliest:new Date(clock.earliest()).toISOString() };
     try {
       let response, bytes; sample.statuses = [];
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -70,9 +78,10 @@ export async function runReadLoad({ prefix, detailKey, revision, fixtureCount, r
       if (target.type === 'application/json') {
         assert.match(response.headers.get('cache-control') || '', /no-store/);
         const data = JSON.parse(new TextDecoder().decode(bytes)); assert.equal(data.ok, true); assert.equal(data.model, 'records-v1');
+        sample.revision=data.revision;
         if (target.name === 'catalog') assert.ok(data.counts.kepuCustom >= fixtureCount);
         if (target.name === 'page') { assert.equal(data.rows.length, 50); assert.ok(data.rows.every(row => row.summary)); }
-        if (target.name === 'detail') { assert.equal(data.rows[0].key, detailKey); assert.ok(data.rows[0].value.detail.length > 2000); }
+        if (target.name === 'detail'||target.detailKey) { assert.equal(data.rows[0].key, target.detailKey||detailKey); assert.ok(data.rows[0].value.detail.length > 2000);sample.edited=data.rows[0].value.tag==='三会话峰值写入'; }
       } else if (target.type.startsWith('image/')) {
         const digest = hash(bytes); if (!images.has(target.name)) images.set(target.name, digest);
         assert.equal(digest, images.get(target.name)); assert.ok(bytes.length > 10000);

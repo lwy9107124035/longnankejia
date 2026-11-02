@@ -9,5 +9,6 @@ fs.mkdirSync('.cache', { recursive: true });
 const report = await runReadLoad({ prefix, detailKey: 'kepuCustom/' + prefix + '-000', revision, fixtureCount: 188,
   generator: 'standard GitHub-hosted Ubuntu runner, direct HTTPS; HTTP virtual users, not physical phones', peakPauseMs: distributed ? 0 : 15000, latencyDiagnostic: !distributed,
   permit: process.env.LOAD_BUDGET, ...(distributed && { shard, shardCount: 4, phaseUsers: [1, 250], startAt: process.env.LOAD_START, requestBudget: 3750 }),
+  articles:Number(process.env.LOAD_ARTICLES||1),
   reportPath: '.cache/online-read-load-report.json' });
 if (!report.pass) process.exitCode = 1;

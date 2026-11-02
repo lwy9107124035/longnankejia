@@ -9,7 +9,7 @@ import { createRestDatabase, remoteRequest, TARGETS } from '../scripts/migrate-c
 import { checkHealth,readDatabaseCapacity } from '../scripts/maintenance-health.mjs';
 import '../js/content-schema.js';
 import { createLoadPermit, assertLoadPermit, assertProductionReady } from './helpers/load-budget.mjs';
-import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './helpers/read-load-reports.mjs';
+import { aggregateReadLoads, confirmPeakWrites, confirmAfterAckReads, parseControlResponse } from './helpers/read-load-reports.mjs';
 import {controlRequest,warmControlConnections} from './helpers/load-control-client.mjs';
 import {calibrateLoadClock} from './helpers/load-clock.mjs';
 import {githubLoadControl as gh} from './helpers/github-load-control.mjs';
@@ -17,6 +17,7 @@ import {retainedRowsFingerprint,verifyRecordAccounting,cleanupSessionIds} from '
 if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Persistent fetch is the default; LOAD_CONTROL_TRANSPORT=curl selects cold-connection diagnostics. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.ok(process.argv.length === 3 && ['--run','--probe-saves'].includes(process.argv[2]), 'Only --run, --probe-saves or --help is supported');
 const saveProbe = process.argv[2] === '--probe-saves';
+const articles=Number(process.env.LOAD_ARTICLES||1);assert.ok([1,3].includes(articles),'LOAD_ARTICLES must be 1 or 3');
 const controlTransport = process.env.LOAD_CONTROL_TRANSPORT || 'fetch';
 assert.ok(['fetch','curl'].includes(controlTransport), 'Unknown control transport');
 const account = await getProjectAccount();
@@ -61,7 +62,7 @@ const db = createRestDatabase(async body => {
     }
   }
 }, { apply: true });
-const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, controlTransport, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionsToRemove };
+const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, controlTransport, articles, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionsToRemove };
 if(clock) result.clockCalibration = clock.report;
 const stateFile = '.cache/' + (cleanupOnly ? 'load-cleanup-' + Date.now() + '-' : 'load-control-') + prefix + '.json';
 const ids = Array.from({ length: saveProbe ? 4 : 188 }, (_, i) => prefix + '-' + String(i).padStart(3, '0'));
@@ -137,13 +138,13 @@ async function saveThreeSessions(initial) {
   assert.ok(saved.slice(0, 3).every(reply => reply.accepted.length === 1));
   assert.equal(saved.slice(3).reduce((sum, reply) => sum + reply.accepted.length, 0), 1);
   assert.equal(saved.slice(3).reduce((sum, reply) => sum + reply.conflicts.length, 0), 1);
-  window.finishedAt = new Date(clock.latest()).toISOString(); window.nominalFinishedAt=new Date(clock.now()).toISOString(); Object.assign(window, { timings:saved.map(reply=>reply.testTiming || {recovered:true}), accepted: 3, actors: 3, operationIds: saved.slice(0, 3).map(reply => reply.testOperationId), sameRecordAccepted: 1, sameRecordConflict: 1 });
+  window.finishedAt = new Date(clock.latest()).toISOString(); window.nominalFinishedAt=new Date(clock.now()).toISOString(); Object.assign(window, { timings:saved.map(reply=>reply.testTiming || {recovered:true}), revisions:saved.map(reply=>reply.revision),accepted: 3, actors: 3, operationIds: saved.slice(0, 3).map(reply => reply.testOperationId), sameRecordAccepted: 1, sameRecordConflict: 1 });
   return window;
 }
 async function remoteLoad(revision, initial) {
   const scheduled = clock.now() + 120000, startAt = new Date(scheduled).toISOString();
   let dispatched = '', dispatchError;
-  try { dispatched = await gh(['workflow', 'run', 'cf-pages.yml', '--repo', 'lwy9107124035/longnankejia', '--ref', 'codex', '-f', 'mode=read-distributed', '-f', 'load_prefix=' + prefix, '-f', 'load_revision=' + revision, '-f', 'load_start=' + startAt, '-f', 'load_budget=' + JSON.stringify(loadPermit)]); }
+  try { dispatched = await gh(['workflow', 'run', 'cf-pages.yml', '--repo', 'lwy9107124035/longnankejia', '--ref', 'codex', '-f', 'mode=read-distributed', '-f', 'load_prefix=' + prefix, '-f', 'load_revision=' + revision, '-f', 'load_start=' + startAt, '-f', 'load_articles='+articles,'-f', 'load_budget=' + JSON.stringify(loadPermit)]); }
   catch (error) { dispatchError = error.message; }
   const foundId = dispatched.match(/actions\/runs\/(\d+)/)?.[1];
   let run = foundId ? { databaseId: Number(foundId), url: 'https://github.com/lwy9107124035/longnankejia/actions/runs/' + foundId } : null;
@@ -186,6 +187,10 @@ async function remoteLoad(revision, initial) {
   result.concurrentWrites.serverWriteTimes = confirmations.results.map(row => new Date(row.created_at).toISOString());
   assert.equal(result.concurrentWrites.serverWriteTimes.length, 3);
   result.concurrentWrites.confirmedDuringFullPeak = confirmPeakWrites(report, writes, result.concurrentWrites.serverWriteTimes);
+  if(articles===3) {
+    result.concurrentWrites.afterAckReads=confirmAfterAckReads(reports,writes[0]);
+    report.pass&&=result.concurrentWrites.afterAckReads.allCurrent;
+  }
   const persisted = new Map((await rows()).map(row => [row.key, row]));
   assert.ok(ids.slice(0, 3).every(id => persisted.get('kepuCustom/' + id)?.value.tag === '三会话峰值写入'));
   report.pass &&= result.concurrentWrites.confirmedDuringFullPeak;
