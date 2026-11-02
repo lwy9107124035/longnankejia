@@ -63,3 +63,9 @@ node scripts/maintenance-health.mjs --baseline docs/production-baseline.json --r
 已有每6小时维护任务在同一聊天接续尚未完成的验收，要求电脑和Codex应用可用；不是云端全天任务，不承诺准点执行。除新异常、容量/备份问题、修复完成或确需用户决定外保持安静，验收结束后不反复加压。无真实iPhone/真机云条件不能报告真机通过，Windows微信安全提示须用户手动处理；不能由代理绕过。
 
 保存诊断可用同一受保护入口`node tests/live-codex-load.mjs --probe-saves`，仅4条合成记录，不启动公开负载，也必须通过新预算和正式健康/完整备份前置。默认控制客户端使用持久fetch；`LOAD_CONTROL_TRANSPORT=curl`仅用于显式对照冷连接开销，不自动切换或掩盖错误。正式四机负载前5个静态GET校准连接，不读D1；确认目标前3.5秒开始、每请求最多2.5秒，错过窗口停止，不延长峰值用户空闲时间。此准备阶段不计入业务延迟，原始3秒与完整确认窗口判定不变。各生成器CDN时钟校准12样本至少间隔100ms，避免高速采样全部落在一个整秒内而过于不确定；确定活跃窗口计入完整误差。探针`probeCorrectnessPass`只表示保存/冲突正确，不代表千人性能通过。
+
+## 云端控制器（仅codex）
+
+本机代理/TLS造成静态连接准备反复失败时，不提高业务3秒或峰值确认阈值。先通过相关CI，再在现有cf-pages.yml手动选择acceptance-load且ref=codex；该作业只调用同一个tests/live-codex-load.mjs --run，由它重新读取当前UTC日全账户用量和完整正式前置。API token沿用既有CI secret、GITHUB_TOKEN仅作业内短期使用；不新建秘密/服务，不上传完整公开备份或私有行值。只允许该作业actions:write以启动并核验四个只读生成器；同模式不自动取消，检测其他codex作业以拒绝重叠。
+
+两个已调查但未确认删除意图的旧ID清单为docs/maintenance-pending-deletions.json，不能扩大为忽略所有缺条或改基线。原79行keys-only为tests/fixtures/codex-retained-row-keys.json，清理后核对原值/版本指纹、凭据、逐项计数/字节与main前后摘要和完整备份；不输出明文凭据。artifact仅保存负载结果/预算/前后健康报告/不含bearer的控制状态，不保存私有值或完整图片备份。失败/取消后须确认远端停止再精确清理，不能把控制器CI绿冒充综合峰值验收通过。若现有CI token没有用量或D1权限，仍停止，不修改真实密钥或绕预算。

@@ -1,0 +1,5 @@
+{
+  "ids": ["kepu-1792982202411-0o4oa2ji", "kepu-1793151098059-yq7juytv"],
+  "status": "Deletion records were found; user intent remains unconfirmed. Keep the baseline and warnings unchanged.",
+  "evidence": "docs/codex-admin-checkpoint.md; .cache/maintenance/notification-state.json"
+}

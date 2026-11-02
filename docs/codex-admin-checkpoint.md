@@ -518,3 +518,26 @@
 - 14:23Z例行原始报告`.cache/maintenance/report-20261101T142357Z.json`：正式200/JSON/no-store、385/188不变、181图片复用并校验、snapshotComplete=true、元数据711,723bytes、物理34,340,864bytes、容量warnings空。exit1仅两个原缺失ID待确认，仍保留基线/告警，不擅自恢复/认可删除意图。notification-state只更新实际观测与本轮验收通知，旧503事故不覆盖、不重复报警。
 - 最新全账户UTC日965,248读/63,363写；默认下一轮预测1,965,248读/83,363写，写入超过80,000保护线。`.cache/final-load-budget-refusal-20261101.json`实测守卫拒绝，loadStarted=false。**2026-11-01不再启动D1压测，不降低预测绕预算。**原automation-2已更新本轮真实结果/拒绝条件和继续步骤，无新聊天/新任务，恢复只读检查与安静策略；跨UTC日后才核验新预算、正式健康/容量/完整备份，再考虑一轮公网峰值读写。不保证本机任务准点，电脑和Codex须可用。
 - 下一次从此处接续：检查无运行中的负载和Git修改；node scripts/d1-usage.mjs取得新鲜全账户UTC用量，预算许可与正式前置必须都通过，再用唯一node tests/live-codex-load.mjs --run进行4生成器、三会话保存及同条竞争。完整ACK须在保守千人共同活跃窗口，3秒不改；最后精确清理并独立核对79行/凭据/main。若控制网络继续异常则停止，不无限重试。没有真实iPhone/微信/公众号/真实AI千人测试资源，不声称已测；仍禁止任何桌面操作、付费/R2开通、main发布及生产写入。
+
+## 2026-11-02 09:28北京时间巡检：网络检测不可用，未启动验收
+
+- 实际机器UTC时间2026-11-02T01:28:23Z，虽触发消息时间为2026-11-01T17:40Z，已跨UTC日；不沿用前日预算数字。开始codex3ce66a6，已跟踪文件干净，未发现本机运行中的live-codex-load/ci-read-load进程；未操作桌面。
+- 原例行只读命令报告`.cache/maintenance/report-20261102T012839Z.json`：sync request failed: fetch failed、HTTP/revision/count/容量均未知、snapshotComplete=false。随后全账户用量入口报Cloudflare read transport was not confirmed，GitHub状态命令TLS handshake timeout；不是得到HTTP503或已证实网站丢数据。安全诊断`.cache/maintenance/network-unavailable-20261102T012839Z.json`保留，不输出凭据，不以旧报告充当当前正常/完整备份。
+- 按网络不可用停止云端依赖，无新的D1负载/夹具/会话/索引、无main写入/发布，无付费/R2和密码密钥改动。远端运行状态本次未知，不启动重复负载；上次独立成功清理1022/0及79行/凭据/main核验仍是旧证据，不称本次重验。保留旧完整188条/181图备份与两个删除意图待确认告警，不更新基线。
+- 通知状态记录一次新的“监控连接不可用”，保存上次成功观测，后续同一网络故障不重复通知。不改业务源码、不反复重跑回归、不重试网络或尝试发布。检查点仅本地更新，Git可能显示本文件待提交；后续尊重它。
+- 下一步：网络恢复后先同一巡检/完整备份和新鲜node scripts/d1-usage.mjs，再核对本地/远端无运行中的验收。只有全账户预测<=400万读/8万写和正式健康/容量/完整备份都通过，才由唯一node tests/live-codex-load.mjs --run接续四机千人+三会话严格峰值验收。仍不提高3秒、不加空闲等待、不能绕预算或推main。真机/微信/公众号/AI千人仍未验收。
+
+## 2026-11-02 09:40北京时间巡检：同一连接故障仍未解除，保持安静
+
+- 先读检查点/运行手册和Git，codex3ce66a6，仅前次巡检追加的本文件待提交，尊重未跟踪资料。只运行一次原例行命令，NODE_USE_ENV_PROXY=1，无桌面控制/负载/部署/数据写入。
+- 原始报告`.cache/maintenance/report-20261102T014043Z.json`：正式JSON本次200/no-store、revision385/188唯一ID、内容摘要仍6b10a9b...不变；两个既有缺ID仍保留。但后续图片读取fetch failed，snapshotComplete=false、mediaChecked0、无新完整快照；Wrangler容量检测未完成，物理容量未知。不能把主JSON成功说成全部巡检/备份恢复，旧181图完整备份仍保留。
+- 判定为上一轮已通知的“连接导致监控不完整”事件尚未解除，不认定新的资料丢失、容量满或生产503，不因错误表现从主JSON转到图片/容量就重复通知。notification-state保存实际部分恢复观测和同事件去重，旧通知/完整成功证据/两个待确认ID不覆盖。
+- 正式完整备份和物理容量前置未通过，因此未查询后续额度或启动四机/夹具/会话/索引，不使用旧预算。保持本地检查点更新，不重试网络、不提交/推送main或改密码密钥。下一轮仍先重新核验完整巡检；恢复后再取新鲜全账户UTC日用量、核对无在运行负载，只有守卫及正式前置均通过才用唯一受保护入口继续。3秒与保守峰值ACK窗口不变，真机/微信/AI峰值仍未验收。
+
+## 2026-11-02 10:35北京时间继续：连接恢复，准备云端控制器
+
+- 用户明确继续。正式只读`.cache/maintenance/latest.json` at2026-11-02T02:35:17Z恢复200/JSON/no-store、385/188原摘要、181图完整校验备份、main物理34,340,864bytes，只有两个旧待确认缺条问题；当日全账户31读/0写，新UTC日不是沿用昨日数字。本机无运行中的负载，远端三旧任务均completed。前两次网络巡检记录保留，恢复观测待收尾归档。
+- 随即使用唯一受保护entry，本机在创建任何夹具/会话前静态预热仍超时，`.cache/resumed-calibrated-load-20261102.txt`保留；没有真正开始新负载。此为Windows连接准备反复不稳定，不认定网站容量故障，停止调整超时和本机重复尝试。
+- 改用已有GitHub节点作为控制器：新增仅codex/手动acceptance-load作业、同模式不自动取消、检测其他codex作业避免重复；仍调用node tests/live-codex-load.mjs --run、原全账户预算/完整正式备份/物理容量/静态预检/3秒与保守峰值ACK守卫原样。使用仓库既有Cloudflare密钥与作业短期GITHUB_TOKEN内存header，不更换或新增秘密，不开通服务/账单、不复制正式资料到预览；公开备份不上传artifact。官方依据https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow（workflow_dispatch允许GITHUB_TOKEN触发）和https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax（作业级actions:write）已核对。只有控制作业具有actions写权限，部署/读取作业不扩权。
+- 原始79行的keys-only fixture取自已核验rev59备份，包含25历史/52审计/apiConfig/workflowConfig，仅键无值或凭据。新增SQLite实测指纹覆盖值/版本变更、缺行、原代际隔离；控制器清理后在云端核对79行/凭据/计数与bytes/无瞬态标记，并再次做main完整健康备份与前后摘要核对。两个已知删除告警作为单独版本化待确认清单供云端前置使用，保留正式基线/告警，并非认可删除意图。
+- 相关28/28通过；最后会计校验变更的8项针对回归也通过，YAML解析通过。没有改网站业务函数/前端；不要声称千人峰值已验收。下一步显式只提交codex，等完整CI；再按唯一受保护入口由云端手动作业启动一次。若现有API token权限/网络/预算/完整前置不满足则仍拒绝，不绕守卫或索要/打印密钥。main仍禁止发布和写入，禁止桌面操作，真机/微信/AI峰值仍未验收。

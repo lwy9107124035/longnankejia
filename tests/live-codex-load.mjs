@@ -13,6 +13,7 @@ import { aggregateReadLoads, confirmPeakWrites, parseControlResponse } from './h
 import {controlRequest,warmControlConnections} from './helpers/load-control-client.mjs';
 import {calibrateLoadClock} from './helpers/load-clock.mjs';
 import {githubLoadControl as gh} from './helpers/github-load-control.mjs';
+import {retainedRowsFingerprint,verifyRecordAccounting} from './helpers/load-integrity.mjs';
 if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Persistent fetch is the default; LOAD_CONTROL_TRANSPORT=curl selects cold-connection diagnostics. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.ok(process.argv.length === 3 && ['--run','--probe-saves'].includes(process.argv[2]), 'Only --run, --probe-saves or --help is supported');
 const saveProbe = process.argv[2] === '--probe-saves';
@@ -23,7 +24,7 @@ const origin = 'https://codex.longnankejia-dev.pages.dev', schema = globalThis.H
 const cleanupOnly = process.env.CLEANUP_LOAD_PREFIX;
 if (cleanupOnly) assert.match(cleanupOnly, /^load-fixture-[a-f0-9]{24}$/);
 const clock = cleanupOnly ? null : await calibrateLoadClock(origin);
-let loadPermit;
+let loadPermit,productionBefore;
 if (!cleanupOnly) {
   const usage = await readD1Usage(account); fs.mkdirSync('.cache', { recursive: true });
   fs.writeFileSync('.cache/load-budget-check-' + Date.now() + '.json', JSON.stringify(usage, null, 2), { flag: 'wx' });
@@ -34,6 +35,7 @@ if (!cleanupOnly) {
   fs.writeFileSync('.cache/maintenance/pre-load-' + Date.now() + '.json', JSON.stringify(production,null,2), {flag:'wx'});
   const notification = fs.existsSync('.cache/maintenance/notification-state.json') ? JSON.parse(fs.readFileSync('.cache/maintenance/notification-state.json','utf8')) : {};
   assertProductionReady(production, notification.pendingDeletionConfirmation || []);
+  productionBefore=production;
   assertLoadPermit(loadPermit, 15000);
   if(controlTransport === 'fetch') await warmControlConnections(origin);
 }
@@ -182,6 +184,8 @@ async function remoteLoad(revision, initial) {
   result.loadReport = destination + '/aggregate.json'; fs.writeFileSync(result.loadReport, JSON.stringify(report, null, 2)); return report;
 }
 const before = await app(null, 'format=pages', false), credentialBefore = await credentialsHash();
+const retainedKeys=JSON.parse(fs.readFileSync('tests/fixtures/codex-retained-row-keys.json','utf8'));
+const retainedBefore=await retainedRowsFingerprint(db,retainedKeys);
 assert.equal(before.model, 'records-v1'); result.beforeRevision = before.revision; result.beforeCount = before.counts.kepuCustom ?? 0;
 try {
   for (const sessionId of sessionIds) {
@@ -240,6 +244,10 @@ finally {
     }
     assert.equal((await rows()).filter(row => row.key.startsWith('kepuCustom/' + prefix + '-')).length, 0);
     assert.equal(await credentialsHash(), credentialBefore); result.credentialsUnchanged = true;
+    const retainedAfter=await retainedRowsFingerprint(db,retainedKeys);
+    assert.deepEqual(retainedAfter,retainedBefore,'Retained codex rows changed');
+    result.retainedRows={count:retainedBefore.count,unchanged:true};
+    result.recordAccounting=await verifyRecordAccounting(db);
     const final = await app(); result.afterRevision = final.revision; result.afterCount = final.counts.kepuCustom ?? 0; result.cleanup = true;
   } catch (error) { result.cleanupError = error.message; }
   let removedSessions = 0;
@@ -254,7 +262,14 @@ finally {
   }
   catch (error) { result.sessionCleanupError = error.message; }
   result.sessionRemoved = removedSessions === sessionIds.length;
+  if(productionBefore) try {
+    const after=await checkHealth({origin:'https://longnankejia.pages.dev',baseline:JSON.parse(fs.readFileSync('docs/production-baseline.json','utf8')),
+      snapshotDir:'.cache/maintenance/backups',databaseName:TARGETS.main.id});
+    fs.writeFileSync('.cache/maintenance/post-load-'+Date.now()+'.json',JSON.stringify(after,null,2),{flag:'wx'});
+    result.productionAfter={httpStatus:after.httpStatus,revision:after.revision,count:after.count,snapshotComplete:after.snapshotComplete,unchanged:after.revision===productionBefore.revision&&after.contentHash===productionBefore.contentHash};
+    assert.ok(result.productionAfter.unchanged&&after.snapshotComplete&&after.databaseStorage&&!after.warnings.length,'Production post-check incomplete or changed; review evidence');
+  } catch(error) {result.productionCheckError=error.message;}
 }
 console.log(JSON.stringify({ ...result, sessionHashes: undefined, phases: result.phases.map(phase => ({ users: phase.users, requests: phase.requests, failures: phase.failures, p95Ms: phase.p95Ms, pass: phase.pass })) }, null, 2));
 fs.writeFileSync(stateFile, JSON.stringify(result, null, 2));
-if (result.error || !result.cleanup || !cleanupOnly && !(saveProbe ? result.probeCorrectnessPass : result.loadPass) || !result.sessionRemoved) process.exitCode = 1;
+if (result.error || result.productionCheckError || !result.cleanup || !cleanupOnly && !(saveProbe ? result.probeCorrectnessPass : result.loadPass) || !result.sessionRemoved) process.exitCode = 1;

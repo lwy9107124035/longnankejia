@@ -102,6 +102,11 @@ export function curlConfiguration(url, token, body, method = 'POST') {
 }
 
 export function readWranglerToken(options = {}) {
+  const apiToken=options.apiToken ?? process.env.CLOUDFLARE_API_TOKEN;
+  if(!options.configPath && apiToken) {
+    if(typeof apiToken!=='string'||/\s/.test(apiToken))throw Error('Cloudflare API authorization is invalid');
+    return apiToken;
+  }
   const configPath = options.configPath || path.join(process.env.APPDATA ? path.join(process.env.APPDATA, 'xdg.config') : process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), '.wrangler/config/default.toml');
   const config = fs.readFileSync(configPath, 'utf8'), token = /^oauth_token\s*=\s*"([^"\r\n]+)"/m.exec(config)?.[1];
   if (!token) throw new Error('Wrangler OAuth authorization is unavailable; authenticate Wrangler first');
