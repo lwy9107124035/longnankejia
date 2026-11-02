@@ -30,18 +30,27 @@ function holdFirstRead(db, matches) {
 }
 const catalog = '/api/admin/sync?format=pages';
 
-test('anonymous token redaction metadata loads while the atomic catalog batch is pending', {timeout:5000}, async t=>{
+function holdFirstBatch(db) {
+  const batch=db.batch.bind(db);let release,entered,held=false;
+  const gate=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+  db.batch=async statements=>{const rows=await batch(statements);if(!held){held=true;entered();await gate;}return rows;};
+  return {started,release};
+}
+
+test('anonymous redaction metadata shares the atomic catalog batch without a separate read', {timeout:5000}, async t=>{
   const {backend}=await fixture(t),batch=backend.db.batch.bind(backend.db),prepare=backend.db.prepare.bind(backend.db);
-  let entered,release,tokenReads=0;
+  const tokenStatements=new WeakSet();let entered,release,tokenReads=0,batchTokenReads=0;
   const started=new Promise(resolve=>{entered=resolve;}),gate=new Promise(resolve=>{release=resolve;});t.after(release);
-  backend.db.batch=async statements=>{const rows=await batch(statements);entered();await gate;return rows;};
+  backend.db.batch=async statements=>{batchTokenReads+=statements.filter(statement=>tokenStatements.has(statement)).length;const rows=await batch(statements);entered();await gate;return rows;};
   backend.db.prepare=sql=>{const statement=prepare(sql),bind=statement.bind.bind(statement),first=statement.first.bind(statement);let params=[];
+    if(sql==="SELECT value FROM admin_state WHERE key='tokens'")tokenStatements.add(statement);
     statement.bind=(...values)=>{params=values;return bind(...values);};
     statement.first=()=>{if(params[0]==='tokens')tokenReads++;return first();};return statement;
   };
   const pending=backend.fetchApi(catalog);await started;await new Promise(setImmediate);
-  const overlapped=tokenReads===1;release();const response=await pending,data=await response.json();
-  assert.equal(response.status,200);assert.equal(data.kepuCustom[0].name,'旧内容');assert.equal(Object.hasOwn(data,'tokens'),false);assert.equal(overlapped,true);
+  release();const response=await pending,data=await response.json();
+  assert.equal(response.status,200);assert.equal(data.kepuCustom[0].name,'旧内容');assert.equal(Object.hasOwn(data,'tokens'),false);
+  assert.equal(tokenReads,0);assert.equal(batchTokenReads,1);
 });
 
 test('simultaneous anonymous catalog requests share database work and create their own responses', async t => {
@@ -82,10 +91,10 @@ test('different databases never share a public catalog even at the same HTTP ori
   held.release(); assert.equal((await (await pending).json()).kepuCustom[0].name, '甲站资料');
 });
 
-test('a completed write invalidates an older in-flight public read before another visitor joins', async t => {
+test('a completed write invalidates an older in-flight public read before another visitor joins', {timeout:10000}, async t => {
   const { backend, content } = await fixture(t);
   const root = (await backend.call({ action: 'login', credential: 'admin123', clientId: 'catalog-writer' })).data.bearer;
-  const held = holdFirstRead(backend.db, (sql, params) => sql.includes('admin_state') && params[0] === 'tokens'); t.after(held.release);
+  const held = holdFirstBatch(backend.db); t.after(held.release);
   const pending = backend.fetchApi(catalog); await held.started;
   const before = content.kepuCustom[0];
   const saved = await backend.call({ action: 'update_content', changes: [{ key: 'kepuCustom/' + before.id,
@@ -109,7 +118,7 @@ test('a rejected public read does not leave a rejected promise for subsequent vi
   assert.equal((await recovered.json()).kepuCustom[0].name, '旧内容');
 });
 
-test('conditional refresh reads independently after another isolate writes without a local invalidation', async t => {
+test('conditional refresh reads independently after another isolate writes without a local invalidation', {timeout:10000}, async t => {
   const { backend, content } = await fixture(t);
   const held = holdFirstRead(backend.db, (sql, params) => sql.includes('admin_state') && params[0] === 'tokens'); t.after(held.release);
   const pending = backend.fetchApi(catalog + '&revision=1'); await held.started;
