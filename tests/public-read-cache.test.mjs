@@ -72,8 +72,8 @@ test('a short staggered burst shares bounded fresh-version batches instead of on
   cache(t);const site=await backend(t);await request(site.env);
   const prepare=site.db.prepare.bind(site.db);let calls=0;
   site.db.prepare=sql=>{if(sql==="SELECT value, revision FROM admin_state WHERE key='content'")calls++;return prepare(sql);};
-  const bodies=await Promise.all(Array.from({length:100},(_,i)=>sleep(i).then(async()=>{const response=await request(site.env);assert.equal(response.status,200);assert.match(response.headers.get('Cache-Control'),/no-store/);return response.json();})));
-  assert.ok(calls<=4,'100 staggered arrivals must use at most four version queries, observed '+calls);assert.ok(bodies.every(body=>body.revision===1));
+  const bodies=await Promise.all(Array.from({length:100},(_,i)=>sleep(i*2).then(async()=>{const response=await request(site.env);assert.equal(response.status,200);assert.match(response.headers.get('Cache-Control'),/no-store/);return response.json();})));
+  assert.ok(calls<=3,'100 arrivals spread over 200ms must use at most three version queries, observed '+calls);assert.ok(bodies.every(body=>body.revision===1));
   const response=await request(site.env,catalog,{'cf-placement':'remote-ICN'});assert.equal(response.headers.get('X-Function-Placement'),'remote-ICN');
 });
 

@@ -227,7 +227,7 @@ function publicVersion(db, context) {
       // Only arrivals before dispatch share a query; later arrivals need a new version check.
       scheduledPublicVersions.delete(db);
       recordsManifest(db).then(manifest => resolve({manifest, size:group.size}), reject);
-    }, 50));
+    }, 100));
     scheduledPublicVersions.set(db, group);
   }
   group.size++;
