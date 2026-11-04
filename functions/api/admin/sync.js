@@ -212,7 +212,8 @@ async function getData(db, request, env, context) {
   const snapshotStarted=performance.now();
   const manifest = group?.manifest;
   if (group) publicVersionBatchSizes.set(request, group.size);
-  const key = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB + ':' + (manifest ? manifest.generation + ':' + manifest.revision : 'legacy');
+  const keyPrefix = url.href + ':' + !!env.ADMIN_MEDIA + ':' + !!env.ADMIN_MEDIA_DB + ':';
+  const key = keyPrefix + (manifest ? manifest.generation + ':' + manifest.revision : 'legacy');
   let reads = publicContentReads.get(db);
   if (!reads) { reads = new Map(); publicContentReads.set(db, reads); }
   if (reads.has(key)) {
@@ -220,13 +221,23 @@ async function getData(db, request, env, context) {
   }
   // Share parsed data through publication, without sharing request I/O or delaying the response for cache writes.
   const snapshotDb = group?.bookmark ? db.withSession(group.bookmark) : db;
-  const publications = [];
-  const promise = manifest ? readPublicSnapshot(snapshotDb, request, env, manifest, publications) : readData(snapshotDb, request, env, manifest);
+  const publications = [], keys = [key];
+  const reading = manifest ? readPublicSnapshot(snapshotDb, request, env, manifest, publications) : readData(snapshotDb, request, env, manifest);
+  const promise = reading.then(value => {
+    if (manifest && value.ok && value.model === 'records-v1' && Number.isSafeInteger(value.revision) && value.revision > manifest.revision) {
+      const actualKey = keyPrefix + manifest.generation + ':' + value.revision;
+      if (!reads.has(actualKey)) {
+        reads.set(actualKey, promise);
+        keys.push(actualKey);
+      }
+    }
+    return value;
+  });
   reads.set(key, promise);
   const finished = Promise.allSettled([promise])
     .then(() => Promise.allSettled(publications))
     .then(() => {
-      if (reads.get(key) === promise) reads.delete(key);
+      for (const sharedKey of keys) if (reads.get(sharedKey) === promise) reads.delete(sharedKey);
       if (!reads.size && publicContentReads.get(db) === reads) publicContentReads.delete(db);
     });
   context.waitUntil?.(finished);

@@ -13,6 +13,18 @@ export function clockBounds(samples) {
   return {lower,upper,uncertaintyMs:upper-lower};
 }
 
+export function calibratedTimeline(bounds, localNow) {
+  const offset = (bounds.lower + bounds.upper) / 2;
+  const earliest = () => Math.floor(localNow() + bounds.lower);
+  return {
+    now: () => localNow() + offset,
+    earliest,
+    latest: () => Math.ceil(localNow() + bounds.upper),
+    // Timed writes wait until the full clock interval has reached the target.
+    millisecondsUntil: target => target - earliest()
+  };
+}
+
 export async function calibrateLoadClock(origin) {
   assert.equal(origin, 'https://codex.longnankejia-dev.pages.dev');
   const wall = Date.now(), mono = performance.now(), localNow = () => wall + performance.now() - mono;
@@ -27,7 +39,7 @@ export async function calibrateLoadClock(origin) {
     // Fast runners must observe a second boundary rather than collect twelve copies of one timestamp.
     if(index < 11) await sleep(Math.max(0,100-(localNow()-start)));
   }
-  const bounds = clockBounds(samples), offset = (bounds.lower+bounds.upper)/2;
-  return {now:() => localNow()+offset, earliest:() => Math.floor(localNow()+bounds.lower), latest:() => Math.ceil(localNow()+bounds.upper),
+  const bounds = clockBounds(samples);
+  return {...calibratedTimeline(bounds, localNow),
     report:{reference:'owned codex CDN trace, whole-second timestamp',...bounds,samples,httpRequests:samples.length}};
 }

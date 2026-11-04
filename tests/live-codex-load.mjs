@@ -148,7 +148,7 @@ async function remoteLoad(revision, initial) {
   result.coordinatedStart = startAt;
   console.log('Four-generator load started: ' + run.databaseId + '; peak ' + startAt); const writes = []; let lastStatus = 0, warmed = false;
   while (clock.now() < scheduled + 6 * 60000) {
-    const now = clock.now(), remaining = scheduled + 400 - now;
+    const now = clock.now(), remaining = clock.millisecondsUntil(scheduled + 400);
     if (controlTransport === 'fetch' && !warmed && remaining > 0 && remaining <= 3500) {
       const startedAt = new Date().toISOString(); await warmControlConnections(origin); warmed = true;
       result.controlWarmup = {startedAt,finishedAt:new Date().toISOString(),staticRequests:5}; continue;

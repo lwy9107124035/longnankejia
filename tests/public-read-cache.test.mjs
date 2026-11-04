@@ -62,6 +62,42 @@ test('a snapshot that advances during a concurrent save is published under its a
   const second=await request(site.env,url);assert.equal(second.status,200);assert.equal((await second.json()).revision,2);
 });
 
+test('an advanced catalog remains shared under its actual revision until publication, while newer saves stay visible', {timeout:10000}, async t=>{
+  const storage=cache(t),site=await backend(t),open=globalThis.caches.open.bind(globalThis.caches);
+  let release,advanced=false,dataReads=0;
+  const publication=new Promise(resolve=>{release=resolve;});
+  globalThis.caches.open=async name=>{
+    const current=await open(name);
+    return {...current,put:async(...args)=>{await publication;return current.put(...args);}};
+  };
+  async function save(revision,name) {
+    const row={...content().kepuCustom[0],name},digest=await schema.cellHash(row,true);
+    site.sqlite.exec('BEGIN');
+    site.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,revision=? WHERE key=?')
+      .run(JSON.stringify(row),digest,revision,'kepuCustom/snapshot-0');
+    site.sqlite.prepare("UPDATE admin_state SET revision=? WHERE key='content'").run(revision);
+    site.sqlite.exec('COMMIT');
+  }
+  const batch=site.db.batch.bind(site.db),tasks=[];
+  site.db.batch=async statements=>{
+    dataReads++;
+    if(!advanced){advanced=true;await save(2,'读取期间的新版本');}
+    return batch(statements);
+  };
+  const read=()=>onRequestGet({request:new Request('http://127.0.0.1:8931'+catalog),env:site.env,waitUntil:task=>tasks.push(task)});
+  try {
+    const first=await read();assert.equal(first.status,200);assert.equal((await first.json()).revision,2);
+    assert.equal(storage.entries.size,0,'Publication is still blocked');
+    const second=await read(),value=await second.json();
+    assert.equal(second.status,200);assert.equal(value.revision,2);assert.equal(value.kepuCustom[0].name,'读取期间的新版本');
+    assert.equal(dataReads,1,'A freshly checked revision must reuse its already-read snapshot before publication');
+    await save(3,'后续保存仍可见');
+    const third=await read(),latest=await third.json();
+    assert.equal(third.status,200);assert.equal(latest.revision,3);assert.equal(latest.kepuCustom[0].name,'后续保存仍可见');
+    assert.equal(dataReads,2);
+  } finally {release();await Promise.allSettled(tasks);}
+});
+
 test('cold snapshot responses finish while cache publication stays shared through unrelated administrator requests', {timeout:10000}, async t=>{
   cache(t);const site=await backend(t),root=(await site.call({action:'login',credential:'admin123',clientId:'cold-publication'})).data;
   const open=globalThis.caches.open.bind(globalThis.caches);let release,started;
