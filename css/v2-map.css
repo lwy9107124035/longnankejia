@@ -101,8 +101,10 @@
 .hm-svg { width: 100%; height: auto; max-height: none; touch-action: none; cursor: grab; user-select: none; }
 .hm-svg:active { cursor: grabbing; }
 .hm-place { cursor: pointer; }
+.hm-label { pointer-events: all; }
+.hm-leader { pointer-events: none; }
 .hm-place.is-filtered { display: none; }
-.hm-hit { fill: transparent; stroke: transparent; pointer-events: all; }
+.hm-hit { fill: transparent; stroke: transparent; pointer-events: none; }
 .hm-place:hover .hm-hit, .hm-place:focus .hm-hit { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
 .hm-place:focus-visible .hm-dot { stroke: var(--accent); stroke-width: 2.6; }
 .hm-map-status { min-height: 1.5em; }

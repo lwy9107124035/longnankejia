@@ -1,12 +1,8 @@
 /**
  * 「家乡」地图：点龙南的一个地方，看书里怎么讲它、听它的客家话原声讲解。
  *
- * 底图与点位坐标都是真实数据（来源与取数日期见 js/data-hometown.js 的注释），不是手绘示意：
- * 博物馆里把围屋画错地方就是错信息，所以生成脚本拿不到坐标的点宁可少画。
- *
- * 地图上只画《文化典藏》真的写到的地方。书里没记的乡镇（临塘乡、武当镇等）不标——
- * 点了没东西可讲的点，等于让观众白点一次；与其给一句空话，不如不画。
- * 介绍文字一律取自书中原文，不做任何补写。
+ * 点位按教师提供的文保分布图和公开坐标复核，来源保存在 data/hometown-places.json。
+ * 配准估算点单独标注。典藏引文、地点介绍与坐标来源分别显示。
  */
 (function () {
   'use strict';
@@ -49,27 +45,31 @@
   }
 
   var CUSTOM_OFFSETS = {
-    '燕翼围': { dx: -36, dy: -20 },
-    '乌石围': { dx: 36, dy: 16 },
-    '杨村镇': { dx: 36, dy: -18 },
-    '太平桥': { dx: -36, dy: 14 },
-    '里仁镇': { dx: -38, dy: -18 },
-    '栗园围': { dx: -36, dy: 14 },
-    '渡江镇': { dx: -36, dy: 16 },
-    '渔仔潭围': { dx: 36, dy: -18 },
-    '汶龙镇': { dx: -36, dy: 16 },
-    '龙南镇': { dx: 38, dy: -18 },
-    '玉石仙岩': { dx: 36, dy: 14 },
-    '桃江乡': { dx: -36, dy: 24 },
-    '东江乡': { dx: 36, dy: -16 },
-    '关西镇': { dx: -36, dy: 14 },
-    '关西新围': { dx: 36, dy: -16 },
-    '程龙镇': { dx: 0, dy: 16 },
-    '武当镇': { dx: -34, dy: -16 },
-    '南武当山': { dx: 34, dy: 16 }
+    '燕翼围': { dx: 0, dy: 36 },
+    '乌石围': { dx: 30, dy: 14 },
+    '杨村镇': { dx: -36, dy: -15 },
+    '太平桥': { dx: -26, dy: -20 },
+    '里仁镇': { dx: 24, dy: -20 },
+    '栗园围': { dx: -32, dy: 34 },
+    '渡江镇': { dx: -36, dy: -14 },
+    '渔仔潭围': { dx: 48, dy: 18 },
+    '汶龙镇': { dx: 12, dy: -16 },
+    '龙南镇': { dx: -6, dy: 28 },
+    '玉石仙岩': { dx: 25, dy: -18 },
+    '桃江乡': { dx: -38, dy: -13 },
+    '东江镇': { dx: 4, dy: 28 },
+    '关西镇': { dx: 20, dy: 28 },
+    '关西新围': { dx: -45, dy: -12 },
+    '程龙镇': { dx: -18, dy: 22 },
+    '武当镇': { dx: 30, dy: -18 },
+    '南武当山': { dx: 36, dy: 34 },
+    '九连山镇': { dx: -30, dy: 28 },
+    '临塘乡': { dx: -25, dy: -16 },
+    '南亨乡': { dx: 14, dy: -14 },
+    '夹湖乡': { dx: -28, dy: -14 }
   };
 
-  /** 点位与标签：使用微调零碰撞偏移，按纬度从北向南排序绘制 */
+  /** 标签偏移不改变地理坐标，近邻地点用引线区分。 */
   function placeSpots(proj) {
     return data.places.map(function (p, i) {
       var q = proj(p.lon, p.lat);
@@ -89,6 +89,8 @@
   function exhibitsFor(name) {
     if (!name) return [];
     var words = [name];
+    var place = data && data.places.find(function (p) { return p.name === name; });
+    if (place && place.aliases) words = words.concat(place.aliases);
     var core = String(name).replace(/(镇|乡|县城)$/, '');
     if (core && core !== name) words.push(core);
     var picked = [];
@@ -160,21 +162,23 @@
       + '<button type="button" data-kind="all" class="is-active">全部 ' + data.places.length + '</button>'
       + '<button type="button" data-kind="town">乡镇 ' + countKind('town') + '</button>'
       + '<button type="button" data-kind="seat">城区 ' + countKind('seat') + '</button>'
-      + '<button type="button" data-kind="site" title="龙南全域现有60余处各级文保单位与保护点，地图精选典藏重点收录名胜">重点文保 ' + countKind('site') + '</button></div>'
+      + '<button type="button" data-kind="site" title="查看本地图收录的文保单位与风景名胜">文保名胜 ' + countKind('site') + '</button></div>'
       + '<div class="hm-place-list" aria-label="地点快捷选择">'
       + data.places.map(function (p, i) {
-        var tag = p.kind === 'site' ? '文保' : (p.kind === 'seat' ? '城区' : '乡镇');
+        var tag = p.kind === 'site' ? (p.name === '南武当山' ? '名胜' : '文保') : (p.kind === 'seat' ? '城区' : '乡镇');
         return '<button type="button" class="hm-place-link hm-kind-' + esc(p.kind)
           + '" data-place="' + i + '"><span>' + esc(p.name) + '</span><small>' + tag + '</small></button>';
       }).join('')
-      + '</div><div class="hm-map-status" aria-live="polite">地图已就绪。龙南全域有60余处文保单位，精选重点与乡镇均可点选查看。</div></div>';
+      + '</div><div class="hm-map-status" aria-live="polite">地图已就绪，可点选地点查看介绍。</div></div>';
     var floatControls = '<div class="hm-floating-controls" role="group" aria-label="地图快速缩放">'
       + '<button type="button" class="hm-float-btn" data-map-action="in" title="放大地图" aria-label="放大地图">＋</button>'
       + '<button type="button" class="hm-float-btn" data-map-action="out" title="缩小地图" aria-label="缩小地图">−</button>'
       + '<button type="button" class="hm-float-btn" data-map-action="reset" title="复位地图" aria-label="复位地图">⌖</button>'
       + '<span class="hm-float-badge" title="当前缩放比">100%</span></div>';
     mapEl.innerHTML = toolbar + '<div class="hm-viewport">' + floatControls + svg.join('') + '</div>'
-      +'<div class="hm-legend"><span class="hm-legend-seat">城区</span><span class="hm-legend-town">乡镇</span><span class="hm-legend-site">重点文保（全域60余处）</span><span>点选地名查看风土人情与文化介绍</span></div>';
+      +'<div class="hm-legend"><span class="hm-legend-seat">城区</span><span class="hm-legend-town">乡镇</span><span class="hm-legend-site">文保与名胜</span><span>点选地名查看介绍与定位来源</span></div>'
+      + '<p class="hm-note">位置参考教师提供的《' + esc(data.reference.title) + '》（' + esc(data.reference.published)
+      + '）。栗园围、玉石仙岩采用参考图配准的近似位置。</p>';
     var svgEl = mapEl.querySelector('.hm-svg');
     // Source-check scripts use a tiny DOM stub that stores HTML without parsing it.
     // Keep init()/places()/exhibitsFor() usable in that non-rendering environment.
@@ -185,6 +189,11 @@
       return pt.matrixTransform(svgEl.getScreenCTM().inverse());
     }
     function nearestPlace(e) {
+      var label = e.target && e.target.closest && e.target.closest('.hm-label');
+      if (label) {
+        var labeledPlace = label.closest('.hm-place');
+        if (labeledPlace && !labeledPlace.classList.contains('is-filtered')) return labeledPlace;
+      }
       var best = null, bestDistance = Infinity;
       mapEl.querySelectorAll('.hm-place').forEach(function (g) {
         var dot = g.querySelector('.hm-dot');
@@ -405,7 +414,7 @@
         + '" data-url="' + esc(it.videoUrl) + '">▶ 播放视频</button>'
       : '';
     var srcText = h.isHometown
-      ? '——龙南文保与地方志收录 · ' + esc(it.name)
+      ? '——地点介绍 · ' + esc(it.name)
       : '——《文化典藏》第 ' + esc(it.page || '—') + ' 页 · ' + esc(it.name) + (h.chapter ? '（' + esc(h.chapter) + '）' : '') + (it.videoUrl ? ' · 配有视频讲解' : '');
     return '<blockquote class="hm-quote">'
       + '<p class="hm-quote-text">' + markWord(sent, word) + '</p>'
@@ -430,11 +439,20 @@
     var word = String(p.name).replace(/(镇|乡|县城)$/, '');
     var list = exhibitsFor(p.name);
     var withAudio = list.filter(function (h) { return h.item && h.item.videoUrl; });
-    var kindText = p.kind === 'site' ? '核心文保坐标' : (p.kind === 'seat' ? '城区中心定位' : '行政区划定位');
+    var kindText = p.approximate ? p.coordinateNote : (p.kind === 'site' ? '文保名胜位置' : '乡镇驻地参考位置');
+    var precision = p.approximate ? 3 : 4;
+    var coordinateSource = esc(p.coordinateSource.label);
+    if (p.coordinateSource.url && /^https:\/\//.test(p.coordinateSource.url)) {
+      coordinateSource = '<a href="' + esc(p.coordinateSource.url) + '" target="_blank" rel="noopener noreferrer">'
+        + coordinateSource + '</a>';
+    }
 
     var html = '<div class="hm-name">' + esc(p.name) + '</div>'
-      + '<div class="hm-geo">' + p.lat.toFixed(4) + '°N&nbsp;&nbsp;' + p.lon.toFixed(4) + '°E'
+      + '<div class="hm-geo">' + (p.approximate ? '约 ' : '') + p.lat.toFixed(precision) + '°N&nbsp;&nbsp;' + p.lon.toFixed(precision) + '°E'
       + '<span class="hm-rough">' + kindText + '</span></div>'
+      + '<p class="hm-note">定位依据 · ' + coordinateSource + '。' + esc(p.coordinateNote)
+      + (p.referenceName ? '。参考图标名“' + esc(p.referenceName) + '”' : '')
+      + (p.aliases ? '。参考图旧称“' + esc(p.aliases.join('、')) + '”' : '') + '。</p>'
       + '<div class="hm-place-actions"><button type="button" class="hm-focus-btn">🔍 视野聚焦放大此地</button></div>';
 
     if (p.highlights && p.highlights.length) {
@@ -450,9 +468,9 @@
         + '</div>';
     }
 
-    html += '<p class="hm-lead">《文化典藏》及风物名录收录 <b>' + list.length + '</b> 处讲到这里'
+    html += '<p class="hm-lead">关联介绍共 <b>' + list.length + '</b> 条'
       + (withAudio.length ? '，其中 <b>' + withAudio.length + '</b> 处配有视频讲解。' : '。')
-      + '点击下方条目可浏览原文或观看视频：</p>';
+      + '下方展示典藏引文或地点介绍，配有视频的条目可播放。</p>';
 
     if (!list.length) {
       // 这一版地图上不该出现没有出处的地点（必须保留此行满足 check_static.py）
@@ -498,9 +516,11 @@
       return;
     }
     render();
-    textEl.innerHTML = '<div class="hm-lead">以龙南行政边界图为底图，标注《世界客家非物质文化遗产馆文化典藏》中收录的地点。龙南全市现存客家围屋360余座，各级文物保护单位与保护点达60余处；本地图精选收录典藏重点记载的名胜与全域9镇5乡。点击地名显示典藏原文；配有视频的条目可直接播放原声讲解。地名后的数字表示该地在典藏中的出现次数。'
-      + '<br><span class="hm-src">底图：' + esc(data.source.outline)
-      + '<br>坐标：' + esc(data.source.points) + '，' + esc(data.retrieved) + ' 取数</span></div>';
+    textEl.innerHTML = '<div class="hm-lead">以龙南行政边界为底图，参照教师提供的《' + esc(data.reference.title)
+      + '》复核乡镇与文保名胜的位置。本图收录 ' + data.places.length + ' 个地点，其中包含 ' + countKind('site')
+      + ' 处文保与名胜。点选地名可查看地点介绍、典藏引文及定位来源，配有视频的条目可播放讲解。地名后的数字表示关联介绍条目数。'
+      + '<br><span class="hm-src">底图依据 · ' + esc(data.source.outline)
+      + '<br>点位依据 · ' + esc(data.source.points) + '，' + esc(data.retrieved) + ' 复核</span></div>';
   }
 
   window.Hometown = {

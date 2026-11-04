@@ -1,9 +1,7 @@
 /**
- * 复核「家乡」地图上的每个地点都能在《文化典藏》里找到出处。
+ * 复核家乡地图每个地点都有关联介绍和明确的坐标来源。
  *
- * 地图上的点不是装饰：观众点了就得有书里的原句可讲。判据直接调用页面上同一个
- * js/hometown.js 的 exhibitsFor（而不是在这里另写一遍），这样两边不可能判得不一样。
- * 生成脚本以后加了地名却忘了依据，这里会红。
+ * 直接调用页面的 exhibitsFor，区分典藏引文与地点介绍。
  *
  *   node scripts/check_hometown_sources.mjs          # 0=每个点都有出处
  */
@@ -45,13 +43,16 @@ for (const p of places) {
   const hits = win.Hometown.exhibitsFor(p.name);
   const audio = hits.filter((h) => h.item.videoUrl).length;
   const quoted = hits.filter((h) => h.sentence).length;
-  const ok = hits.length > 0 && quoted > 0;
+  const book = hits.filter((h) => !h.isHometown).length;
+  const source = p.coordinateSource;
+  const located = !!source?.label && (!!source.url || (p.approximate && source.pixel?.length === 2));
+  const ok = hits.length > 0 && quoted > 0 && located;
   if (!ok) bad++;
-  console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${p.name.padEnd(5)} 出处 ${hits.length} 处`
-    + `（带原句 ${quoted}）· 原声 ${audio}` + (ok ? '' : ' ← 点了没东西可讲'));
+  console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${p.name.padEnd(5)} 典藏 ${book} 条 · 地点介绍 ${hits.length - book} 条`
+    + ` · 原声 ${audio} · 定位来源${located ? '完整' : '缺失'}`);
 }
 if (bad) {
-  console.error(`\n${bad} 个地点在书里查不到可讲的原文：要么补出处，要么从地图上拿掉，别留着空点。`);
+  console.error(`\n${bad} 个地点缺少关联介绍或坐标来源。`);
   process.exit(1);
 }
-console.log(`\n家乡地图 ${places.length} 个地点全部有书内出处。`);
+console.log(`\n家乡地图 ${places.length} 个地点全部有关联介绍与定位来源。`);
