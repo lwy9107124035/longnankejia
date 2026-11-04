@@ -218,16 +218,21 @@ async function getData(db, request, env, context) {
   if (reads.has(key)) {
     const value=await reads.get(key);measurements.snapshotMs=performance.now()-snapshotStarted;return value;
   }
-  // Share parsed public data only while a read is running, never request/response objects or sessions.
+  // Share parsed data through publication, without sharing request I/O or delaying the response for cache writes.
   const snapshotDb = group?.bookmark ? db.withSession(group.bookmark) : db;
-  const promise = manifest ? readPublicSnapshot(snapshotDb, request, env, manifest) : readData(snapshotDb, request, env, manifest);
+  const publications = [];
+  const promise = manifest ? readPublicSnapshot(snapshotDb, request, env, manifest, publications) : readData(snapshotDb, request, env, manifest);
   reads.set(key, promise);
-  context.waitUntil?.(Promise.allSettled([promise]));
+  const finished = Promise.allSettled([promise])
+    .then(() => Promise.allSettled(publications))
+    .then(() => {
+      if (reads.get(key) === promise) reads.delete(key);
+      if (!reads.size && publicContentReads.get(db) === reads) publicContentReads.delete(db);
+    });
+  context.waitUntil?.(finished);
   try { return await promise; }
   finally {
     measurements.snapshotMs=performance.now()-snapshotStarted;
-    if (reads.get(key) === promise) reads.delete(key);
-    if (!reads.size && publicContentReads.get(db) === reads) publicContentReads.delete(db);
   }
 }
 function publicVersion(db, context) {
@@ -251,7 +256,7 @@ function publicVersion(db, context) {
   context.waitUntil?.(Promise.allSettled([group.promise]));
   return group.promise;
 }
-async function readPublicSnapshot(db, request, env, manifest) {
+async function readPublicSnapshot(db, request, env, manifest, publications) {
   const url = new URL(request.url);
   url.pathname = '/_nfyj_public_snapshot';
   url.searchParams.set('_generation', manifest.generation);
@@ -276,7 +281,7 @@ async function readPublicSnapshot(db, request, env, manifest) {
     // Only a public body for this freshly checked version is stored; HTTP responses still use no-store.
     const task = Promise.resolve().then(() => cache.put(new Request(url), Response.json(data, {headers:{'Cache-Control':'public, max-age=300'}})))
       .catch(error => { console.warn('Public snapshot cache write failed:', error.name); });
-    await task;
+    publications.push(task);
   }
   return data;
 }

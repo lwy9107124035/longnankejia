@@ -62,7 +62,7 @@ test('a snapshot that advances during a concurrent save is published under its a
   const second=await request(site.env,url);assert.equal(second.status,200);assert.equal((await second.json()).revision,2);
 });
 
-test('cold snapshot publication stays shared through cache writes and unrelated administrator requests',async t=>{
+test('cold snapshot responses finish while cache publication stays shared through unrelated administrator requests', {timeout:10000}, async t=>{
   cache(t);const site=await backend(t),root=(await site.call({action:'login',credential:'admin123',clientId:'cold-publication'})).data;
   const open=globalThis.caches.open.bind(globalThis.caches);let release,started;
   const publication=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
@@ -76,14 +76,35 @@ test('cold snapshot publication stays shared through cache writes and unrelated 
     }
     return statement;
   };
-  const url='/api/admin/sync?format=record&key=kepuCustom/snapshot-0',first=request(site.env,url),waiting=[];
+  const url='http://127.0.0.1:8931/api/admin/sync?format=record&key=kepuCustom/snapshot-0';
+  const tasks=[],waiting=[];
+  const read=()=>onRequestGet({request:new Request(url),env:site.env,waitUntil:task=>tasks.push(task)});
+  let firstResponse;
+  const first=read().then(response=>{firstResponse=response;return response;});
   try {
-    await entered;assert.equal((await site.call({action:'storage_info'},root.bearer)).status,200);
+    await entered;
+    await new Promise(setImmediate);
+    assert.equal(firstResponse?.status,200,'A valid public response must not wait for the blocked cache write');
+    assert.equal((await firstResponse.clone().json()).rows[0].value.name,'公开原文0');
+    assert.equal((await site.call({action:'storage_info'},root.bearer)).status,200);
     const dispatched=new Promise(resolve=>{afterVersion=resolve;});nextVersion=versions+1;
-    waiting.push(...Array.from({length:50},()=>request(site.env,url)));await dispatched;await sleep(20);
+    waiting.push(...Array.from({length:50},read));await dispatched;await sleep(20);
     assert.equal(dataReads,1,'A not-yet-published snapshot must not be rebuilt');
-  } finally {release();await Promise.allSettled([first,...waiting]);}
-  for(const response of await Promise.all([first,...waiting]))assert.equal(response.status,200);
+    for(const response of await Promise.all(waiting))assert.equal(response.status,200);
+    const changed={...content().kepuCustom[0],name:'旧缓存发布期间已保存'};
+    const digest=await schema.cellHash(changed,true);
+    site.sqlite.exec('BEGIN');
+    site.sqlite.prepare('UPDATE admin_content_items SET value=?,digest=?,revision=2 WHERE key=?')
+      .run(JSON.stringify(changed),digest,'kepuCustom/snapshot-0');
+    site.sqlite.exec("UPDATE admin_state SET revision=2 WHERE key='content'; COMMIT");
+    const fresh=read();waiting.push(fresh);
+    const freshResponse=await fresh,value=await freshResponse.json();
+    assert.equal(freshResponse.status,200);
+    assert.equal(value.revision,2);
+    assert.equal(value.rows[0].value.name,changed.name);
+    assert.equal(dataReads,2,'A newer version must not join an older pending publication');
+  } finally {release();await Promise.allSettled([first,...waiting,...tasks]);}
+  assert.equal((await first).status,200);
 });
 
 test('arrivals batch before version-query dispatch while requests after another-isolate save obtain a new query', {timeout:10000},async t=>{
