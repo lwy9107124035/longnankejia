@@ -162,21 +162,21 @@
       + '<button type="button" data-kind="all" class="is-active">全部 ' + data.places.length + '</button>'
       + '<button type="button" data-kind="town">乡镇 ' + countKind('town') + '</button>'
       + '<button type="button" data-kind="seat">城区 ' + countKind('seat') + '</button>'
-      + '<button type="button" data-kind="site" title="查看本地图收录的文保单位与风景名胜">文保名胜 ' + countKind('site') + '</button></div>'
+      + '<button type="button" data-kind="site" title="龙南全域现有60余处各级文保单位与保护点，地图精选典藏重点收录名胜">重点文保 ' + countKind('site') + '</button></div>'
       + '<div class="hm-place-list" aria-label="地点快捷选择">'
       + data.places.map(function (p, i) {
         var tag = p.kind === 'site' ? (p.name === '南武当山' ? '名胜' : '文保') : (p.kind === 'seat' ? '城区' : '乡镇');
         return '<button type="button" class="hm-place-link hm-kind-' + esc(p.kind)
           + '" data-place="' + i + '"><span>' + esc(p.name) + '</span><small>' + tag + '</small></button>';
       }).join('')
-      + '</div><div class="hm-map-status" aria-live="polite">地图已就绪，可点选地点查看介绍。</div></div>';
+      + '</div><div class="hm-map-status" aria-live="polite">地图已就绪。龙南全域有60余处文保单位，精选重点与乡镇均可点选查看。</div></div>';
     var floatControls = '<div class="hm-floating-controls" role="group" aria-label="地图快速缩放">'
       + '<button type="button" class="hm-float-btn" data-map-action="in" title="放大地图" aria-label="放大地图">＋</button>'
       + '<button type="button" class="hm-float-btn" data-map-action="out" title="缩小地图" aria-label="缩小地图">−</button>'
       + '<button type="button" class="hm-float-btn" data-map-action="reset" title="复位地图" aria-label="复位地图">⌖</button>'
       + '<span class="hm-float-badge" title="当前缩放比">100%</span></div>';
     mapEl.innerHTML = toolbar + '<div class="hm-viewport">' + floatControls + svg.join('') + '</div>'
-      +'<div class="hm-legend"><span class="hm-legend-seat">城区</span><span class="hm-legend-town">乡镇</span><span class="hm-legend-site">文保与名胜</span><span>点选地名查看介绍与定位来源</span></div>'
+      +'<div class="hm-legend"><span class="hm-legend-seat">城区</span><span class="hm-legend-town">乡镇</span><span class="hm-legend-site">重点文保（全域60余处）</span><span>点选地名查看风土人情与文化介绍</span></div>'
       + '<p class="hm-note">地图资料 ·《' + esc(data.reference.title) + '》（' + esc(data.reference.published)
       + '）。栗园围、玉石仙岩为近似位置。</p>';
     var svgEl = mapEl.querySelector('.hm-svg');
@@ -468,9 +468,9 @@
         + '</div>';
     }
 
-    html += '<p class="hm-lead">关联介绍共 <b>' + list.length + '</b> 条'
+    html += '<p class="hm-lead">《文化典藏》及风物名录收录 <b>' + list.length + '</b> 处讲到这里'
       + (withAudio.length ? '，其中 <b>' + withAudio.length + '</b> 处配有视频讲解。' : '。')
-      + '下方展示典藏引文或地点介绍，配有视频的条目可播放。</p>';
+      + '点击下方条目可浏览原文或观看视频。</p>';
 
     if (!list.length) {
       // 这一版地图上不该出现没有出处的地点（必须保留此行满足 check_static.py）
@@ -516,9 +516,7 @@
       return;
     }
     render();
-    textEl.innerHTML = '<div class="hm-lead">地图展示龙南市乡镇与文保名胜的分布。本图收录 '
-      + data.places.length + ' 个地点，其中包含 ' + countKind('site')
-      + ' 处文保与名胜。点选地名可查看地点介绍、典藏引文及定位来源，配有视频的条目可播放讲解。地名后的数字表示关联介绍条目数。'
+    textEl.innerHTML = '<div class="hm-lead">以龙南行政边界图为底图，标注《世界客家非物质文化遗产馆文化典藏》中收录的地点。龙南全市现存客家围屋360余座，各级文物保护单位与保护点达60余处。本地图精选收录典藏重点记载的名胜与全域乡镇。点击地名显示典藏原文，配有视频的条目可直接播放原声讲解。地名后的数字表示该地在典藏中的出现次数。'
       + '<br><span class="hm-src">底图依据 · ' + esc(data.source.outline)
       + '<br>点位依据 · ' + esc(data.source.points) + '，' + esc(data.retrieved) + ' 复核</span></div>';
   }
