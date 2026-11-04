@@ -15,6 +15,7 @@ import {calibrateLoadClock} from './helpers/load-clock.mjs';
 import {githubLoadControl as gh} from './helpers/github-load-control.mjs';
 import {retainedRowsFingerprint,verifyRecordAccounting,cleanupSessionIds} from './helpers/load-integrity.mjs';
 import {ensureCodexReadReplication} from './helpers/codex-read-replication.mjs';
+import {recoverReadRequests} from './helpers/load-read-recovery.mjs';
 if (process.argv.length === 2 || process.argv.includes('--help')) { console.log('Usage: node tests/live-codex-load.mjs --run | --probe-saves\n--probe-saves uses four records and no public load; it only diagnoses five parallel saves.\nCodex only. Requires Wrangler OAuth, gh login, a fresh account-wide D1 budget and recovered production with complete backups. Set NODE_USE_ENV_PROXY=1 if required by the network. Persistent fetch is the default; LOAD_CONTROL_TRANSPORT=curl selects cold-connection diagnostics. Uses 188 synthetic records and three temporary sessions; always attempts precise cleanup. Optional CLEANUP_LOAD_PREFIX restricts recovery cleanup to one known test prefix.'); process.exit(0); }
 assert.ok(process.argv.length === 3 && ['--run','--probe-saves'].includes(process.argv[2]), 'Only --run, --probe-saves or --help is supported');
 const saveProbe = process.argv[2] === '--probe-saves';
@@ -49,21 +50,9 @@ const cleanupLedgers=cleanupOnly?fs.readdirSync('.cache').filter(file=>file==='l
   .map(file=>JSON.parse(fs.readFileSync('.cache/'+file,'utf8'))):[];
 const sessionsToRemove=cleanupSessionIds(prefix,sessionIds,cleanupLedgers);
 const transport = remoteRequest({ target: 'codex', accountId: account });
-let authorizationRefreshed=false;
-const db = createRestDatabase(async body => {
-  const readOnly = (body.batch || [body]).every(statement => /^SELECT\b/i.test(statement.sql));
-  for (let attempt = 0; ; attempt++) {
-    try { return await transport(body); }
-    catch (error) {
-      if(!readOnly)throw error;
-      if(/codes (?:\d+,)*9109(?:,\d+)*/.test(error.message)) {
-        if(authorizationRefreshed)throw error;
-        authorizationRefreshed=true;await readDatabaseCapacity(TARGETS.codex.id);continue;
-      }
-      if(attempt>=2)throw error;await sleep(1000);
-    }
-  }
-}, { apply: true });
+const db = createRestDatabase(recoverReadRequests(transport, {
+  refresh: () => readDatabaseCapacity(TARGETS.codex.id)
+}), { apply: true });
 const result = { startedAt: new Date().toISOString(), prefix, mainWritten: false, controlTransport, articles, mode: saveProbe ? 'isolated-save-probe' : 'distributed-load', cleanup: false, phases: [], sessionHashes: sessionsToRemove };
 if(readReplication)result.readReplication=readReplication;
 if(clock) result.clockCalibration = clock.report;
