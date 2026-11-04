@@ -1,6 +1,6 @@
 """生成家乡地图，边界取自 DataV（360783），地点取自已复核的清单。
 
-data/hometown-places.json 保存教师参考图、逐点坐标来源和近似定位说明。
+data/hometown-places.json 保存地图资料、逐点坐标来源和近似定位说明。
 不再按有歧义的地名实时查询并覆盖坐标。边界缓存仍放在 C:/tmp/hm。
 """
 import json
