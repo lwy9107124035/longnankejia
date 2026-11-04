@@ -315,13 +315,16 @@ function snapshotRoute(results) {
 
 export async function recordSnapshot(db, manifest, key) {
   const results = await db.batch([
-    db.prepare("SELECT key,value,revision FROM admin_state WHERE key IN ('content','tokens')"),
-    db.prepare('SELECT key,kind,value FROM admin_content_items WHERE generation=? AND key=?').bind(manifest.generation, key)
+    // Separate result rows keep large record and legacy metadata values within D1's row limit.
+    db.prepare(`SELECT 'state' AS source,key,'' AS kind,value,revision
+      FROM admin_state WHERE key IN ('content','tokens')
+      UNION ALL SELECT 'record' AS source,key,kind,value,revision
+      FROM admin_content_items WHERE generation=? AND key=?`).bind(manifest.generation, key)
   ]);
-  const [state,record]=results;
-  const current = snapshotManifest(state.results.find(row => row.key === 'content'), manifest);
-  return { manifest: current, tokens: JSON.parse(state.results.find(row => row.key === 'tokens')?.value || '[]'),
-    value: assembledState(record.results, current).value, route:snapshotRoute(results) };
+  const rows = results[0].results;
+  const current = snapshotManifest(rows.find(row => row.source === 'state' && row.key === 'content'), manifest);
+  return { manifest: current, tokens: JSON.parse(rows.find(row => row.source === 'state' && row.key === 'tokens')?.value || '[]'),
+    value: assembledState(rows.filter(row => row.source === 'record'), current).value, route:snapshotRoute(results) };
 }
 
 export async function initialRecordPages(db, manifest) {

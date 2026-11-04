@@ -69,7 +69,7 @@ test('cold snapshot publication stays shared through cache writes and unrelated 
   globalThis.caches.open=async name=>{const value=await open(name);return {...value,put:async(...args)=>{started();await publication;return value.put(...args);}};};
   const prepare=site.db.prepare.bind(site.db);let dataReads=0,versions=0,nextVersion,afterVersion;
   site.db.prepare=sql=>{
-    if(sql.startsWith('SELECT key,kind,value FROM admin_content_items WHERE generation=? AND key=?'))dataReads++;
+    if(sql.includes("SELECT 'record' AS source,key,kind,value,revision"))dataReads++;
     const statement=prepare(sql);
     if(sql==="SELECT value, revision FROM admin_state WHERE key='content'") {
       const first=statement.first.bind(statement);statement.first=async()=>{const row=await first();versions++;if(versions===nextVersion)afterVersion();return row;};

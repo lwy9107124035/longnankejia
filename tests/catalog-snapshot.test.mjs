@@ -2,7 +2,40 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createAdminBackend, captureQueryPlans } from './helpers/admin-harness.mjs';
-import { migrateRecordStorage, initialRecordPages } from '../functions/_lib/admin-records.js';
+import { migrateRecordStorage, initialRecordPages, recordSnapshot } from '../functions/_lib/admin-records.js';
+import { createMediaRuntime } from './helpers/media-r2.mjs';
+
+test('record detail uses one indexed statement without combining large stored values into a single row', { timeout: 30000 }, async t => {
+  const backend = createAdminBackend();
+  t.after(() => backend.close());
+  backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql', import.meta.url), 'utf8'));
+  const content = structuredClone(globalThis.HeritageContent.defaults);
+  content.kepuCustom = [{ id: 'single-query-detail', name: '大正文', detail: '文'.repeat(430000) }];
+  const manifest = await migrateRecordStorage(backend.db, { value: content, revision: 0 });
+  const batch = backend.db.batch.bind(backend.db), sizes = [];
+  backend.db.batch = statements => { sizes.push(statements.length); return batch(statements); };
+  const plans = captureQueryPlans(backend);
+  const snapshot = await recordSnapshot(backend.db, manifest, 'kepuCustom/single-query-detail');
+  assert.equal(snapshot.value.kepuCustom[0].detail, content.kepuCustom[0].detail);
+  assert.deepEqual(sizes, [1], 'Version, redaction metadata and record must use one snapshot statement');
+  assert.match(plans[0], /SEARCH admin_state USING INDEX .*key=\?/);
+  assert.match(plans[0], /SEARCH admin_content_items USING INDEX .*generation=\? AND key=\?/);
+
+  const runtime = await createMediaRuntime(t, { api: true, r2: false });
+  await migrateRecordStorage(runtime.db, { value: content, revision: 0 });
+  // Legacy metadata and a valid record can exceed D1's row limit if joined into one result row.
+  await runtime.db.prepare("UPDATE admin_state SET value=? WHERE key='tokens'")
+    .bind(JSON.stringify([{ id: 'legacy-author', token: 'synthetic-credential', legacyPadding: 'x'.repeat(850000) }])).run();
+  const url = 'http://localhost/api/admin/sync?format=record&key=kepuCustom/single-query-detail';
+  const response = await runtime.fetch(url), body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.rows[0].value.detail, content.kepuCustom[0].detail);
+  assert.equal(body.revision, 1);
+  assert.equal(JSON.stringify(body).includes('synthetic-credential'), false);
+  const missing = await runtime.fetch(url.replace('single-query-detail', 'missing'));
+  assert.equal(missing.status, 200);
+  assert.equal((await missing.json()).rows[0].value, null);
+});
 
 test('one bounded catalog query preserves independent page sizes, continuations and byte limits for every kind',async t=>{
   const backend=createAdminBackend();t.after(()=>backend.close());backend.sqlite.exec(fs.readFileSync(new URL('../migrations/admin/0002_content_records.sql',import.meta.url),'utf8'));
