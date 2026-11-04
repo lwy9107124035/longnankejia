@@ -1,7 +1,7 @@
 /**
  * 「家乡」地图：点龙南的一个地方，看书里怎么讲它、听它的客家话原声讲解。
  *
- * 点位按教师提供的文保分布图和公开坐标复核，来源保存在 data/hometown-places.json。
+ * 点位按文保分布图和公开坐标复核，来源保存在 data/hometown-places.json。
  * 配准估算点单独标注。典藏引文、地点介绍与坐标来源分别显示。
  */
 (function () {
@@ -177,8 +177,8 @@
       + '<span class="hm-float-badge" title="当前缩放比">100%</span></div>';
     mapEl.innerHTML = toolbar + '<div class="hm-viewport">' + floatControls + svg.join('') + '</div>'
       +'<div class="hm-legend"><span class="hm-legend-seat">城区</span><span class="hm-legend-town">乡镇</span><span class="hm-legend-site">文保与名胜</span><span>点选地名查看介绍与定位来源</span></div>'
-      + '<p class="hm-note">位置参考教师提供的《' + esc(data.reference.title) + '》（' + esc(data.reference.published)
-      + '）。栗园围、玉石仙岩采用参考图配准的近似位置。</p>';
+      + '<p class="hm-note">地图资料 ·《' + esc(data.reference.title) + '》（' + esc(data.reference.published)
+      + '）。栗园围、玉石仙岩为近似位置。</p>';
     var svgEl = mapEl.querySelector('.hm-svg');
     // Source-check scripts use a tiny DOM stub that stores HTML without parsing it.
     // Keep init()/places()/exhibitsFor() usable in that non-rendering environment.
@@ -451,8 +451,8 @@
       + '<div class="hm-geo">' + (p.approximate ? '约 ' : '') + p.lat.toFixed(precision) + '°N&nbsp;&nbsp;' + p.lon.toFixed(precision) + '°E'
       + '<span class="hm-rough">' + kindText + '</span></div>'
       + '<p class="hm-note">定位依据 · ' + coordinateSource + '。' + esc(p.coordinateNote)
-      + (p.referenceName ? '。参考图标名“' + esc(p.referenceName) + '”' : '')
-      + (p.aliases ? '。参考图旧称“' + esc(p.aliases.join('、')) + '”' : '') + '。</p>'
+      + (p.referenceName ? '。文保名称“' + esc(p.referenceName) + '”' : '')
+      + (p.aliases ? '。旧称“' + esc(p.aliases.join('、')) + '”' : '') + '。</p>'
       + '<div class="hm-place-actions"><button type="button" class="hm-focus-btn">🔍 视野聚焦放大此地</button></div>';
 
     if (p.highlights && p.highlights.length) {
@@ -516,8 +516,8 @@
       return;
     }
     render();
-    textEl.innerHTML = '<div class="hm-lead">以龙南行政边界为底图，参照教师提供的《' + esc(data.reference.title)
-      + '》复核乡镇与文保名胜的位置。本图收录 ' + data.places.length + ' 个地点，其中包含 ' + countKind('site')
+    textEl.innerHTML = '<div class="hm-lead">地图展示龙南市乡镇与文保名胜的分布。本图收录 '
+      + data.places.length + ' 个地点，其中包含 ' + countKind('site')
       + ' 处文保与名胜。点选地名可查看地点介绍、典藏引文及定位来源，配有视频的条目可播放讲解。地名后的数字表示关联介绍条目数。'
       + '<br><span class="hm-src">底图依据 · ' + esc(data.source.outline)
       + '<br>点位依据 · ' + esc(data.source.points) + '，' + esc(data.retrieved) + ' 复核</span></div>';

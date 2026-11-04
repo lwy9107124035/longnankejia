@@ -36,7 +36,7 @@ test('生成文件保留全部22个复核点位、介绍与逐点来源', () => 
   }
 });
 
-test('教师图中的七处文保点分别落在正确区域', () => {
+test('分布图中的七处文保点分别落在正确区域', () => {
   // 独立于生成清单，防止杨村点群再次移到城区北面、关西和里仁再次移到西侧。
   const regions = {
     '燕翼围': [114.62, 24.63, 114.64, 24.645],
@@ -60,7 +60,7 @@ test('教师图中的七处文保点分别落在正确区域', () => {
   assert.match(byName['渔仔潭围'].desc, /里仁镇新里村/);
 });
 
-test('所有点位在行政轮廓内，乡镇分布符合教师图', () => {
+test('所有点位在行政轮廓内，乡镇分布符合分布图', () => {
   const { data } = loadMap();
   for (const p of data.places) {
     let inside = false;
@@ -91,10 +91,10 @@ test('两处配准点可由参考像素复算，并明确显示近似定位', ()
     const lat = x * matrix[0][1] + y * matrix[1][1] + matrix[2][1];
     assert.ok(Math.abs(lon - p.lon) < 0.0005 && Math.abs(lat - p.lat) < 0.0005, p.name);
     window.Hometown.select(window.HOMETOWN.places.find((v) => v.name === p.name));
-    assert.match(text.innerHTML, /参考图配准估算，约公里级/);
+    assert.match(text.innerHTML, /近似位置，约公里级/);
     assert.ok(text.innerHTML.includes('约 ' + p.lat.toFixed(3)));
   }
-  assert.match(map.innerHTML, /栗园围、玉石仙岩采用参考图配准的近似位置/);
+  assert.match(map.innerHTML, /栗园围、玉石仙岩为近似位置/);
 });
 
 test('东江镇保留旧称检索，地点介绍与典藏引文分别标注', () => {
@@ -103,7 +103,7 @@ test('东江镇保留旧称检索，地点介绍与典藏引文分别标注', ()
   const p = window.Hometown.places().find((p) => p.name === '东江镇');
   assert.equal(window.Hometown.exhibitsFor('东江镇')[0], hit);
   window.Hometown.select(p);
-  assert.match(text.innerHTML, /参考图旧称“东江乡”/);
+  assert.match(text.innerHTML, /旧称“东江乡”/);
   assert.match(text.innerHTML, /《文化典藏》/);
   window.Hometown.select(window.Hometown.places().find((p) => p.name === '临塘乡'));
   assert.match(text.innerHTML, /——地点介绍/);
