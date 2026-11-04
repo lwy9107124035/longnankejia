@@ -100,6 +100,10 @@ test('两处配准点可由参考像素复算，并明确显示近似定位', ()
 test('东江镇保留旧称检索，地点介绍与典藏引文分别标注', () => {
   const hit = { item: { name: '东江乡风物', desc: '东江乡的客家文化' }, sentence: '东江乡的客家文化' };
   const { window, map, text } = loadMap((word) => word === '东江乡' ? [hit] : []);
+  assert.match(text.innerHTML, /客家围屋360余座/);
+  assert.match(text.innerHTML, /各级文物保护单位与保护点达60余处/);
+  assert.match(text.innerHTML, /精选收录典藏重点记载的名胜与全域乡镇/);
+  assert.doesNotMatch(text.innerHTML, /其中包含 8 处文保与名胜/);
   const p = window.Hometown.places().find((p) => p.name === '东江镇');
   assert.equal(window.Hometown.exhibitsFor('东江镇')[0], hit);
   window.Hometown.select(p);
@@ -108,6 +112,6 @@ test('东江镇保留旧称检索，地点介绍与典藏引文分别标注', ()
   window.Hometown.select(window.Hometown.places().find((p) => p.name === '临塘乡'));
   assert.match(text.innerHTML, /——地点介绍/);
   assert.doesNotMatch(text.innerHTML, /——龙南文保与地方志收录/);
-  assert.match(map.innerHTML, /文保名胜 8/);
-  assert.doesNotMatch(map.innerHTML, /9镇5乡|重点文保（全域60余处）/);
+  assert.match(map.innerHTML, /重点文保 8/);
+  assert.match(map.innerHTML, /重点文保（全域60余处）/);
 });
