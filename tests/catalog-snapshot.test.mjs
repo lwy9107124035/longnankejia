@@ -46,7 +46,7 @@ test('one bounded catalog query preserves independent page sizes, continuations 
   backend.db.batch=statements=>{sizes.push(statements.length);return batch(statements);};
   const plans=captureQueryPlans(backend,sql=>sql.includes('AS runningBytes'));
   const snapshot=await initialRecordPages(backend.db,manifest);
-  assert.deepEqual(sizes,[3],'Catalog, version and redaction metadata must use only three statements');
+  assert.deepEqual(sizes,[1],'Catalog, version and redaction metadata must use one snapshot statement');
   for(const field of ['kbCustom','kepuCustom']){
     const page=snapshot.pages[field];assert.equal(page.rows.length,50);assert.ok(page.cursor);assert.equal(snapshot.manifest.counts[field],70);
     assert.equal(page.rows[0].key,field+'/bounded-000');assert.equal(page.rows.at(-1).key,field+'/bounded-049');

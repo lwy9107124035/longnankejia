@@ -331,20 +331,26 @@ export async function initialRecordPages(db, manifest) {
   // Keep kinds outermost so each indexed 51-key list is resolved before fetching record values.
   const selection="WITH kinds(kindName) AS (SELECT value FROM json_each(?)) SELECT key,kind,digest,"+pageValue(true)+" AS value FROM kinds CROSS JOIN admin_content_items WHERE generation=? AND key IN (SELECT key FROM admin_content_items candidate WHERE candidate.generation=? AND candidate.kind=kinds.kindName AND candidate.value!='null' ORDER BY key LIMIT 51)";
   const result = await db.batch([
-    db.prepare("SELECT value,revision FROM admin_state WHERE key='content'"),
-    db.prepare(byteBoundedPage(selection,true)).bind(JSON.stringify(fields),manifest.generation,manifest.generation),
-    db.prepare("SELECT value FROM admin_state WHERE key='tokens'")
+    db.prepare(`SELECT 'state' AS source,key,'' AS kind,'' AS digest,value,revision
+      FROM admin_state WHERE key IN ('content','tokens')
+      UNION ALL SELECT 'page' AS source,key,kind,digest,value,0 AS revision
+      FROM (${byteBoundedPage(selection,true)}) ORDER BY source,kind,key`)
+      .bind(JSON.stringify(fields),manifest.generation,manifest.generation)
   ]);
-  const current = snapshotManifest(result[0].results[0], manifest);
+  const records = result[0].results;
+  const current = snapshotManifest(records.find(row => row.source === 'state' && row.key === 'content'), manifest);
+  const tokens = JSON.parse(records.find(row => row.source === 'state' && row.key === 'tokens')?.value || '[]');
   const byKind=new Map(fields.map(field=>[field,[]]));
-  for(const row of result[1].results)byKind.get(row.kind).push(row);
+  for (const row of records) {
+    if (row.source === 'page') byKind.get(row.kind).push(row);
+  }
   const pages = {};
   for (const field of fields) {
     const rows = boundedPage(byKind.get(field), 50), total = current.counts[field] || 0;
     const value = { generation: current.generation, revision: current.revision, key: rows.at(-1)?.key || '', field, query: '', category: '', media: '', since: null };
     pages[field] = { rows: pageRows(rows, true), cursor: rows.length && total > rows.length ? encodeRecordCursor(value) : '' };
   }
-  return { manifest: current, pages, tokens:JSON.parse(result.at(-1).results[0]?.value||'[]'),route:snapshotRoute(result) };
+  return { manifest: current, pages, tokens, route: snapshotRoute(result) };
 }
 
 export async function pageRecordSnapshot(db, manifest, { field, cursor = '', limit = 50, summary = false, query = '', category = '', media = '', since } = {}) {

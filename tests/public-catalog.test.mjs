@@ -43,7 +43,7 @@ test('anonymous redaction metadata shares the atomic catalog batch without a sep
   const started=new Promise(resolve=>{entered=resolve;}),gate=new Promise(resolve=>{release=resolve;});t.after(release);
   backend.db.batch=async statements=>{batchTokenReads+=statements.filter(statement=>tokenStatements.has(statement)).length;const rows=await batch(statements);entered();await gate;return rows;};
   backend.db.prepare=sql=>{const statement=prepare(sql),bind=statement.bind.bind(statement),first=statement.first.bind(statement);let params=[];
-    if(sql==="SELECT value FROM admin_state WHERE key='tokens'")tokenStatements.add(statement);
+    if(sql.includes("FROM admin_state WHERE key IN ('content','tokens')"))tokenStatements.add(statement);
     statement.bind=(...values)=>{params=values;return bind(...values);};
     statement.first=()=>{if(params[0]==='tokens')tokenReads++;return first();};return statement;
   };
