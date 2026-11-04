@@ -167,9 +167,11 @@ try {
     await sleep(1000);await shot('desktop-'+id+'-close');
   }
   await send('Emulation.setDeviceMetricsOverride',{width:360,height:800,deviceScaleFactor:1,mobile:true});
-  await send('Page.reload');
-  const mobileReady=await ev(`new Promise(resolve=>{let n=0;const timer=setInterval(()=>{if(window.Showcase3D&&Showcase3D.booted()&&document.querySelector('.c3d-item')){clearInterval(timer);resolve(true);}else if(++n>150){clearInterval(timer);resolve(false);}},200);})`,true);
-  if(!mobileReady)throw new Error('mobile 3D reload did not finish');
+  if(!mapOnly){
+    await send('Page.reload');
+    const mobileReady=await ev(`new Promise(resolve=>{let n=0;const timer=setInterval(()=>{if(window.Showcase3D&&Showcase3D.booted()&&document.querySelector('.c3d-item')){clearInterval(timer);resolve(true);}else if(++n>150){clearInterval(timer);resolve(false);}},200);})`,true);
+    if(!mobileReady)throw new Error('mobile 3D reload did not finish');
+  }
   for(const id of ids){
     await selectInUi(id);await shot('mobile-'+id);
     if(!process.argv.includes('--baseline')){
@@ -232,6 +234,13 @@ try {
     await shot('mobile-map-zoom');
     await ev(`document.querySelector('[data-map-action="reset"]').click()`);
     check('重置还原100%及平移',await ev(`document.querySelector('.hm-world').getAttribute('transform')`) === 'translate(0.00 0.00) scale(1.000)');
+    for (const name of await ev(`Hometown.places().map(p=>p.name)`)) {
+      await ev(`document.querySelector('.hm-svg').scrollIntoView({block:'center'})`);await sleep(100);
+      const label=await ev(`(()=>{const i=Hometown.places().findIndex(p=>p.name===${JSON.stringify(name)});const r=document.querySelector('.hm-place[data-i="'+i+'"] .hm-label').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+      await touch('touchStart',[label]);await touch('touchEnd',[]);await sleep(500);
+      const selected=await ev(`document.querySelector('.hm-name')?.textContent`);
+      check('真实触屏点选地名 '+name,selected===name,selected);
+    }
     await ev(`document.querySelector('[data-kind="site"]').click()`);
     check('文保点筛选匹配真实数据',await ev(`document.querySelectorAll('.hm-place:not(.is-filtered)').length===Hometown.places().filter(p=>p.kind==='site').length`));
     check('移动端地图按钮触控高度至少44px',await ev(`[...document.querySelectorAll('.hm-zoom button,.hm-filter button,.hm-place-link:not([hidden])')].every(e=>e.getBoundingClientRect().height>=44)`));
@@ -241,7 +250,9 @@ try {
     await send('Emulation.setTouchEmulationEnabled',{enabled:false});
   }
   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
+  await ev(`document.querySelector('.hm-svg').scrollIntoView({block:'center'})`);
   await sleep(600);await shot('desktop-map');
+  await shot('map-detail','#hmMap');
   if(!process.argv.includes('--baseline')&&!mapOnly){
     await ev(`localStorage.setItem('nfyj_api_config',JSON.stringify({mode:'rules'}));AnswerEngine.reset();location.hash='#/chat';`);await sleep(300);
     await ev(`App.ask('客家蓝染和其他地方蓝染对比，有何区别？')`);

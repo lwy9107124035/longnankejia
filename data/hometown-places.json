@@ -1,0 +1,490 @@
+{
+  "verified": "2026-11-04",
+  "source": "教师提供《龙南市文物保护单位分布图》（2023年9月），结合各地点公开坐标复核。配准估算点单独标注",
+  "reference": {
+    "file": "龙南市地图.jpg",
+    "title": "龙南市文物保护单位分布图",
+    "published": "2023-09",
+    "size": [
+      12660,
+      9094
+    ],
+    "registration": {
+      "method": "主图原始像素到经纬度的仿射最小二乘配准，城区插图不参与",
+      "controlPoints": [
+        {
+          "name": "燕翼围",
+          "pixel": [
+            5512,
+            6440
+          ],
+          "lon": 114.62916667,
+          "lat": 24.63722222
+        },
+        {
+          "name": "太平桥",
+          "pixel": [
+            5425,
+            6114
+          ],
+          "lon": 114.62676,
+          "lat": 24.656
+        },
+        {
+          "name": "乌石围",
+          "pixel": [
+            6092,
+            6549
+          ],
+          "lon": 114.66966111,
+          "lat": 24.63283056
+        },
+        {
+          "name": "关西新围",
+          "pixel": [
+            10153,
+            3113
+          ],
+          "lon": 114.94027778,
+          "lat": 24.8475
+        }
+      ],
+      "coefficients": [
+        [
+          6.56565870004609e-05,
+          3.39479991101716e-06
+        ],
+        [
+          -1.412568732487435e-06,
+          -5.84654382417742e-05
+        ],
+        [
+          114.27814245977872,
+          24.99503587619952
+        ]
+      ],
+      "accuracy": "近似定位，约公里级。拟合残差与外推精度分别评估"
+    }
+  },
+  "places": [
+    {
+      "name": "龙南镇",
+      "kind": "seat",
+      "lat": 24.9138,
+      "lon": 114.78533,
+      "desc": "龙南市政治、经济与文化中心，座落于桃江之畔，拥有水东围、龙南老街等客家古迹，客家民俗与商贸文化交融。",
+      "highlights": [
+        "行政中心",
+        "水东围",
+        "老街历史文脉"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 龙南镇",
+        "url": "https://zh.wikipedia.org/wiki/龙南镇"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "武当镇",
+      "kind": "town",
+      "lat": 24.63903,
+      "lon": 114.75314,
+      "desc": "位于龙南市南部，扼赣粤交通之咽喉，境内拥有著名的国家级风景名胜区南武当山，丹霞地貌奇伟，九十九座石峰拔地而起。",
+      "highlights": [
+        "南武当山",
+        "交通要冲",
+        "十里丹霞画卷"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 武当镇",
+        "url": "https://zh.wikipedia.org/wiki/武当镇"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "杨村镇",
+      "kind": "town",
+      "lat": 24.63774,
+      "lon": 114.6294,
+      "desc": "赣粤交界处商贸重镇与中国历史文化名镇，境内保存有燕翼围、乌石围、明代太平桥等国宝级古迹，盛行五百年历史的太平堡龙船会。",
+      "highlights": [
+        "中国历史文化名镇",
+        "燕翼围",
+        "太平堡龙船会"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 杨村镇 (龙南市)",
+        "url": "https://zh.wikipedia.org/wiki/杨村镇_(龙南市)"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "关西镇",
+      "kind": "town",
+      "lat": 24.84352,
+      "lon": 114.94093,
+      "desc": "世界客家围屋聚集的核心区域，全国重点文物保护单位关西新围坐落于此，九栋十八厅规模宏大，被誉为东方古罗马城堡。",
+      "highlights": [
+        "关西新围",
+        "西昌围",
+        "围屋之都核心区"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 关西镇 (龙南市)",
+        "url": "https://zh.wikipedia.org/wiki/关西镇_(龙南市)"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "里仁镇",
+      "kind": "town",
+      "lat": 24.91452,
+      "lon": 114.86763,
+      "desc": "龙南市北大门与现代农业重镇，拥有占地辽阔的栗园围（客家八卦围）、新园围等，生态优美，四季瓜果飘香。",
+      "highlights": [
+        "栗园围",
+        "八卦围屋",
+        "生态文旅重镇"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 里仁镇 (龙南市)",
+        "url": "https://zh.wikipedia.org/wiki/里仁镇_(龙南市)"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "渡江镇",
+      "kind": "town",
+      "lat": 24.86384,
+      "lon": 114.73056,
+      "desc": "位于龙南城区西南侧，桃江流经境内。教师提供的文保分布图在这一带标有新大新围、荷恩堂等文物保护点。",
+      "highlights": [
+        "桃江沿岸",
+        "新大新围",
+        "荷恩堂"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 渡江镇",
+        "url": "https://zh.wikipedia.org/wiki/渡江镇"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "程龙镇",
+      "kind": "town",
+      "lat": 24.83429,
+      "lon": 114.67882,
+      "desc": "龙南西南部生态重镇，国家级非遗程龙板凳龙发源地，崇尚忠孝仁义，农林产业兴旺，山水环抱。",
+      "highlights": [
+        "程龙板凳龙",
+        "客家生态小镇",
+        "妈祖庙会文化"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 程龙镇",
+        "url": "https://zh.wikipedia.org/wiki/程龙镇"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "汶龙镇",
+      "kind": "town",
+      "lat": 24.77494,
+      "lon": 114.90219,
+      "desc": "历史悠久的客家集镇，文化底蕴深厚，传统曲艺莲花调流传甚广，稻花飘香，农耕文化特色鲜明。",
+      "highlights": [
+        "客家莲花调",
+        "农耕文化",
+        "耀三围"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 汶龙镇",
+        "url": "https://zh.wikipedia.org/wiki/汶龙镇"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "九连山镇",
+      "kind": "town",
+      "lat": 24.6278,
+      "lon": 114.5634,
+      "desc": "紧靠九连山国家级自然保护区，森林覆盖率居全市之首，动植物基因库与天然氧吧，客家高山林业聚落独具特色。",
+      "highlights": [
+        "九连山国家级保护区",
+        "原始生态林海",
+        "避暑康养胜地"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 九连山镇",
+        "url": "https://zh.wikipedia.org/wiki/九连山镇"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "桃江乡",
+      "kind": "town",
+      "lat": 24.9167,
+      "lon": 114.78088,
+      "desc": "环抱中心城区与桃江两岸，土地肥沃，是龙南重要的绿色蔬菜与生态农业基地，客家田园风光如诗如画。",
+      "highlights": [
+        "桃江生态走廊",
+        "现代高效农业",
+        "客家田园风情"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 桃江乡 (龙南市)",
+        "url": "https://zh.wikipedia.org/wiki/桃江乡_(龙南市)"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "东江镇",
+      "kind": "town",
+      "lat": 24.85684,
+      "lon": 114.80724,
+      "desc": "位于龙南城区东南侧，原称东江乡，现为东江镇。保留有客家古民居和传统聚落，参考图中的围仔围、湾仔围、江头围分布于这一带。",
+      "highlights": [
+        "产城融合发展",
+        "客家传统聚落",
+        "交通枢纽门户"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 东江镇 (龙南市)",
+        "url": "https://zh.wikipedia.org/wiki/东江镇_(龙南市)"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84",
+      "aliases": [
+        "东江乡"
+      ]
+    },
+    {
+      "name": "临塘乡",
+      "kind": "town",
+      "lat": 24.78844,
+      "lon": 114.79926,
+      "desc": "拥有得天独厚的天然富硒温泉资源，山峦苍翠，果园遍野，是集温泉康养、生态观光、乡村休闲于一体的客家度假胜地。",
+      "highlights": [
+        "富硒天然温泉",
+        "芷莲休闲小镇",
+        "康养旅游胜地"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 临塘乡",
+        "url": "https://zh.wikipedia.org/wiki/临塘乡"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "南亨乡",
+      "kind": "town",
+      "lat": 24.70262,
+      "lon": 114.79951,
+      "desc": "龙南中南部山区乡，客家民俗与农耕手工艺薪火相传，山清水秀，竹海连绵，物产丰富。",
+      "highlights": [
+        "高山竹海",
+        "传统农耕手艺",
+        "客家乡村风貌"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 南亨乡",
+        "url": "https://zh.wikipedia.org/wiki/南亨乡"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "夹湖乡",
+      "kind": "town",
+      "lat": 24.7118,
+      "lon": 114.65484,
+      "desc": "位于龙南西南部，山高林密，出产高山名茶与生态茶油，空气清新，环境幽静，客家山歌传统悠久。",
+      "highlights": [
+        "高山生态茶园",
+        "原乡客家风貌",
+        "高山泉水林茶"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 夹湖乡",
+        "url": "https://zh.wikipedia.org/wiki/夹湖乡"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "关西新围",
+      "kind": "site",
+      "lat": 24.8475,
+      "lon": 114.94027778,
+      "desc": "全国重点文物保护单位，始建于清嘉庆三年（1798年），占地面积逾7700平方米。下部墙体采用石灰、沙石与黄泥掺和糯米汁、桐油的三合土夯筑，硬度坚实；四角设六十平方米防御炮楼，特制异型砖砌筑四瓣梅花瞭望窗，双眼视线开阔且缩小受弹面；围屋融合九栋十八厅与耕读治家传统。",
+      "highlights": [
+        "国保单位",
+        "东方古罗马城堡",
+        "九栋十八厅",
+        "梅花瞭望窗"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 关西新围",
+        "url": "https://zh.wikipedia.org/wiki/关西新围"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "燕翼围",
+      "kind": "site",
+      "lat": 24.63722222,
+      "lon": 114.62916667,
+      "desc": "全国重点文物保护单位，位于杨村镇，始建于清顺治七年（1650年），楼高四层近15米，墙体厚重如磐石，防御体系冠绝赣南。",
+      "highlights": [
+        "国保单位",
+        "赣南最高客家围",
+        "高层防御堡垒"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 燕翼围",
+        "url": "https://zh.wikipedia.org/wiki/燕翼围"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "乌石围",
+      "kind": "site",
+      "lat": 24.63283056,
+      "lon": 114.66966111,
+      "desc": "全国重点文物保护单位，始建于明万历十年（1583年），前方后圆形制独特，因门前一巨石似蟾蜍而得名，内聚宗亲，外御风雨。",
+      "highlights": [
+        "国保单位",
+        "前方后圆",
+        "客家磐石围"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 龙南乌石围",
+        "url": "https://zh.wikipedia.org/wiki/龙南乌石围"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "栗园围",
+      "kind": "site",
+      "lat": 24.9,
+      "lon": 114.869,
+      "desc": "位于龙南市里仁镇新园村，是具有八卦布局特点的客家围屋聚落。教师参考图将其标在里仁镇西南部、渔仔潭围西北侧，地图位置按该图配准估算。",
+      "highlights": [
+        "里仁镇新园村",
+        "八卦布局",
+        "客家围屋聚落"
+      ],
+      "approximate": true,
+      "coordinateSource": {
+        "label": "教师提供《龙南市文物保护单位分布图》（2023年9月）",
+        "pixel": [
+          9051,
+          2144
+        ]
+      },
+      "coordinateNote": "参考图配准估算，约公里级",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "渔仔潭围",
+      "kind": "site",
+      "lat": 24.894489,
+      "lon": 114.889924,
+      "desc": "位于龙南市里仁镇新里村，靠近濂江，与沙坝围隔河相望。围屋始建于清代，保留了客家宗族聚居与防御建筑的特点，当地亦有酿造客家米酒的传统。",
+      "highlights": [
+        "里仁镇新里村",
+        "濂江沿岸",
+        "客家米酒文化"
+      ],
+      "coordinateSource": {
+        "label": "高德地图 · 渔仔潭围",
+        "url": "https://www.amap.com/place/B0J0SZDHKL",
+        "originalSystem": "GCJ-02",
+        "originalLat": 24.891453,
+        "originalLon": 114.894558
+      },
+      "coordinateNote": "高德地图坐标换算为 WGS84",
+      "coordinateSystem": "WGS84",
+      "descriptionSource": {
+        "label": "龙南市政府 · 沙坝围与渔仔潭围的位置关系",
+        "url": "https://www.jxln.gov.cn/lnzf/c104708/202205/02724f31a0a14ef4b2f8f778c51f7966.shtml"
+      }
+    },
+    {
+      "name": "南武当山",
+      "kind": "site",
+      "lat": 24.617464,
+      "lon": 114.718418,
+      "desc": "国家4A级旅游景区，九十九座奇峰平地拔起，如十里画屏，丹霞绝壁连绵壮阔，融奇峰、幽谷、险石与客家风情于一体。",
+      "highlights": [
+        "国家4A级景区",
+        "九十九座奇峰",
+        "十里丹霞峰丛"
+      ],
+      "coordinateSource": {
+        "label": "高德地图 · 南武当山",
+        "url": "https://www.amap.com/place/B031D02DDF",
+        "originalSystem": "GCJ-02",
+        "originalLat": 24.614572,
+        "originalLon": 114.723202
+      },
+      "coordinateNote": "高德地图坐标换算为 WGS84",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "太平桥",
+      "kind": "site",
+      "lat": 24.656,
+      "lon": 114.62676,
+      "desc": "全国重点文物保护单位，位于杨村镇车田村，横跨太平江。清代砖石木结构廊桥，下层三墩两孔，上层设四通凉亭，是当地古道交通的重要遗存。",
+      "highlights": [
+        "国保单位",
+        "杨村镇车田村",
+        "三墩两孔廊桥"
+      ],
+      "coordinateSource": {
+        "label": "中文维基百科 · 太平桥 (龙南)",
+        "url": "https://zh.wikipedia.org/wiki/太平桥_(龙南)"
+      },
+      "coordinateNote": "公开条目坐标（WGS84）",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "name": "玉石仙岩",
+      "kind": "site",
+      "lat": 24.932,
+      "lon": 114.8,
+      "desc": "位于龙南城北的桃江东岸，教师参考图中标为“玉石岩石刻”。天然石灰岩山体中有溶洞和历代摩崖题刻，留有王阳明相关历史文化遗存。地图按图中的石刻点配准估算。",
+      "highlights": [
+        "省保单位",
+        "王阳明摩崖石刻",
+        "喀斯特地貌溶洞"
+      ],
+      "approximate": true,
+      "coordinateSource": {
+        "label": "教师提供《龙南市文物保护单位分布图》（2023年9月）",
+        "pixel": [
+          7979,
+          1548
+        ]
+      },
+      "coordinateNote": "参考图配准估算，约公里级",
+      "coordinateSystem": "WGS84",
+      "referenceName": "玉石岩石刻"
+    }
+  ]
+}

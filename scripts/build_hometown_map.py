@@ -1,27 +1,14 @@
-"""生成「家乡」地图数据：龙南市真实行政边界 + 乡镇/文保点的真实坐标。
+"""生成家乡地图，边界取自 DataV（360783），地点取自已复核的清单。
 
-为什么不用手绘示意图：这是给博物馆观众看的，把围屋画错地方就是错信息。
-所以底图边界与点位坐标全部取自可核对的公开数据源，并把来源和取数日期写进文件；
-拿不到坐标的点宁可少画，也不猜。
-
-数据源：
-  * 边界：阿里云 DataV.GeoAtlas 行政区划 GeoJSON（源自国家基础地理信息中心公开底图），
-    龙南市 adcode 360783 → https://geo.datav.aliyun.com/areas_v3/bound/360783.json
-  * 坐标：中文维基百科各条目 infobox 的 coordinate 字段（Wikidata 上这些乡镇级条目
-    恰好没有 P625，只有中文维基有），经 action=query&prop=coordinates 取回
-  * 乡镇名单：Wikidata P131 反查 Q1336164（龙南市）下辖政区，用来核对名字写法
-
-用法：
-    python scripts/build_hometown_map.py     # 联网取数（链路抖时退回兜底表）并写 js/data-hometown.js
-
-缓存落在 C:/tmp/hm，重跑不再打接口；删掉缓存即可强制重新取数。
+data/hometown-places.json 保存教师参考图、逐点坐标来源和近似定位说明。
+不再按有歧义的地名实时查询并覆盖坐标。边界缓存仍放在 C:/tmp/hm。
 """
 import json
+import math
 import os
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -30,38 +17,9 @@ OUT = ROOT / "js" / "data-hometown.js"
 CACHE = Path("C:/tmp/hm")
 PROXY = os.environ.get("HTTPS_PROXY") or "http://127.0.0.1:31181"
 UA = {"User-Agent": "longnankejia-museum-demo/1.0"}
-RETRIEVED = "2026-09-24"
+PLACES_FILE = ROOT / "data" / "hometown-places.json"
 MIN_PLACES = 6
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({"https": PROXY, "http": PROXY}))
-
-# 中文维基条目名 → (地图显示名, 类别)。类别只影响点的大小/颜色，不影响位置。
-PLACES = [
-    # 只列《文化典藏》正文里真的写到的地方：点了要有原句可讲，不画"没有出处的点"。
-    # 判据在 js/hometown.js 的 exhibitsFor（展品名或正文里字面出现这个地名/通名），
-    # tests/check_static.py 会在构建时复核每个点都还能查到出处，加地名却忘了加依据就直接失败。
-    ("龙南镇", "龙南镇", "seat"),
-    ("杨村镇", "杨村镇", "town"),
-    ("程龙镇", "程龙镇", "town"),
-    ("里仁镇", "里仁镇", "town"),
-    ("汶龙镇", "汶龙镇", "town"),
-    ("九连山镇", "九连山镇", "town"),
-    ("乌石围", "乌石围", "site"),
-]
-
-# 2026-09-24 从 zh.wikipedia 的 action=query&prop=coordinates 实测取回的一份兜底表。
-# 加速器对 wikipedia 的连通性时好时坏（同一批请求几分钟前全 200，之后就 timeout），
-# 链路抖的时候用这张表出图，联网时仍以接口为准并核对差异。
-# 注意精度：四个文保点条目本身就是两位小数（约 1 公里），界面上要如实标出来。
-FALLBACK_COORDS = {
-    "龙南镇": (24.91086, 114.79371),
-    "杨村镇": (24.96372, 114.77362),
-    "程龙镇": (24.79961, 114.86663),
-    "里仁镇": (24.91225, 114.76318),
-    "汶龙镇": (24.8617, 114.72264),
-    "九连山镇": (24.56609, 114.7293),
-    "乌石围": (24.96, 114.78),
-}
-
 
 def get(url, tries=6, timeout=30, name=None):
     """加速器链路会 reset，所以每个请求都重试几轮；缓存命中就不再联网。"""
@@ -131,50 +89,19 @@ def simplify(ring, keep):
     return [[round(pts[i][0], 4), round(pts[i][1], 4)] for i in sorted(keep_set)]
 
 
-def wiki_coords(titles, slot):
-    """按批次取坐标。缓存名用批次号而不是内容哈希：哈希每进程都变，重试等于白重试。"""
-    u = ("https://zh.wikipedia.org/w/api.php?action=query&prop=coordinates&redirects=1"
-         "&format=json&titles=" + urllib.parse.quote("|".join(titles)))
-    d = json.loads(get(u, name="wiki_batch_%d.json" % slot).decode("utf-8"))
-    out = {}
-    for p in d["query"]["pages"].values():
-        cs = p.get("coordinates") or []
-        if cs:
-            out[p["title"]] = (round(float(cs[0]["lat"]), 5), round(float(cs[0]["lon"]), 5))
-    return out
-
-
-def collect_places(bbox):
-    live = {}
-    for slot, i in enumerate(range(0, len(PLACES), 6)):
-        titles = [b[0] for b in PLACES[i:i + 6]]
-        try:
-            live.update(wiki_coords(titles, slot))
-        except SystemExit as e:
-            # 加速器抖的时候整批取不到：这批改用兜底表，但要在日志里说清楚
-            print("!! 第 %d 批坐标取不到，改走兜底表：%s" % (slot, str(e)[:70]))
-    print("  线上取到 %d / %d 个点" % (len(live), len(PLACES)))
-
-    places, used_fallback = [], 0
-    for title, label, kind in PLACES:
-        if title in live:
-            c, src = live[title], "wiki-live"
-            fb = FALLBACK_COORDS.get(title)
-            if fb and max(abs(c[0] - fb[0]), abs(c[1] - fb[1])) > 0.01:
-                print("!! %s 线上坐标 %s 与兜底表差约 %d 公里，以线上为准"
-                      % (title, c, round(max(abs(c[0] - fb[0]), abs(c[1] - fb[1])) * 111)))
-        elif title in FALLBACK_COORDS:
-            c, src = FALLBACK_COORDS[title], "wiki-" + RETRIEVED
-            used_fallback += 1
-        else:
-            print("!! %s 既没取到也不在兜底表里，跳过（宁可少一个点，也不猜位置）" % title)
-            continue
-        if not (bbox[0] <= c[1] <= bbox[2] and bbox[1] <= c[0] <= bbox[3]):
-            print("!! %s 坐标 %s 落在龙南边界外，跳过" % (title, c))
-            continue
-        places.append({"name": label, "kind": kind, "lat": c[0], "lon": c[1],
-                       "wiki": title, "src": src})
-    return places, used_fallback
+def collect_places(records, bbox):
+    names = set()
+    for place in records:
+        name, lat, lon = place["name"], place["lat"], place["lon"]
+        if name in names:
+            raise SystemExit("重复地点：" + name)
+        names.add(name)
+        if not (math.isfinite(lat) and math.isfinite(lon)
+                and bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3]):
+            raise SystemExit(name + " 落在龙南边界外，请核对地点清单")
+        if not place.get("coordinateSource", {}).get("label") or not place.get("desc"):
+            raise SystemExit(name + " 缺少坐标来源或地点介绍")
+    return records
 
 
 def main():
@@ -188,27 +115,30 @@ def main():
     bbox = [min(lons), min(lats), max(lons), max(lats)]
     print("bbox", bbox)
 
-    places, used_fallback = collect_places(bbox)
-    print("点位 %d 个（其中 %d 个走兜底表）" % (len(places), used_fallback))
+    catalog = json.loads(PLACES_FILE.read_text(encoding="utf-8"))
+    places = collect_places(catalog["places"], bbox)
+    retrieved = catalog["verified"]
+    print("已复核点位 %d 个" % len(places))
     if len(places) < MIN_PLACES:
         raise SystemExit("只拿到 %d 个点，低于 %d 个的下限，先别写文件" % (len(places), MIN_PLACES))
 
     payload = {
         "outline": ring,
         "bbox": [round(v, 4) for v in bbox],
-        "retrieved": RETRIEVED,
+        "retrieved": retrieved,
         "source": {
             "outline": "阿里云 DataV.GeoAtlas 行政区划数据（国家基础地理信息中心公开底图），adcode 360783",
-            "points": "中文维基百科各条目 infobox 坐标（WGS84）",
+            "points": catalog["source"],
         },
+        "reference": {"title": catalog["reference"]["title"],
+                      "published": catalog["reference"]["published"]},
         "places": places,
     }
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     text = (
-        "/* 「家乡」地图数据：龙南市真实行政边界 + 乡镇与文保点真实坐标（WGS84）。"
-        "由 scripts/build_hometown_map.py 生成，请勿手改；改点位清单改那个脚本里的 PLACES。"
+        "/* 家乡地图数据。由 scripts/build_hometown_map.py 生成，地点清单见 data/hometown-places.json。"
         "底图来源：" + payload["source"]["outline"] + "；坐标来源：" + payload["source"]["points"]
-        + "。取数日期：" + RETRIEVED + "；边界 " + str(len(ring)) + " 点，点位 " + str(len(places)) + " 个。 */\n"
+        + "。复核日期：" + retrieved + "；边界 " + str(len(ring)) + " 点，点位 " + str(len(places)) + " 个。 */\n"
         "window.HOMETOWN = " + body + ";\n")
     tmp = OUT.parent / (OUT.name + ".tmp")
     tmp.write_text(text, encoding="utf-8")     # 先写临时文件再改名，避免中途出错留下半截数据

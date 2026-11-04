@@ -547,12 +547,12 @@ def check_hometown_map():
         fail(".hm-land 没有 fill：SVG 默认涂黑，整张地图会变成一团黑影")
     notes.append("家乡面板 %d 个类名全部有样式，县界 fill 在位" % len(used))
 
-    notes.append("家乡地图：%d 点县界 + %d 个真实坐标点位（%s 取数），每点均有书内出处"
+    notes.append("家乡地图：%d 点县界 + %d 个复核点位（%s），每点均有关联介绍"
                  % (len(ring), len(places), data.get("retrieved")))
 
     gen = read(rel("scripts", "build_hometown_map.py"))
-    if "360783" not in gen or "FALLBACK_COORDS" not in gen:
-        fail("build_hometown_map.py 不再取龙南市(360783)边界或缺少坐标兜底表")
+    if "360783" not in gen or "hometown-places.json" not in gen:
+        fail("build_hometown_map.py 缺龙南市(360783)边界或已复核地点清单")
     if "落在龙南边界外" not in gen:
         fail("build_hometown_map.py 丢了「点位必须在县界内」的自检")
 
