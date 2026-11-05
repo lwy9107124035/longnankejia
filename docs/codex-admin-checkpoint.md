@@ -749,3 +749,30 @@
 - 正式原响应SHA480dc61d...未变。原始.cache/maintenance/report-20261104T195636060Z.json为200/JSON/no-store、385/188唯一ID、181图完整校验复用、snapshotComplete=true、元数据711723B、物理34340864B，warnings空；仅两个旧删除意图待确认ID，基线及告警保留。main现有地图提交ab67db4来自其他工作，本任务未推main。
 - 19:57Z新全账户UTC用量1056434读/38511写，.cache/nov4-advanced-sharing-final-usage.json，小时统计可能滞后。当前可执行程序与两场景公网公开内容读写验收已完成，恢复原只读巡检，不因预算重置再次加压。真实iPhone/微信/公众号界面、真实千人AI问答和长期SLA仍未实测，继续保留明确边界，不重复催问或自动操作桌面。
 - 同一notification-state已追加归档原状态并更新本轮实测结果、完整清理证据和实际正式观测，保留旧删除意图告警。原automation-2已更新为本轮251项及两组通过状态，继续每6小时同线程只读巡检；不创建重复任务，不接续旧性能失败动作。验收文档仅推codex。
+
+## 2026-11-05 01:46Z 例行只读巡检，状态未变
+
+- 原始报告.cache/maintenance/report-20261105T014543802Z.json确认正式200/JSON/no-store、385/188唯一ID及内容摘要未变；181图完整校验复用、snapshotComplete=true，元数据711723B、物理34340864B、warnings空。exit1仅两个旧删除意图待确认ID，基线和告警保留，套餐上限未知。
+- 开始codex7148172已跟踪文件干净，无运行中的负载或巡检。仅执行原只读健康命令，原报告和修改前通知状态追加归档，更新实际观测；通知签名一致，lastNotified保留。已完成两组验收不重跑，本节仅本地追加。
+
+## 2026-11-05 07:47Z 例行只读巡检，状态未变
+
+- 原始报告.cache/maintenance/report-20261105T074647275Z.json确认正式200/JSON/no-store、385/188唯一ID及内容摘要未变；181图完整校验复用、snapshotComplete=true，元数据711723B、物理34340864B、warnings空。exit1仅两个旧删除意图待确认ID，基线和告警保留，套餐上限未知。
+- 开始codex7148172，保留上一轮检查点待提交修改，无运行中的负载或巡检。仅执行原只读健康命令，原报告与修改前通知状态追加归档，更新实际观测，lastNotified保留；通知签名一致，不重复通知。本节仅本地追加。
+
+## 2026-11-05 12:53Z 用户接续后的只读复核
+
+- 保留前两轮检查点待提交内容，开始codex7148172，无运行中的负载或巡检。正式原始报告.cache/maintenance/report-20261105T125202124Z.json确认200/JSON/no-store、385/188唯一ID及内容摘要一致；181图完整校验复用，snapshotComplete=true，元数据711723B、物理34340864B，warnings空。exit1仅两个旧删除意图待确认ID，保留告警和基线，套餐上限未知。
+- 额外执行两次codex公开目录只读请求，均200/JSON/no-store、revision1812、自定义首屏0条，实际快照分别primary和edge-cache，耗时1532/293ms。证据.cache/maintenance/codex-readonly-20261105T125235452Z.json；小样本仅核对可用性和缓存路径，不代替负载结果。
+- 原报告及修改前通知状态追加归档，更新实际观测。当前无新增可复现故障，既有251项回归和两场景严格验收结论按原始记录保留；真实设备/微信/真实AI及长期SLA仍缺实测条件。仅更新同一检查点。
+
+## 2026-11-05 真实AI链路与取消处理补修
+
+- 用户明确接续真实iPhone、微信入口及千人真实AI项目。只读设备核查未发现iPhone/iPad、设备CLI、真机云环境配置或可用真机连接工具，证据.cache/real-device-preflight-20261105.json。全程未操作桌面、微信或浏览器，未将UA模拟当成真实设备。
+- codex默认Qwen/Qwen3-30B-A3B-Instruct-2507完成1次真实模型问答，HTTP200、1881ms、正常stop，受控资料的JSON回答正确，实际78 tokens（输入60/输出18）。证据.cache/maintenance/real-ai-smoke-20261105T125856337Z.json，仅保存固定结果和用量，没有明文密钥。该调用不代表千人容量，当前账户RPM/TPM和预算仍未知。
+- 对AI代理核查发现未向上游fetch传递请求取消信号，也没有上游截止时间。新回归复现已取消请求仍发起模型调用，以及慢响应/未完成正文没有截止信号，红测试.cache/nov5-ai-cancellation-red.txt。新实现合并request.signal与聊天20秒/转写30秒超时，在发起前检查取消；对应现有前端等待时限，原错误脱敏和正常调用协议保留。
+- 部署绑定加入enable_request_signal，保持compatibility_date=2026-10-20。Cloudflare在当前日期前需要此flag才接收真实断连事件，依据https://developers.cloudflare.com/changelog/post/2025-05-22-handle-request-cancellation/。新增回归涵盖调用前取消、调用中取消、慢响应头/正文及聊天/转写两种时限，相关21/21、完整253/253通过，.cache/nov5-ai-cancellation-targeted.txt及-full-tests.txt。
+- 额外workerd核查首次遇到本机旧模拟器最多支持2026-09-28，未进入应用处理。原失败.cache/nov5-ai-cancellation-old-runtime-failure.txt保留，正在按既有CI锁定的wrangler4.137.0安装隔离运行时后复核，不降低正式兼容日期。当前补修待runtime核查、codex提交与部署，不给出新版本已发布的结论。
+
+- 隔离wrangler4.137.0下载被既有本机代理127.0.0.1:31181拒绝，日志.cache/nov5-ai-runtime-install.txt保留，停止重复下载。使用现有workerd支持的2026-09-28日期单独验证同一已在2025年引入的取消功能，正式配置仍2026-10-20。6个原生运行时场景全部通过，证据.cache/nov5-ai-cancellation-workerd.json及-verified.txt；上游均为本地合成，不计为真实AI负载。测试包装曾因dispatchFetch重写Host及FormData编码得到403/415，已修正包装后验证，原origin/audio-harness-failure日志保留，未放宽应用来源校验。
+- code-humanizer继续仅作Guard。生产改动为AI代理3行和部署兼容flag1行，复用原校验、错误脱敏及标准AbortSignal，不新增协议、密钥或存储。完整253项通过，正在仅提交codex，部署后再用真实默认模型做单次核验。账户模型RPM/TPM及可用预算未知，暂不发起千人真实模型突发，也不把公开内容负载结果改写成真实AI容量。

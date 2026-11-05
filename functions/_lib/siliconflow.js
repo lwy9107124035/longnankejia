@@ -232,11 +232,14 @@ async function proxyAuthorized(request, context, endpoint) {
       headers = {};
     }
 
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(endpoint === 'chat' ? 20000 : 30000)]);
+    signal.throwIfAborted();
     const upstream = await fetch(endpoint === 'chat' ? CHAT_URL : AUDIO_URL, {
       method: 'POST',
       headers: { ...headers, Authorization: `Bearer ${key}` },
       body,
       redirect: 'manual',
+      signal,
     });
     return await safeUpstreamResponse(upstream, key);
   } catch (error) {

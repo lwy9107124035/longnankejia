@@ -46,6 +46,7 @@ if (configuredId) {
 }
 fs.writeFileSync('wrangler.jsonc', JSON.stringify({
   name: target.project, pages_build_output_dir: '_site', compatibility_date: '2026-10-20',
+  compatibility_flags: ['enable_request_signal'],
   ...(branch === 'codex' ? { placement: { region: 'aws:ap-east-1' } } : {}),
   d1_databases: [{ binding: 'ADMIN_DB', database_name: name, database_id: database.uuid }, ...(target.mediaId ? [{ binding: 'ADMIN_MEDIA_DB', database_name: 'longnankejia-media-' + branch, database_id: target.mediaId }] : [])],
   ...(target.bucket ? { r2_buckets: [{ binding: 'ADMIN_MEDIA', bucket_name: target.bucket }] } : {})

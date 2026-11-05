@@ -282,3 +282,77 @@ test('Qwen3 evidence selection uses JSON output without opening upstream fields 
   assert.equal(rejected.status,400);
  });
 });
+
+test('cancelled chat requests stop upstream work and never start an already cancelled request', async () => {
+  for (const phase of ['before', 'during']) {
+    const controller = new AbortController();
+    let calls = 0;
+    if (phase === 'before') controller.abort(DUMMY_KEY);
+    await withFakeFetch(async (_url, options) => {
+      calls++;
+      if (!options.signal) return Response.json({ choices: [{ message: { content: 'unexpected reply' } }] });
+      const pending = new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      });
+      queueMicrotask(() => controller.abort(DUMMY_KEY));
+      return pending;
+    }, async () => {
+      const response = await onChat(request('/api/ai/chat/completions', {
+        method: 'POST', signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': 'cancel-' + phase },
+        body: JSON.stringify(chatPayload),
+      }), { env });
+      assert.equal(response.status, 502);
+      assert.equal(calls, phase === 'before' ? 0 : 1);
+      assert.doesNotMatch(await response.text(), new RegExp(DUMMY_KEY));
+    });
+  }
+});
+
+test('chat and transcription deadlines cancel both slow headers and unfinished response bodies', async () => {
+  const originalTimeout = AbortSignal.timeout;
+  try {
+    for (const endpoint of ['chat', 'audio']) {
+      for (const phase of ['headers', 'body']) {
+        const deadline = new AbortController();
+        let timeoutMs;
+        AbortSignal.timeout = milliseconds => { timeoutMs = milliseconds; return deadline.signal; };
+        await withFakeFetch(async (_url, options) => {
+          if (!options.signal) return Response.json({ unexpected: 'no deadline' });
+          let pending;
+          if (phase === 'headers') {
+            pending = new Promise((_resolve, reject) => {
+              options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+            });
+          } else {
+            pending = new Response(new ReadableStream({
+              start(stream) {
+                options.signal.addEventListener('abort', () => stream.error(options.signal.reason), { once: true });
+              },
+            }));
+          }
+          queueMicrotask(() => deadline.abort(new DOMException(DUMMY_KEY, 'TimeoutError')));
+          return pending;
+        }, async () => {
+          let response;
+          const headers = { 'CF-Connecting-IP': endpoint + '-timeout-' + phase };
+          if (endpoint === 'chat') {
+            response = await onChat(request('/api/ai/chat/completions', {
+              method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(chatPayload),
+            }), { env });
+          } else {
+            const form = new FormData();
+            form.set('model', 'Qwen/Qwen3-ASR-1.7B');
+            form.set('file', new Blob(['synthetic audio']), 'test.webm');
+            response = await onAudio(request('/api/ai/audio/transcriptions', { method: 'POST', headers, body: form }), { env });
+          }
+          assert.equal(response.status, 502);
+          assert.equal(timeoutMs, endpoint === 'chat' ? 20000 : 30000);
+          assert.doesNotMatch(await response.text(), new RegExp(DUMMY_KEY));
+        });
+      }
+    }
+  } finally {
+    AbortSignal.timeout = originalTimeout;
+  }
+});
