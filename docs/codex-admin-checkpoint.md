@@ -776,3 +776,9 @@
 
 - 隔离wrangler4.137.0下载被既有本机代理127.0.0.1:31181拒绝，日志.cache/nov5-ai-runtime-install.txt保留，停止重复下载。使用现有workerd支持的2026-09-28日期单独验证同一已在2025年引入的取消功能，正式配置仍2026-10-20。6个原生运行时场景全部通过，证据.cache/nov5-ai-cancellation-workerd.json及-verified.txt；上游均为本地合成，不计为真实AI负载。测试包装曾因dispatchFetch重写Host及FormData编码得到403/415，已修正包装后验证，原origin/audio-harness-failure日志保留，未放宽应用来源校验。
 - code-humanizer继续仅作Guard。生产改动为AI代理3行和部署兼容flag1行，复用原校验、错误脱敏及标准AbortSignal，不新增协议、密钥或存储。完整253项通过，正在仅提交codex，部署后再用真实默认模型做单次核验。账户模型RPM/TPM及可用预算未知，暂不发起千人真实模型突发，也不把公开内容负载结果改写成真实AI容量。
+
+- 补修0ac9d62321ecf3f089deefe8a9b7be02f8be5510已推codex，CI42033357995成功，241接口+12工具=253/253，13:10Z部署完成，完整日志.cache/nov5-ai-cancellation-ci-full.txt。管理API只读核验当前preview部署52d8a1ba-fdc6-4e9f-a6cc-9f5a3b322775的commit、compatibility_date=2026-10-20、enable_request_signal及success，证据.cache/nov5-ai-deployment-config.json；没有因旧本机运行时降低云端日期。
+- 部署后真实默认模型再核验1次，HTTP200、1890ms、正常stop、资料约束JSON回答正确，78tokens。证据.cache/maintenance/real-ai-postdeploy-20261105T131142859Z.json。本轮两次真实调用均成功，实际共156tokens；不能据此声称千人真实AI或长期SLA已通过。当前免费/可用预算和该账户模型RPM/TPM仍未知，平台按账户和模型限流，官方依据https://docs.siliconflow.cn/docs/userguide/faqs/rate-limit-and-upgradation，不用增加API key绕额度。
+- 正式原始报告.cache/maintenance/report-20261105T131141025Z.json为200/JSON/no-store、385/188唯一ID、内容摘要一致、181图完整备份、元数据711723B/物理34340864B、warnings空；仅原两个删除意图告警。保存原始报告、更新通知观测并保留基线，main没有由本任务发布。
+- 本轮属于AI代理补修，公开内容读写两场景原始证据继续属于26db8b1，未重复已通过的D1负载。iPhone/微信界面仍需可访问真机或真机云及微信环境，当前未提供；已有桌面禁令继续执行。后续例行只读巡检不反复调用模型，不将本轮单次问答改名为千人验收。
+- 原automation-2与通知状态已更新最新AI补修、253项CI和两次真实单问结果，保留26db8b1公开内容负载原证据及两个旧删除意图告警。仍按每6小时只读维护，不创建新任务，不周期性消耗模型额度；本轮文档仅推codex。
