@@ -789,3 +789,55 @@
 - 经原automation_update工具以结构化Unicode参数恢复名称和完整中文说明，保留每6小时、ACTIVE、原线程及维护边界。名称现为龙南非遗小助手维护巡检，重新读取配置确认名称准确、乱码替换字符0，证据.cache/maintenance/automation-encoding-repair-20261105.json。后续跨命令行传递中文使用ensure_ascii=True的JSON或明确UTF-8，并在写回前验证Unicode。未操作桌面。
 - 验收按已获得的证据分范围说明。现有管理功能自动回归、上传/多人同步、千人公开内容读取和峰值保存，以及两次单次真实AI已有通过记录。真实iPhone/微信入口、千人真实模型及长期SLA仍无完整实测证据，不能按用户完整范围签作全部通过。未测入口的兼容性、高峰模型限流和响应时延仍缺少承诺依据；两个历史删除意图告警继续保留。
 - 本次修复仅维护任务配置及记录，未修改网页应用代码，不重跑已通过的回归或负载。正式服务状态引用最近13:11Z已归档报告，未将旧报告当作本轮新巡检。
+
+## 2026-11-05 13:47Z 例行只读巡检，状态未变
+
+- 开始codexc9888b0已跟踪文件干净，无运行中的负载或巡检。原始报告.cache/maintenance/report-20261105T134648074Z.json确认正式200/JSON/no-store、385/188唯一ID及内容摘要一致；181图完整校验复用、snapshotComplete=true，元数据711723B、物理34340864B，warnings空。exit1仅两个旧删除意图告警，基线和告警保留，套餐上限未知。
+- 原报告与修改前通知状态追加归档，只更新实际观测，lastNotified保留；通知签名一致，不重复通知。仅本地追加同一检查点，按原要求只读维护。
+
+## 2026-11-05 14:06Z 外部资源调查与分支差异核对
+
+- 用户询问外部验收资源能否代为落实以及codex/main差异。先保留13:47Z巡检检查点待提交内容，fetch实际远端后核对main=ab67db49addaeddb61c578b50b4fdc8550802e31、codex=c9888b0be55327699bed62299e2776a538ea2f23。分支独有提交main3/codex73，净差89文件、8011增/274删，含大量文档和测试。git cherry证明main的3个地图提交在codex均有等价补丁；地图文件净差为0。
+- 两站各一次正常只读目录请求均200/JSON/no-store，证据.cache/maintenance/branch-comparison-20261105T140640453Z.json。main为旧快照结构、revision385、自定义科普188；codex为records-v1、revision1812、自定义科普0。数据库独立，codex未复制客户正式资料。两者R2均关闭。
+- codex相对main新增逐条D1存储、独立图片库、列表分页与服务端搜索、保存回执/并发事务补修、公开快照/图片缓存、访客停止后台轮询、AI服务端取消/超时，以及维护容量/备份/用量保护。源码中的R2上传和历史归档是可选能力，当前云端未启用，不能按已开通描述。main升级还须对其自己的正式数据备份、迁移和绑定检查，不能把codex空测试库覆盖过去。此次没有发布main。
+- 通过Plugin Management查找真机云接入，返回结果未有相关BrowserStack/LambdaTest/WeTest连接，不推荐无关插件。官方资料核实BrowserStack提供真实iOS设备和限量免费试用；Live用于网页，App Live支持App Store应用安装，微信具体安装/登录及API权限仍需实际账号核实。TestMu AI官方免费方案有每月5次、每次至多2分钟真机Live会话，不作为已满足完整验收时长的证明。来源https://www.browserstack.com/support/faq/plans-pricing/plans/what-do-i-get-with-a-free-trial 、https://www.browserstack.com/support/faq/live/features-live/can-i-install-apps-on-browserstack-live 、https://www.testmuai.com/pricing/。
+- 当前只完成服务与免费条件核查，未开户、付款、联系供应商或启动真机界面测试。后续可负责选型、接入、测试脚本和复验，账号身份验证/微信登录/费用及界面操作授权仍需按用户既有约束处理；真实AI资源先核对同一模型账户限额和预算，不据公开默认额度假定账号已可承载千人。
+
+## 2026-11-05 14:25Z 免费真机云接入预检与新装微信
+
+- 用户明确先按免费方案核验接入，并告知已安装微信。只读确认C:/Program Files/Tencent/Weixin/Weixin.exe存在，Windows微信版本4.1.15.13。未启动微信或浏览器，未抓屏/点击/键入，未运行WeChatAppEx。未检测到Apple设备或设备CLI；BrowserStack/LambdaTest/WeTest账号环境变量及本项目常见配置文件均未配置。
+- 对BrowserStack官方只读Plan API做1次无凭据GET，HTTP401、2187ms，说明网络连通且需要账号认证；不代表账号已经接入或免费设备权限已通过。证据.cache/maintenance/free-device-network-20261105T142535448Z.json。未创建真机会话、消耗设备试用分钟或开通收费服务。认证与计划接口依据https://www.browserstack.com/docs/app-automate/api-reference/authentication 和https://www.browserstack.com/docs/automate/api-reference/selenium/plan。
+- 已通过异步输入询问两项必要信息，等待用户回答。第一项因用户此前明确禁止操作电脑，需明确是否仅允许Windows微信与codex测试网页的限定验收操作；第二项是否已有BrowserStack免费账号，以便选择接入或注册步骤。未把安装微信解释为解除原禁令，也未把选项默认值当作已授权。窗口测试和账号相关步骤仍待回答；可独立推进的安装与HTTP网络预检已完成。
+- 既有13:47Z巡检和14:06Z分支比较待提交记录保留，本节仅追加同一检查点。当前不推main、不改凭据、不做新的D1或真实模型压力测试。
+
+## 2026-11-05 用户澄清权限并继续免费接入
+
+- 用户明确此前禁止的仅为computer-use插件，其余电脑操作均已授权；确认没有BrowserStack账号。此澄清取代历史的全面桌面/CLI界面禁令，仍禁止调用computer-use或mcp__cua_repl。原automation-2已按该范围更新，仍保持每6小时只读维护，当前交互验收不由例行任务重复启动。
+- 已用现有Playwright和独立Chrome配置打开BrowserStack免费注册页，短暂Client Challenge由网站自身加载后正常进入注册页，未绕过验证。注册需姓名、邮箱及密码，已仅向用户询问姓名和邮箱；验证码出现后再由本人处理，不臆造身份、不输出或保存明文凭据。专用浏览器状态在.cache/free-acceptance/current-session.json，注册与测试用新的独立Chrome profile，不读取原浏览器个人会话。
+- Windows微信已在运行且登录。使用Windows原生窗口API和截图核查主窗口，未调用被禁止插件、未启动WeChatAppEx。后续只通过核实后的文件传输助手打开codex链接，不向他人发消息。真实iPhone和微信iOS仍待云端真机资源，不用Windows结果替代。
+
+## 2026-11-05 14:57Z 免费注册真人验证与窗口协调待办
+
+- 用户已提供注册姓名和邮箱，仅用于BrowserStack免费注册，不写入公开仓库。独立Chrome正常加载注册页，填好身份和协议选项；生成的临时密码只在内存和Windows DPAPI加密记录中处理，未打印或保存明文。网站要求Cloudflare真人验证，注册尚未完成、未创建真机会话或开通收费服务。
+- 尝试将专用注册浏览器切为可见并恢复表单的命令被自动审批拒绝，返回仅为blocked by policy。改为不读取密码、直接打开新可见专用Chrome的更小范围命令仍被相同审批拒绝，均未执行。停止此类命令，不使用编码、其他程序名等规避；已向用户明确报告。通过应用open_in_codex将官方注册URL排入本线程右侧网页面板，工具返回queued；需本人在该页设置密码并完成人机验证。
+- 微信原生自动化核实文件传输助手为当前会话、输入框为空后，仅向本人发送codex链接。输入法预编辑由Enter提交后再发送，未向他人发消息。随后界面已切到其他聊天，立即暂停输入以避免与用户操作冲突；尚未取得微信内浏览器页面通过证据，不将该情况归为网站故障。已询问是否能暂时空出微信窗口约1分钟，等待回答。
+- 用户注册改为本人交互后，清空独立无头浏览器里的姓名/邮箱/密码未提交字段，删除未使用的临时DPAPI注册记录。清理10份含非测试聊天或注册信息的临时定位截图，只保留必要的非敏感过程信息；未删除用户微信聊天记录、照片或其他原文件。汇总.cache/free-acceptance/progress-20261105.json记录computerUsePluginInvoked=false、windowsWechatBrowserVerified=false、browserstackAccountCreated=false、deviceSessionsCreated=0。
+- 当前独立Chrome状态.cache/free-acceptance/current-session.json仍为无头准备环境；右侧面板与该环境不共享已填写表单，不能告诉用户账号已开通。接续先看用户真人验证/注册结果及微信空闲回答，再推进免费账号权限核验和微信入口测试。密码/密钥不得要求在聊天中明文发送，真实iPhone和千人AI仍按原边界记录。
+
+## 2026-11-05 15:40Z 免费账户接入及真实设备首轮结果（进行中）
+
+- 用户已完成注册和登录，并允许开始微信测试。Windows微信4.1.15.13通过本人文件传输助手中的codex链接正常启动内置浏览器；预览域名先出现微信安全提示，继续访问后页面正常。未调用computer-use插件，未单独启动WeChatAppEx，未向他人发消息。科普段落/图片、知识检索、馆内资料回答、3D实际渲染与控制、典藏检索/详情、地图选点和管理登录表单已观察正常。童谣原生进度2.1/78.4秒，测试后已暂停；未输入管理员凭据或提交内容。证据位于.cache/free-acceptance/weixin-*，仅保存公开测试页。
+- BrowserStack最初422经正常重新导航恢复登录页，用户本人登录后已核实账户。通过其账户官方显示控件仅在内存读取凭据，随后重新隐藏；加密存本机DPAPI，不输出或保存明文，未旋转密钥。Automate/App Automate Plan API均200、Free、并发上限5、当时运行0；真实iPhone目录可用。证据browserstack-plan-preflight.json及browserstack-iphone-catalog.json，均在同一.cache/free-acceptance目录。API接入成功不等于真机项目全部通过，未开通付费服务。
+- 已实际分配iPhone15 Pro、iOS17.3.1、Safari真实设备，UA/平台/realMobile和截图均已记录。前三份原始报告153016062Z、153342848Z、153607443Z中的导航失败属于探索脚本：普通函数回调的arguments指向数组索引；另有PowerShell把元素列表的空error数组当作真、Safari驱动把带document属性的返回对象当作窗口。均有明确修正与本地复现，未修改网页应用。原失败不覆盖，测试会话均已DELETE。
+- 修正后的iphone-safari-20261105T153816758Z.json实际8/9通过：输入/问答/搜索、图片与段落、WebGL与控制、典藏、地图、管理员表单、刷新/浏览器存储正常，无横向溢出。音频点击后20秒未见进度，仍未通过，不能称全部验收通过。正在用同一隔离脚本的AudioOnly/TouchAudio诊断真实触摸事件、AudioContext状态和资源加载，不以UA模拟、绕过自动播放策略或延长等待凑通过。
+- 15:37Z正式只读巡检仍200/JSON/no-store、385/188唯一ID及摘要一致、181图完整备份、711723B元数据/34340864B物理容量，无新预警，仅原两个删除意图告警。原始报告已追加归档。main、客户内容、密码和邀请码未改；没有新增D1负载或真实模型请求。iOS微信安装/登录、公众号入口和真实AI千人仍未完成，不用Windows或Safari结果替代。
+
+## 2026-11-06 免费真机验收完成本轮范围并收尾
+
+- BrowserStack Free实际API已接通。iPhone16、iOS18.5、Safari完整9/9通过，原始iphone-safari-20261105T195331130Z.json（同一.cache/free-acceptance目录），UA/真实设备capability/393px视口/截图保留。科普图文、WebGL及控制、馆内问答/检索、典藏、地图、录音进度及字幕高亮条件、管理表单、刷新/存储均有实际断言。iPhone15 Pro为153816758Z的8项及195210756Z音频原生补测通过，不能称单轮9项。字幕断言通过后截图往返及文本读取恰逢句间空白，caption字段为空；不称已捕获对应字幕文字截图。
+- 音频诊断154312427Z证实默认WebDriver点击isTrusted/userActivation=false、AudioContext=suspended，尚未请求音频本体。W3C坐标未命中，194754590Z的nativeWebTap也未正确导航。195038721Z实际NATIVE_APP树可访问，播放控件为XCUIElementTypeSwitch，原Button定位失败；保存原生XML后修正定位。195210756Z原生控件点击证实trusted/active=true、context=running、0:01/1:18，音频556ms/1885791B；iPhone16同样真实点击，音频240ms，0:04/1:18，测试后暂停。没有修改自动播放策略或网页代码，没有把脚本问题归为产品已补修。全部旧失败保留。
+- browserstack-session-audit.json通过官方逐会话API独立核实9个会话均done，DELETE确认齐全，最后Free计划运行0/排队0；提供方会话时长合计417秒。派生汇总曾因PowerShell对新OrderedDictionary的Measure-Object未计入后三项而为280秒，原派生文件追加归档后按已保存的逐条duration修正；未改原始提供方/测试报告。final-20261106.json为本轮范围汇总，progress已更新实际注册/接入/设备状态，原14:57Z状态归档。凭据仅Windows DPAPI加密本地保存，未显示或保存明文，无付费或密钥轮换。
+- 19:47Z原始正式报告.cache/maintenance/report-20261105T194722542Z.json确认200/JSON/no-store、385/188唯一ID、摘要不变、181图完整复用、snapshotComplete=true、711723B元数据/34340864B物理容量，无新增warnings；仅两个旧删除意图告警，baseline保留。lastObserved已更新，保留原lastNotified健康签名，另登记lastDeviceAcceptanceNotification，原状态追加归档。
+- 本轮仅文档与本地探索证据有变，应用仍0ac9d62/CI42033357995原253项通过证据；main仍ab67db49addaeddb61c578b50b4fdc8550802e31，未由本任务发布。既有26db8b1公开千人结果不重跑；没有新增真实模型调用、生产内容写入、D1夹具或凭据改动。原受管理工作区保留。
+- 尚未完成真实管理员登录/写入、麦克风输入和人工音质、外部视频、iOS微信/公众号入口、真实AI千人和长期SLA，不能签作全部范围通过。用户Apple ID可用性和项目硅基流动账号访问情况已各询问一次，等待回答，不重复催问。App Live安装iOS微信需本人Apple ID及后续微信登录，依据https://www.browserstack.com/docs/app-live/app-source/app-store；免费试用最多三次App Store会话依据https://www.browserstack.com/support/faq/app-live/features-app-live/can-i-install-apps-from-apple-app-store-and-google-play-store-on-app-live，不能当作无限资源。例行只读巡检不新建云端会话或重复交互测试。
+- 原automation-2已更新实际注册、API接入、两代iPhone/Windows微信范围及未验收边界，移除陈旧未注册/等待空闲的当前动作。仍每6小时同线程只读维护；读回确认名称与完整说明Unicode准确、U+FFFD=0、周期/ACTIVE/目标线程保持。原配置已追加归档，不创建重复维护任务。
