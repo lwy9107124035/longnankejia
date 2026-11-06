@@ -319,3 +319,11 @@ iPhone16原始报告.cache/free-acceptance/iphone-safari-20261105T195331130Z.jso
 汇总.cache/free-acceptance/final-20261106.json；提供方独立复核browserstack-session-audit.json确认9个测试会话均done，DELETE已确认，运行/排队均0。失败原报告不改写为通过。19:47Z正式只读检查仍385/188、181图完整备份、元数据711723B/物理34340864B，无新容量预警；仅保留原两个删除意图告警。
 
 本轮管理入口只验证表单，未在真机或Windows微信提交管理员凭据、上传或删除内容。真实管理员读写、麦克风输入、外部视频、iOS微信/公众号入口、真实AI千人及长期SLA仍未完成，不能将此表当作全部场景验收。main、原密码和密钥未改，未复制客户资料到预览库。
+
+## 2026-11-06 用户确认后的验收范围
+
+用户明确移除iPhone内微信验证。该项记为用户排除，不再作为本次验收阻塞项，也不再要求Apple ID。既有真实iPhone Safari与Windows微信结果保留；公众号实际入口继续单独列为待验收。
+
+用户不清楚项目硅基流动账号归属。核对functions/_lib/siliconflow.js、js/config.js、.github/workflows/cf-pages.yml及部署说明，确认默认模型Qwen/Qwen3-30B-A3B-Instruct-2507，codex密钥由GitHub Secret SILICONFLOW_API_KEY注入Cloudflare；main保留已有加密密钥，不能推定两站账号相同。现有配置记录没有登录账号归属。官方已公告/user/info于2026-08-14停用，本轮检索未找到公开的账户替代查询接口。[接口调整公告](https://docs.siliconflow.cn/docs/release-notes/overview)
+
+此次未读取明文密钥、修改凭据、切换供应商、运行模型探针或调用模型。真实千人AI保留待验收，仍需项目同一账号的限额及可用测试额度，不能将账号未知当作已通过。

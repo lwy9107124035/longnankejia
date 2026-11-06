@@ -1,6 +1,6 @@
 # API 配置与分支部署
 
-四个分支使用同一组 SiliconFlow 服务、模型与请求参数。浏览器只调用本站 Pages Functions，API key 由 GitHub Actions 从仓库 Secret `SILICONFLOW_API_KEY` 同步到 Cloudflare Pages secret binding；静态 `js/secrets.js` 始终为空。
+四个分支使用同一组 SiliconFlow 服务、模型与请求参数。浏览器只调用本站 Pages Functions。非main分支的API key由GitHub Actions从仓库Secret `SILICONFLOW_API_KEY`同步到Cloudflare Pages secret binding，codex对应preview环境；main发布保留正式站已有加密密钥，不覆盖或重设。模型相同不能证明密钥或账号归属相同。静态 `js/secrets.js` 始终为空。
 
 | Git 分支 | Cloudflare Pages 项目 | 环境 | 固定入口 |
 | --- | --- | --- | --- |

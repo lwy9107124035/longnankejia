@@ -841,3 +841,16 @@
 - 本轮仅文档与本地探索证据有变，应用仍0ac9d62/CI42033357995原253项通过证据；main仍ab67db49addaeddb61c578b50b4fdc8550802e31，未由本任务发布。既有26db8b1公开千人结果不重跑；没有新增真实模型调用、生产内容写入、D1夹具或凭据改动。原受管理工作区保留。
 - 尚未完成真实管理员登录/写入、麦克风输入和人工音质、外部视频、iOS微信/公众号入口、真实AI千人和长期SLA，不能签作全部范围通过。用户Apple ID可用性和项目硅基流动账号访问情况已各询问一次，等待回答，不重复催问。App Live安装iOS微信需本人Apple ID及后续微信登录，依据https://www.browserstack.com/docs/app-live/app-source/app-store；免费试用最多三次App Store会话依据https://www.browserstack.com/support/faq/app-live/features-app-live/can-i-install-apps-from-apple-app-store-and-google-play-store-on-app-live，不能当作无限资源。例行只读巡检不新建云端会话或重复交互测试。
 - 原automation-2已更新实际注册、API接入、两代iPhone/Windows微信范围及未验收边界，移除陈旧未注册/等待空闲的当前动作。仍每6小时同线程只读维护；读回确认名称与完整说明Unicode准确、U+FFFD=0、周期/ACTIVE/目标线程保持。原配置已追加归档，不创建重复维护任务。
+
+## 2026-11-06 01:44Z 例行只读巡检，状态未变
+
+- 开始codex8e66bc1，已跟踪文件干净，无运行中的负载、巡检或真机测试。只执行原只读维护命令，未重新分配设备或调用模型。原始.cache/maintenance/report-20261106T014326314Z.json确认200/JSON/no-store、385/188唯一ID、内容摘要一致、181图完整校验复用、snapshotComplete=true、元数据711723B/物理34340864B，warnings空。仅原两个删除意图告警，套餐上限未知，基线保留。
+- 本轮临时命令包装将ConvertFrom-Json已转换的UTC日期再Parse/ToUniversalTime，误判报告不新鲜。原始health-20261106T014326314Z.log和latest实际为同一新时间01:43:26.660Z；直接以原始JSON的ISO字符串核对并追加归档，未重复访问服务器、未将包装错误判为服务故障。修改前报告和通知状态均已归档，更新实际观测，lastNotified及待确认删除ID保留。签名、revision、条数和摘要均未变，不重复通知；本节仅本地追加。
+
+## 2026-11-06 用户移除iPhone微信验证，模型账号归属未知
+
+- 用户明确因没有iPhone而移除iPhone内微信验证。按用户排除记录，不再列为本次验收阻塞项，不再询问Apple ID或安排iOS微信安装。已经取得的Safari真机9项及Windows微信基本流程证据保留，不改写为微信iOS通过；公众号实际入口未被用户排除。
+- 用户回答不清楚项目硅基流动账号归属。只读核查functions/_lib/siliconflow.js、js/config.js、.github/workflows/cf-pages.yml及docs/API配置与分支部署.md，确认默认Qwen/Qwen3-30B-A3B-Instruct-2507、GitHub Secret SILICONFLOW_API_KEY经Actions注入Cloudflare；本机未有.env/.dev.vars，当前记录没有能确认归属的登录账号。未读取明文凭据、追溯输出历史密钥、修改账号/密钥或调用模型。真实千人AI继续待同账号RPM/TPM及测试额度核实，不自行删除或改记通过，不重复催问已答的账号问题。
+- 开始codex8e66bc1，保留上一轮巡检待提交记录，无运行中的负载/真机任务。本轮仅调整文档和本地范围状态；不重测已通过项目，不操作浏览器/微信，不分配云端设备，不发布main。密码、邀请码和密钥保持不变。旧失败报告、旧删除意图告警及生产基线保留。
+- 进一步核实cf-pages.yml实际main路径跳过密钥覆盖，非main分支从GitHub Secret注入，codex使用preview绑定。已修正部署说明的来源表述，不能据相同模型推定账号相同。检索官方最新文档确认/user/info已于2026-08-14停用，当前未发现公开的账户替代查询接口，来源https://docs.siliconflow.cn/docs/release-notes/overview；未调用退役接口、获取密钥或创建临时查询工作流。只读核查现有probe-tts.yml后确认它会真实合成多个模型，故未dispatch。账号归属/余额/限额仍未知，保留真实千人待验收。证据.cache/free-acceptance/ai-account-preflight-20261106.json，范围快照scope-20261106T014915261Z.json在同目录。
+- 同一automation-2已按用户排除iOS微信、关闭Apple ID待办及账号未知状态更新；读回名称、完整说明、周期和目标线程均正确，U+FFFD=0。原配置和本地范围状态追加归档，原始真机测试与正式报告未改写。本轮文档仅推codex，不触发应用回归或发布。
