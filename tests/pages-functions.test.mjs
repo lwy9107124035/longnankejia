@@ -283,6 +283,21 @@ test('Qwen3 evidence selection uses JSON output without opening upstream fields 
  });
 });
 
+test('museum summaries and independent reviews use server-controlled JSON mode for both allowed Qwen models', async () => {
+  for (const model of ['Qwen/Qwen3-30B-A3B-Instruct-2507', 'Qwen/Qwen2.5-7B-Instruct']) {
+    for (const role of ['你是馆内讲解员。', '你是资料一致性审核员。']) {
+      await withFakeFetch(async (_url, init) => {
+        assert.deepEqual(JSON.parse(init.body).response_format, { type: 'json_object' });
+        return Response.json({ choices: [{ message: { content: '{}' } }] });
+      }, async () => {
+        const payload = { ...chatPayload, model, messages: [{ role: 'system', content: role + '只输出JSON。' }, { role: 'user', content: '象塘水围有什么特点？' }] };
+        const response = await onChat(request('/api/ai/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }), { env });
+        assert.equal(response.status, 200);
+      });
+    }
+  }
+});
+
 test('cancelled chat requests stop upstream work and never start an already cancelled request', async () => {
   for (const phase of ['before', 'during']) {
     const controller = new AbortController();
