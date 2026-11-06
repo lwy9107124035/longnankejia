@@ -22,7 +22,7 @@
   function current() {
     var raw = String(window.location.hash || '');
     if (raw.indexOf('admin-') !== -1) return 'chat';
-    var h = raw.replace(/^#\/?/, '');
+    var h = raw.replace(/^#\/?/, '').split('?')[0];
     return ROUTES[h] ? h : 'chat';
   }
 
@@ -33,12 +33,21 @@
   function apply() {
     var name = current();
     if (window.App && window.App.switchPanel) window.App.switchPanel(ROUTES[name]);
+    var query = new URLSearchParams(String(window.location.hash || '').split('?').slice(1).join('?'));
+    if ((name === 'science' || name === 'diancang') && (query.get('item') || query.get('title')) && window.App && window.App.openSource) {
+      window.App.openSource(name, { item: query.get('item') || '', title: query.get('title') || '', quote: query.get('quote') || '' });
+    }
     return name;
   }
 
-  function go(name) {
+  function go(name, params) {
     if (!ROUTES[name]) return false;
     var target = '#/' + name;
+    if (params) {
+      var query = new URLSearchParams();
+      ['item', 'title', 'quote'].forEach(function (key) { if (params[key]) query.set(key, params[key]); });
+      if (query.toString()) target += '?' + query.toString();
+    }
     if (window.location.hash === target) apply();
     else window.location.hash = target;
     return true;

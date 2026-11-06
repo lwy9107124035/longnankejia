@@ -353,6 +353,10 @@ input { font-family: inherit; }
 }
 .chat-search-ask-btn:hover { background: var(--primary-deep); }
 .chat-search-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--muted); }
+.chat-search-count { padding: 6px 8px; font-size: 12px; color: var(--muted); }
+.chat-search-more { display: block; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--primary); background: var(--paper); cursor: pointer; }
+.chat-search-more:disabled { cursor: wait; opacity: .6; }
+.source-highlight { background: var(--paper-deep); outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; scroll-margin-block: 24px; }
 
 .quick-questions { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
 

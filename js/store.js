@@ -504,11 +504,11 @@
     catalog = { model: data.model, pages: data.pages, firstCursors: copy(data.pages), firstPageKeys: Array.from(schema.contentCells(data).keys()), counts: data.counts, summaries: Array.from(summaries), hashes: hashes, capabilities: data.capabilities || catalog.capabilities };
     return Object.assign({}, data, remote);
   }
-  async function loadRecord(type, id) {
+  async function loadRecord(type, id, options) {
     var field = type.endsWith('Custom') || type.endsWith('Edited') ? type : type + (read(CONTENT_KEYS[type + 'Custom'], []).some(function (row) { return row.id === id; }) || type === 'dialect' ? 'Custom' : 'Edited');
     var key = field + '/' + id, schema = globalThis.HeritageContent;
     var local = schema.contentCells(bundle()).get(key);
-    if (catalog.model !== 'records-v1' || catalog.summaries.indexOf(key) < 0) return local || null;
+    if (catalog.model !== 'records-v1' || catalog.summaries.indexOf(key) < 0 && (!options || !options.fresh)) return local || null;
     var startedGeneration = generation;
     var data = await cloudRequest(null, false, undefined, { format: 'record', key: key }), row = data.rows[0];
     if (generation !== startedGeneration || data.revision < cloudRevision) throw new Error('资料已更新，请重新打开；本机草稿已保留');

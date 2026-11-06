@@ -54,7 +54,8 @@
 
     var engine = window.AnswerEngine.getEngine();
 
-    engine.ask(question).then(function (result) {
+    window.AnswerEngine.ask(question).then(function (result) {
+      engine = window.AnswerEngine.getEngine();
       window.UI.Avatar.thinking(false);
       window.UI.Avatar.talking(true);
 
@@ -88,10 +89,8 @@
           }
         }
 
-        if (result.source !== 'api') {
-          window.UI.Chat.addSources(bubble, result.sources);
-          attachVideos(bubble, question, result.text, result);
-        }
+        window.UI.Chat.addSources(bubble, result.sources);
+        attachVideos(bubble, question, result.text, result);
       });
     }).catch(function (err) {
       console.error(err);
@@ -136,7 +135,12 @@
   }
 
   /** 切换主面板：Tab 点击、详情弹层「问问阿蓝」、典藏跳转共用这一条路径 */
+  var sourceRequest = 0;
   function switchPanel(panelId) {
+    sourceRequest++;
+    var notice = document.getElementById('sourceStatus'); if (notice) notice.remove();
+    if (window.UI && window.UI.DetailModal) window.UI.DetailModal.close();
+    var collection = document.getElementById('dcDetailMask'); if (collection) collection.hidden = true;
     document.querySelectorAll('.main-tab').forEach(function (t) {
       t.classList.toggle('active', t.getAttribute('data-panel') === panelId);
     });
@@ -157,7 +161,7 @@
     }
     // 直接调用（例如「问问阿蓝」）也要让地址栏跟上，hash 相同则不会触发事件
     var routeName = window.Router && window.Router.BY_PANEL[panelId];
-    if (routeName && window.location.hash !== '#/' + routeName) {
+    if (routeName && window.Router.current() !== routeName) {
       if (String(window.location.hash || '').indexOf('admin-') === -1) {
         window.location.hash = '#/' + routeName;
       }
@@ -165,7 +169,44 @@
   }
 
   // 对外暴露（详情弹层「问问阿蓝」会调用）
-  window.App = { ask: ask, switchPanel: switchPanel };
+  async function openSource(name, params) {
+    var request = sourceRequest, panel = document.getElementById(window.Router.ROUTES[name]);
+    var notice = document.createElement('p'); notice.id = 'sourceStatus'; notice.className = 'chat-search-empty'; notice.setAttribute('role', 'status'); notice.textContent = '正在打开资料…'; panel.prepend(notice);
+    try {
+      if (name === 'science') {
+        await window.Store.syncWithCloud();
+        if (!window.Store.getSyncStatus().cloudLoaded) throw new Error('云端资料暂时无法读取，请稍后重试。');
+        if (request !== sourceRequest) return;
+        var cards = window.Heritage.list(), card;
+        if (params.item) {
+          globalThis.HeritageContent.record({ id: params.item, name: '资料' }, 'kepu', 'source', false);
+          card = cards.find(function (item) { return item.id === params.item; });
+          if (window.Store.getCatalog().model) {
+            var builtin = globalThis.HeritageContent.reserved.kepu.indexOf(params.item) !== -1;
+            var current = await window.Store.loadRecord(builtin ? 'kepuEdited' : 'kepuCustom', params.item, { fresh: true });
+            card = builtin ? card && Object.assign({}, card, current || {}) : current;
+          }
+        } else {
+          if (window.Store.getCatalog().model) {
+            for (var field of ['kepuCustom', 'kepuEdited']) {
+              var page = await window.Store.loadContentPage(field, { query: params.title, full: true });
+              if (page.cursor) throw new Error('有多条相近资料，请在科普列表中选择。');
+            }
+            cards = window.Heritage.list();
+          }
+          var matches = cards.filter(function (item) { return item.name === params.title; });
+          if (matches.length === 1) card = matches[0];
+        }
+        if (request !== sourceRequest) return;
+        if (!card) throw new Error('未找到对应资料，条目可能已删除或尚未公开。');
+        await window.UI.DetailModal.open(card, { quote: params.quote });
+      } else if (name === 'diancang') {
+        if (!window.Diancang.openItem(params.item || params.title)) throw new Error('未找到对应典藏条目。');
+      }
+      notice.remove();
+    } catch (error) { if (request === sourceRequest) notice.textContent = '无法打开这条出处：' + error.message; }
+  }
+  window.App = { ask: ask, switchPanel: switchPanel, openSource: openSource };
 
   document.addEventListener('DOMContentLoaded', function () {
     try { window.UI.init(); } catch (e) { console.error('UI.init error:', e); }

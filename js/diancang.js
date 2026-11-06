@@ -382,6 +382,11 @@
     switchToChat: switchToChat,
     findRelatedVideos: findRelatedVideos,
     search: searchExhibits,
+    openItem: function (id) {
+      var matches = allItems().filter(function (record) { return record.item.id === id || record.item.name === id; });
+      if (matches.length !== 1) return false;
+      showItemDetail(matches[0].item); return true;
+    },
     searchFrom: runFind,
     playVideo: showVideoPlayer,
     /** 所有带客家话讲解视频的展品，方言语音库用 */

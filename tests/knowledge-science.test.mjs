@@ -23,7 +23,7 @@ test('science expansion adds 176 entries and supplements 11 existing entries wit
   assert.equal(scienceTopics.filter(topic => topic.name === '竹其居围').length, 1);
   for (const { entry } of scienceTopics) {
     assert.ok(entry.answer.length > 40);
-    assert.ok(entry.sources.some(source => source.url === 'https://longnankejia.pages.dev/#/science'));
+    assert.ok(entry.sources.some(source => (source.url || '').startsWith('https://longnankejia.pages.dev/#/science?item=')));
     assert.doesNotMatch(entry.answer.split('科普补充｜').at(-1), /<\/?(?:script|style|p|div|img)\b/i);
   }
 });

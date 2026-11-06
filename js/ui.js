@@ -148,14 +148,27 @@
         var item = el('li');
         var url;
         try {
-          url = source.url ? new URL(source.url) : null;
+          url = source.url ? new URL(source.url, window.location.href) : null;
           if (url && url.protocol !== 'https:' && url.protocol !== 'http:') url = null;
         } catch (_) { url = null; }
         if (url) {
           var link = el('a');
           link.href = url.href;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
+          var canonical = new URL((window.APP_CONFIG && window.APP_CONFIG.app && window.APP_CONFIG.app.canonicalUrl) || window.location.href);
+          var internal = (url.origin === window.location.origin || url.origin === canonical.origin) && /^#\/(science|diancang)(?:\?|$)/.test(url.hash);
+          if (internal) {
+            if (typeof source.quote === 'string' && source.quote.trim()) {
+              var sourceParts = url.hash.slice(2).split('?'), sourceParams = new URLSearchParams(sourceParts.slice(1).join('?'));
+              sourceParams.set('quote', Array.from(source.quote).slice(0, 240).join('')); url.hash = '#/' + sourceParts[0] + '?' + sourceParams.toString(); link.href = url.href;
+            }
+            link.addEventListener('click', function (event) {
+              if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              var parts = url.hash.slice(2).split('?'), params = new URLSearchParams(parts.slice(1).join('?'));
+              if (!params.get('item') && !params.get('title') && /^科普\s*[·：:]/.test(source.title)) params.set('title', source.title.replace(/^科普\s*[·：:]\s*/, ''));
+              window.Router.go(parts[0], { item: params.get('item'), title: params.get('title'), quote: params.get('quote') });
+            });
+          } else { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
           link.textContent = source.title;
           item.appendChild(link);
         } else {
@@ -1040,7 +1053,7 @@
     }
 
     var detailRequest = 0;
-    async function open(card) {
+    async function open(card, options) {
       var request = ++detailRequest;
       var catalog = window.Store.getCatalog();
       if (catalog.model && catalog.summaries.some(function (key) { return key === 'kepuCustom/' + card.id || key === 'kepuEdited/' + card.id; })) {
@@ -1053,8 +1066,19 @@
       bodyEl.innerHTML = formatHeritageDetail(card.detail);
       iconEl.textContent = card.icon;
       iconEl.style.background = card.bg;
-      currentAsk = card.ask;
+      currentAsk = card.ask || ('请用通俗的话介绍' + card.name + '的特点');
       modal.hidden = false;
+      if (options && options.quote) {
+        var needle = options.quote.replace(/\s+/g, '');
+        var matches = Array.from(bodyEl.querySelectorAll('p,li,div,blockquote')).filter(function (element) { return element.textContent.replace(/\s+/g, '').indexOf(needle) !== -1; });
+        matches.sort(function (a, b) { return a.textContent.length - b.textContent.length; });
+        if (matches.length) {
+          var target = matches[0]; target.classList.add('source-highlight');
+          requestAnimationFrame(function () { if (request === detailRequest && !modal.hidden) target.scrollIntoView({ block: 'center' }); });
+        } else {
+          var notice = document.createElement('p'); notice.className = 'admin-hint'; notice.textContent = '已打开原文；未找到完全相同的引用。'; bodyEl.prepend(notice);
+        }
+      }
     }
 
     function close() {
@@ -1077,6 +1101,7 @@
   var ChatSearch = (function () {
     var wrapEl, inputEl, clearBtn, resultsEl;
     var searchRequest = 0, searchTimer;
+    var visibleCount = 20, remoteCursors = {}, remoteBusy = false, remoteError = '';
 
     function highlight(text, q) {
       var s = String(text || '');
@@ -1148,7 +1173,7 @@
       // 3. 文化典藏展品
       if (window.Diancang && window.Diancang.search) {
         var dcHits = window.Diancang.search(q);
-        dcHits.slice(0, 6).forEach(function (h) {
+        dcHits.forEach(function (h) {
           hits.push({
             type: 'dc',
             badge: '文化典藏',
@@ -1162,16 +1187,15 @@
       }
 
       hits.sort(function (a, b) { return b.score - a.score; });
-      return hits.slice(0, 8);
+      return hits;
     }
 
     function renderResults(hits, q) {
-      if (!hits.length) {
-        resultsEl.innerHTML = '<div class="chat-search-empty">未找到与「' + esc(q) + '」相关的馆藏条目，可直接提问阿蓝</div>';
-        resultsEl.hidden = false;
-        return;
-      }
-      resultsEl.innerHTML = hits.map(function (h, i) {
+      var moreRemote = Object.keys(remoteCursors).some(function (field) { return !!remoteCursors[field]; });
+      var count = Math.min(visibleCount, hits.length);
+      resultsEl.innerHTML = '<div class="chat-search-count">' + (remoteBusy || moreRemote || remoteError ? '已加载 ' : '共 ') + hits.length + ' 项' + (count < hits.length ? '，显示前 ' + count + ' 项' : '') + '</div>';
+      if (!hits.length) resultsEl.innerHTML += '<div class="chat-search-empty">' + (remoteBusy ? '正在检索云端资料…' : '未找到与「' + esc(q) + '」相关的馆藏条目，可直接提问阿蓝') + '</div>';
+      resultsEl.innerHTML += hits.slice(0, visibleCount).map(function (h, i) {
         return '<div class="chat-search-item" data-idx="' + i + '">' +
           '<div class="chat-search-item-header">' +
           '  <span class="chat-search-item-title">' + esc(h.title) + '</span>' +
@@ -1184,6 +1208,19 @@
           '</div>';
       }).join('');
       resultsEl.hidden = false;
+      if (count < hits.length || moreRemote || remoteError) {
+        var more = document.createElement('button'); more.type = 'button'; more.id = 'chatSearchMore'; more.className = 'chat-search-more';
+        more.textContent = count < hits.length ? '显示更多匹配结果' : (remoteError ? '重试云端检索' : '继续检索云端资料');
+        more.disabled = remoteBusy && count >= hits.length;
+        more.addEventListener('click', function (event) {
+          event.stopPropagation();
+          if (visibleCount < search(q).length) { visibleCount += 20; renderResults(search(q), q); }
+          else loadRemote(q, searchRequest, !!remoteError);
+        }); resultsEl.appendChild(more);
+      }
+      if (remoteBusy || remoteError) {
+        var status = document.createElement('div'); status.className = 'chat-search-empty'; status.setAttribute('role', 'status'); status.textContent = remoteError ? '云端检索未完成：' + remoteError : '正在检索云端资料…'; resultsEl.appendChild(status);
+      }
 
       resultsEl.querySelectorAll('.chat-search-ask-btn').forEach(function (btn) {
         btn.addEventListener('click', function (e) {
@@ -1222,6 +1259,22 @@
       });
     }
 
+    async function loadRemote(q, request, first) {
+      if (request !== searchRequest || inputEl.value.trim() !== q) return;
+      remoteBusy = true; remoteError = ''; renderResults(search(q), q);
+      try {
+        for (var field of ['kbCustom', 'kbEdited', 'kepuCustom', 'kepuEdited']) {
+          if (!first && !remoteCursors[field]) continue;
+          var page = await window.Store.loadContentPage(field, { query: q, full: true, cursor: first ? '' : remoteCursors[field] });
+          if (request !== searchRequest || inputEl.value.trim() !== q) return;
+          remoteCursors[field] = page && page.cursor || '';
+        }
+      } catch (error) { if (request === searchRequest) remoteError = error.message; }
+      finally {
+        if (request === searchRequest && inputEl.value.trim() === q) { remoteBusy = false; renderResults(search(q), q); }
+      }
+    }
+
     function hide() {
       searchRequest++; clearTimeout(searchTimer);
       if (resultsEl) resultsEl.hidden = true;
@@ -1241,21 +1294,13 @@
           hide();
           return;
         }
+        var request = ++searchRequest;
+        visibleCount = 20; remoteCursors = {}; remoteError = ''; remoteBusy = !!(window.Store && window.Store.getCatalog().model);
         var hits = search(q);
         renderResults(hits, q);
         if (window.Store && window.Store.getCatalog().model) {
-          clearTimeout(searchTimer); var request = ++searchRequest;
-          searchTimer = setTimeout(async function () {
-            try {
-              await window.Store.searchKnowledge(q);
-              for (var field of ['kepuCustom', 'kepuEdited']) await window.Store.loadContentPage(field, { query: q, full: true });
-              if (request === searchRequest && inputEl.value.trim() === q) renderResults(search(q), q);
-            } catch (error) {
-              if (request === searchRequest && inputEl.value.trim() === q) {
-                var status = document.createElement('div'); status.className = 'chat-search-empty'; status.textContent = '云端检索未完成：' + error.message; resultsEl.appendChild(status);
-              }
-            }
-          }, 300);
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(function () { loadRemote(q, request, true); }, 300);
         }
       });
 
@@ -1310,6 +1355,7 @@
     Avatar: Avatar,
     Voice: Voice,
     Heritage: Heritage,
+    DetailModal: DetailModal,
     Access: AccessPanel,
     setupPillScroller: Heritage.setupPillScroller,
     updateAllPillScrollers: Heritage.updateAllPillScrollers
