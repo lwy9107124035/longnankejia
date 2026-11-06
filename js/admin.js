@@ -2253,7 +2253,9 @@
   function renderSys(body) {
     var isSuper = currentUser && currentUser.role === 'super_admin';
     var history = isSuper ? window.Store.getRecoveryHistory() : [];
-    var mediaReady = !!(window.Store.getCatalog().capabilities || {}).mediaUploads;
+    var catalog = window.Store.getCatalog();
+    var mediaReady = !!(catalog.capabilities || {}).mediaUploads;
+    var archiveReady = mediaReady && catalog.model === 'records-v1';
     function historyRows(rows) {
       return rows.length ? rows.map(function (op) {
         return '<div class="admin-form-row" style="margin-top:6px"><span style="flex:1">' + esc(op.title) + ' · ' + esc(op.kind) + '</span><button class="admin-btn-sm" data-restore-operation="' + esc(op.id) + '">恢复</button></div>';
@@ -2289,9 +2291,10 @@
         (window.Store.getCatalog().model === 'records-v1' ? '<div class="admin-form-row" style="margin-top:8px"><button class="admin-btn-sm" id="historyPrev" disabled>上一页</button><span id="historyPageText">最近20项</span><button class="admin-btn-sm" id="historyNext">查看全部历史</button></div>' : '') + '</div>' : '') +
 
       (isSuper ? '<div class="admin-form-box" style="margin-top:12px"><div class="admin-form-title">存储空间</div>' +
-        '<div class="admin-hint">图片独立保存，单条内容和总空间仍有上限。</div><p id="storageInfoText"></p>' +
-        '<button class="admin-btn-sm" id="storageInfoBtn">查看容量</button> <button class="admin-btn-sm" id="optimizeImagesBtn">整理旧图片</button> <button class="admin-btn-sm" id="archiveHistoryBtn"' + (mediaReady ? '' : ' disabled') + '>归档30天前历史</button>' +
-        (mediaReady ? '' : '<div class="admin-hint">当前未启用历史归档，原记录仍保留。</div>') + '</div>' : '') +
+        '<div class="admin-hint">查看内容用量；图片整理不会删除条目。</div><p id="storageInfoText"></p>' +
+        '<button type="button" class="admin-btn-sm" id="storageInfoBtn">查看容量</button> <button type="button" class="admin-btn-sm" id="optimizeImagesBtn">整理旧图片</button> <button type="button" class="admin-btn-sm" id="archiveHistoryBtn"' + (archiveReady ? '' : ' disabled') + '>归档30天前历史' + (archiveReady ? '' : '（未启用）') + '</button>' +
+        '<p id="storageStatusText" class="admin-hint" role="status" aria-live="polite"></p>' +
+        (archiveReady ? '' : '<div id="storageArchiveHint" class="admin-hint">当前未启用历史归档，原记录仍保留。' + (mediaReady ? '需先完成逐条存储升级。' : '需先接入对象存储。') + '</div>') + '</div>' : '') +
 
       (isSuper ?
       '<div class="admin-form-box" style="margin-top:12px">' +
@@ -2321,23 +2324,44 @@
 
     $('#exportBundleBtn').addEventListener('click', function () { downloadBackup('longnan-heritage-bundle-' + new Date().toISOString().slice(0, 10) + '.json'); });
     if (isSuper) {
-      $('#storageInfoBtn').addEventListener('click', function () { adminAction(async function () {
+      var storageInfoText = body.querySelector('#storageInfoText');
+      function storageAction(button, loading, work) {
+        var label = button.textContent, status = body.querySelector('#storageStatusText');
+        button.disabled = true; button.textContent = loading; status.textContent = loading;
+        return adminAction(async function () {
+          try {
+            var message = await work();
+            if (status.isConnected) status.textContent = message;
+          } catch (error) {
+            if (status.isConnected) status.textContent = '未完成：' + error.message;
+            throw error;
+          } finally { button.disabled = false; button.textContent = label; }
+        });
+      }
+      $('#storageInfoBtn').addEventListener('click', function () { storageAction(this, '正在读取容量…', async function () {
         var info = await window.Store.getStorageInfo(), mb = function (bytes) { return (bytes / 1048576).toFixed(1); };
         if (info.separateImageDatabase) {
-          document.getElementById('storageInfoText').textContent = '正文和历史 ' + mb(info.metadataBytes) + ' MB；独立图片库 ' + mb(info.imageDatabaseBytes) + ' MB；原库旧图片 ' + mb(info.legacyImageBytes) + ' MB。';
-          return;
+          storageInfoText.textContent = '正文和历史 ' + mb(info.metadataBytes) + ' MB；独立图片库 ' + mb(info.imageDatabaseBytes) + ' MB；原库旧图片 ' + mb(info.legacyImageBytes) + ' MB。';
+        } else if (info.model === 'records-v1') {
+          storageInfoText.textContent = '逐条存储：正文及历史 ' + mb(info.metadataBytes) + ' MB；数据库旧图片 ' + mb(info.mediaBytes) + ' MB；媒体存储' + (info.r2Enabled ? '已接入 R2' : '尚未接入 R2') + '。';
+        } else {
+          storageInfoText.textContent = '图片 ' + mb(info.mediaBytes) + ' MB；正文、历史及内嵌图片 ' + mb(info.metadataBytes) + ' / ' + mb(info.metadataLimit) + ' MB。';
         }
-        if (info.model === "records-v1") {
-          document.getElementById("storageInfoText").textContent = "逐条存储：正文及历史 " + mb(info.metadataBytes) + " MB；数据库旧图片 " + mb(info.mediaBytes) + " MB；媒体存储" + (info.r2Enabled ? "已接入 R2" : "尚未接入 R2") + "。";
-          return;
-        }
-        $('#storageInfoText').textContent = '独立图片 ' + mb(info.mediaBytes) + ' MB；正文、历史及旧版图片 ' + mb(info.metadataBytes) + ' / ' + mb(info.metadataLimit) + ' MB。';
+        return '容量已更新';
       }); });
-      $('#optimizeImagesBtn').addEventListener('click', function () { var button = this; button.disabled = true;
-        adminAction(async function () { try { var result = await window.Store.optimizeImageStorage(); showAdminToast('已整理 ' + result.completed + ' 张旧图片' + (result.copied ? '，迁入媒体存储 ' + result.copied + ' 张' : '')); renderTab(); } finally { button.disabled = false; } });
+      $('#optimizeImagesBtn').addEventListener('click', function () { var button = this;
+        storageAction(button, '正在整理图片…', async function () {
+          var result = await window.Store.optimizeImageStorage();
+          var message = result.completed || result.copied ? '已整理 ' + result.completed + ' 张旧图片' + (result.copied ? '，迁入媒体存储 ' + result.copied + ' 张' : '') : '没有需要整理的旧图片';
+          if (button.isConnected) { renderTab(); $('#storageStatusText').textContent = message; showAdminToast(message); }
+          return message;
+        });
       });
-      $('#archiveHistoryBtn').addEventListener('click', function () { var button = this; button.disabled = true;
-        adminAction(async function () { try { var result = await window.Store.archiveHistory(); showAdminToast('本批已归档 ' + result.archived + ' 项，历史仍可恢复'); } finally { button.disabled = false; } });
+      $('#archiveHistoryBtn').addEventListener('click', function () {
+        storageAction(this, '正在归档历史…', async function () {
+          var result = await window.Store.archiveHistory();
+          return '本批已归档 ' + result.archived + ' 项，历史仍可恢复';
+        });
       });
     }
     function bindHistoryButtons() {

@@ -28,6 +28,7 @@ const groups = [
   ['lockouts-chrome', 'chromium'], ['lockouts-phone', 'webkit'],
   ['sync-conflict-chrome', 'chromium'], ['sync-conflict-phone', 'webkit'],
   ['form-conflict-kb', 'chromium'], ['form-conflict-kepu', 'webkit'], ['form-conflict-dialect', 'chromium'],
+  ['storage-controls-chrome', 'chromium'], ['storage-controls-phone', 'webkit'],
   ...(records ? [['history-pages', 'chromium'], ['system-controls-chrome', 'chromium'], ['system-controls-phone', 'webkit']] : [])
 ].filter(([name]) => !only.size || only.has(name));
 const results = { startedAt: new Date().toISOString(), mode, groups: [], passed: 0, failed: 0 };
@@ -53,9 +54,13 @@ async function runGroup(name, engineName) {
   const backend = createAdminBackend({ password });
   const images = separateMedia ? createAdminBackend({ schema: 'media' }) : null;
   if (images) backend.env.ADMIN_MEDIA_DB = images.db;
+  const storageFixture = structuredClone(globalThis.HeritageContent.defaults);
+  if (name.startsWith('storage-controls')) storageFixture.kepuCustom = [{ id: 'storage-inline-fixture', name: '容量按钮合成项', detail: '整理后保留的正文', imageUrl: 'data:image/jpeg;base64,' + fs.readFileSync(path.join(root, 'assets/model-references/hutoumao-211.jpg')).toString('base64') }];
   if (records) {
     backend.sqlite.exec(fs.readFileSync(path.join(root, 'migrations/admin/0002_content_records.sql'), 'utf8'));
-    await migrateRecordStorage(backend.db, { value: name === 'history-pages' ? await recoveryFixture() : structuredClone(globalThis.HeritageContent.defaults), revision: 0 });
+    await migrateRecordStorage(backend.db, { value: name === 'history-pages' ? await recoveryFixture() : storageFixture, revision: 0 });
+  } else if (name.startsWith('storage-controls')) {
+    backend.sqlite.prepare("UPDATE admin_state SET value=?,revision=0 WHERE key='content'").run(JSON.stringify(storageFixture));
   }
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
   const server = await startSiteServer({ root, port, base, backend });
@@ -228,6 +233,64 @@ async function runGroup(name, engineName) {
       await page.locator('[data-tab="kb"]').click(); await page.locator('#kbAddBtn').click(); await page.locator('#kbTitle').fill('找回草稿项'); await page.locator('#kbKeywords').fill('draft'); await page.locator('#kbAnswer').fill('draft-answer'); await page.locator('#backupDraftBtn').click();
       await page.locator('#kbCancelBtn').click(); await page.locator('#recoverDraftBtn').click();
       await check('表单草稿找回恢复录入值', async () => assert.equal(await page.locator('#kbTitle').inputValue(), '找回草稿项'));
+    } else if (scenario === 'storage-controls') {
+      await page.locator('[data-tab="sys"]').click();
+      let release, arrived, requests = 0;
+      const gate = new Promise(resolve => { release = resolve; });
+      const requested = new Promise(resolve => { arrived = resolve; });
+      await context.route('**/api/admin/sync', async route => {
+        if (route.request().method() === 'POST' && route.request().postDataJSON().action === 'storage_info') { requests++; arrived(); await gate; }
+        await route.continue();
+      });
+      await page.locator('#storageInfoBtn').click(); await requested;
+      try {
+        assert.equal(await page.locator('#storageInfoBtn').isDisabled(), true);
+        assert.match(await page.locator('#storageStatusText').textContent(), /正在读取/);
+        await page.locator('#storageInfoBtn').evaluate(button => button.click()); assert.equal(requests, 1);
+      } finally { release(); }
+      await page.waitForFunction(() => document.querySelector('#storageInfoText').textContent.includes('MB') && !document.querySelector('#storageInfoBtn').disabled);
+      await check('容量慢请求显示进度并阻止重复点击，完成后恢复按钮', async () => {});
+      await context.unroute('**/api/admin/sync');
+      await context.route('**/api/admin/sync', async route => {
+        if (route.request().method() === 'POST' && route.request().postDataJSON().action === 'storage_info') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, code: 'STORAGE_UNAVAILABLE', error: 'Synthetic capacity read failure' }) });
+        await route.continue();
+      });
+      await page.locator('#storageInfoBtn').click();
+      await page.waitForFunction(() => !document.querySelector('#storageInfoBtn').disabled && document.querySelector('#storageStatusText').textContent.includes('Synthetic capacity read failure'));
+      await context.unroute('**/api/admin/sync');
+      await page.locator('#storageInfoBtn').click(); await page.waitForFunction(() => document.querySelector('#storageStatusText').textContent === '容量已更新');
+      await check('容量读取失败显示原因，按钮恢复后可重试', async () => {});
+      await page.evaluate(() => {
+        var original = window.Store.optimizeImageStorage;
+        window.__storageCalls = 0;
+        window.Store.optimizeImageStorage = async function () {
+          window.__storageCalls++;
+          await new Promise(resolve => { window.__releaseStorage = resolve; });
+          if (window.__storageCalls === 1) throw new Error('Synthetic image organization failure');
+          return original();
+        };
+      });
+      await page.locator('#optimizeImagesBtn').click(); await page.waitForFunction(() => typeof window.__releaseStorage === 'function');
+      assert.equal(await page.locator('#optimizeImagesBtn').isDisabled(), true);
+      assert.match(await page.locator('#storageStatusText').textContent(), /正在整理/);
+      await page.locator('#optimizeImagesBtn').evaluate(button => button.click()); assert.equal(await page.evaluate(() => window.__storageCalls), 1);
+      await page.evaluate(() => window.__releaseStorage());
+      await page.waitForFunction(() => !document.querySelector('#optimizeImagesBtn').disabled && document.querySelector('#storageStatusText').textContent.includes('Synthetic image organization failure'));
+      await check('整理图片显示等待和失败原因，重复点击不重复执行', async () => {});
+      await page.evaluate(() => { window.__releaseStorage = null; });
+      await page.locator('#optimizeImagesBtn').click(); await page.waitForFunction(() => typeof window.__releaseStorage === 'function'); await page.evaluate(() => window.__releaseStorage());
+      await page.waitForFunction(() => !document.querySelector('#optimizeImagesBtn').disabled && document.querySelector('#storageStatusText').textContent.includes('已整理 1 张'));
+      const state = await actualState(backend, page), item = state.kepuCustom.find(row => row.id === 'storage-inline-fixture');
+      assert.equal(item.detail, '整理后保留的正文'); assert.ok(globalThis.HeritageContent.mediaPath(item.imageUrl));
+      assert.equal((await backend.fetchApi(item.imageUrl)).status, 200);
+      await check('整理重试保存原条目和正文，图片转为可读取地址', async () => {});
+      await page.evaluate(() => { window.__releaseStorage = null; });
+      await page.locator('#optimizeImagesBtn').click(); await page.waitForFunction(() => typeof window.__releaseStorage === 'function'); await page.evaluate(() => window.__releaseStorage());
+      await page.waitForFunction(() => !document.querySelector('#optimizeImagesBtn').disabled && document.querySelector('#storageStatusText').textContent === '没有需要整理的旧图片');
+      await check('无需整理时明确显示原因，按钮仍可继续使用', async () => {});
+      assert.equal(await page.locator('#archiveHistoryBtn').isDisabled(), true);
+      assert.match(await page.locator('#storageArchiveHint').textContent(), /对象存储/);
+      await check('未接入对象存储时明确说明归档不可用', async () => {});
     } else if (scenario === 'system-controls') {
       await page.evaluate(async () => {
         for (var i = 0; i < 65; i++) window.Store.addEntry({ id: 'reset-fixture-' + i, title: '重置验收' + i, answer: '正文' });
@@ -243,7 +306,7 @@ async function runGroup(name, engineName) {
         assert.equal(state.kepuCustom.find(row => row.id === 'reset-keep-card').name, '重置知识库时保留科普');
       });
       await page.locator('#storageInfoBtn').click(); await page.waitForFunction(() => document.querySelector('#storageInfoText').textContent.includes('独立图片库'));
-      await page.locator('#optimizeImagesBtn').click(); await page.waitForFunction(() => !document.querySelector('#optimizeImagesBtn').disabled && document.querySelector('#adminToast')?.textContent.includes('已整理'));
+      await page.locator('#optimizeImagesBtn').click(); await page.waitForFunction(() => !document.querySelector('#optimizeImagesBtn').disabled && /已整理|没有需要整理/.test(document.querySelector('#adminToast')?.textContent || ''));
       assert.equal(await page.locator('#archiveHistoryBtn').isDisabled(), true);
       assert.match(await page.locator('#adminBody').textContent(), /当前未启用历史归档，原记录仍保留/);
       await check('容量与图片整理可用，未启用历史归档时按钮禁用并说明记录保留', async () => {});
