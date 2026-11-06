@@ -79,3 +79,23 @@ test('optional image D1 binds an existing independent database without altering 
     const rejected = run(t, 'codex', extra); assert.notEqual(rejected.status, 0); assert.equal(rejected.config, null);
   }
 });
+
+test('administrator bindings reject the other branch database even with different UUID letter casing', t => {
+  const shared = 'abcdefab-abcd-4abc-8abc-abcdefabcdef';
+  for (const branch of ['main', 'codex']) {
+    const result = run(t, branch, { MAIN_ADMIN_D1_ID: shared.toUpperCase(), CODEX_ADMIN_D1_ID: shared });
+    assert.notEqual(result.status, 0, branch + ' must reject a shared administrator database');
+    assert.equal(result.config, null);
+    assert.match(result.stderr, /separate/i);
+  }
+});
+
+test('administrator bindings reject either branch image database', t => {
+  const media = '33333333-3333-4333-8333-333333333333';
+  for (const branch of ['main', 'codex']) for (const mediaVariable of ['MAIN_MEDIA_D1_ID', 'CODEX_MEDIA_D1_ID']) {
+    const result = run(t, branch, { [branch === 'main' ? 'MAIN_ADMIN_D1_ID' : 'CODEX_ADMIN_D1_ID']: media, [mediaVariable]: media });
+    assert.notEqual(result.status, 0, branch + ' must reject ' + mediaVariable + ' as its administrator database');
+    assert.equal(result.config, null);
+    assert.match(result.stderr, /separate/i);
+  }
+});

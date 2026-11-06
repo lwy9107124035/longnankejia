@@ -34,13 +34,18 @@ async function api(url, body) {
 const name = target.database;
 let database;
 if (configuredId) {
-  if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(configuredId)) throw new Error('The configured admin database ID must be a D1 UUID.');
   // A pre-provisioned database lets the deployment token retain Pages-only permissions.
   database = { name, uuid: configuredId };
 } else {
   const databases = await api(root + '?name=' + encodeURIComponent(name) + '&per_page=100');
   database = databases.find(d => d.name === name);
   if (!database) database = await api(root, { name });
+}
+if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(database.uuid)) throw new Error('The configured admin database ID must be a D1 UUID.');
+const otherAdminId = branch === 'main' ? process.env.CODEX_ADMIN_D1_ID : process.env.MAIN_ADMIN_D1_ID;
+if ([otherAdminId, process.env.CODEX_MEDIA_D1_ID, process.env.MAIN_MEDIA_D1_ID].filter(Boolean)
+  .some(id => id.toLowerCase() === database.uuid.toLowerCase())) throw new Error('Administrator databases must be separate from the other branch and all media databases.');
+if (!configuredId) {
   const result = await api(root + '/' + database.uuid + '/query', { sql: fs.readFileSync(new URL('../migrations/admin/0001_admin.sql', import.meta.url), 'utf8') });
   if (!result.every(r => r.success)) throw new Error('Admin schema migration failed.');
 }

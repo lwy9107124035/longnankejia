@@ -5,7 +5,7 @@ import { createAdminBackend } from './helpers/admin-harness.mjs';
 import { setupEnvironment } from './helpers/store-harness.mjs';
 import { migrateRecordStorage } from '../functions/_lib/admin-records.js';
 
-async function setup(t) {
+async function setup(t, { responseDelay = 0 } = {}) {
   const backend = createAdminBackend(); t.after(() => backend.close());
   let now = Date.now(), interval, requests = 0;
   const events = new Map(), document = { visibilityState: 'visible', addEventListener(name, fn) { events.set(name, fn); } };
@@ -13,10 +13,21 @@ async function setup(t) {
   const device = setupEnvironment(backend, {
     windowProperties: { addEventListener(name, fn) { events.set(name, fn); } },
     globals: { Date: Clock, document, setInterval(fn, ms) { assert.equal(ms, 15000); interval = fn; return 1; },
-      fetch(...args) { requests++; return backend.fetchApi(...args); } }
+      async fetch(...args) {
+        requests++;
+        if (responseDelay) await new Promise(resolve => setTimeout(resolve, responseDelay));
+        return backend.fetchApi(...args);
+      } }
   });
   await device.store.syncWithCloud();
-  async function tick(ms = 15000) { now += ms; interval(); await new Promise(resolve => setTimeout(resolve, 10)); }
+  async function tick(ms = 15000) {
+    now += ms;
+    const before = requests;
+    interval();
+    await new Promise(resolve => setImmediate(resolve));
+    // Join a poll that actually started; idle/hidden ticks must never create one here.
+    if (requests > before) await device.store.syncWithCloud();
+  }
   return { backend, device, tick, events, document, requests: () => requests };
 }
 
@@ -30,7 +41,7 @@ test('anonymous visitors do not poll while idle, while focus and reconnect still
 });
 
 test('administrator polling remains fifteen seconds, hidden tabs pause, and logged-out sessions use the visitor cadence', async t => {
-  const env = await setup(t), user = (await env.backend.call({ action: 'login', credential: 'admin123', clientId: 'polling-test' })).data;
+  const env = await setup(t, { responseDelay: 60 }), user = (await env.backend.call({ action: 'login', credential: 'admin123', clientId: 'polling-test' })).data;
   env.device.store.saveSession(user); await env.device.store.syncWithCloud();
   const before = env.requests();
   for (let i = 0; i < 4; i++) await env.tick();
