@@ -142,12 +142,14 @@ iPhone16/iOS18.5/Safari完成本轮9项并全部通过；iPhone15 Pro/iOS17系�
 
 音频原失败由自动化点击isTrusted=false触发Safari用户交互限制；默认W3C坐标及nativeWebTap映射也未命中控件。实际NATIVE_APP可访问树将播放按钮表示为Switch，按其真实名称原生点击后isTrusted/userActivation=true、AudioContext运行、音频240/556ms下载并正常推进。未关闭自动播放保护，未改网页代码，不把脚本故障改写成已修复的产品故障。此前失败报告全部保留。
 
-BrowserStack官方逐会话复核9个会话均done，DELETE回执齐全，Free计划运行/排队均0；总会话时长417秒是提供方记录，不代表剩余额度或永久免费承诺。例行巡检不分配新设备、不重复界面测试、不消耗模型额度。管理员真实登录与上传写入、麦克风录音/音质、外部视频、公众号实际入口、真实AI千人及长期SLA尚未验收。
+BrowserStack官方逐会话复核9个会话均done，DELETE回执齐全，Free计划运行/排队均0；总会话时长417秒是提供方记录，不代表剩余额度或永久免费承诺。例行巡检不分配新设备、不重复界面测试、不消耗模型额度。管理员真实登录与上传写入、麦克风录音/音质、外部视频、公众号实际入口及长期SLA尚未验收。
 
 ## 2026-11-06 用户确认的范围调整
 
 用户明确移除iPhone内微信验证，按用户排除记录，不再作为本次验收阻塞项，不再要求Apple ID或安排iOS微信安装。已经完成的iPhone Safari和Windows微信结果保留；公众号实际入口未被此次排除。
 
-用户不清楚项目硅基流动账号归属。源码及部署记录只确认codex的GitHub Secret SILICONFLOW_API_KEY经Actions注入Cloudflare，默认模型Qwen/Qwen3-30B-A3B-Instruct-2507；main保留原有加密密钥，不能据此断定两站账号相同。本机没有对应.env/.dev.vars，当前记录没有能确认归属的登录账号。不得根据GitHub或BrowserStack账号猜测模型账号，不重复催问，不创建/切换账号或改密钥。真实千人AI仍待同一项目账号的RPM、TPM和允许消耗额度核实，不改记通过或自行删除该项。
+用户不清楚项目硅基流动账号归属。源码及部署记录只确认codex的GitHub Secret SILICONFLOW_API_KEY经Actions注入Cloudflare，默认模型Qwen/Qwen3-30B-A3B-Instruct-2507；main保留原有加密密钥，不能据此断定两站账号相同。本机没有对应.env/.dev.vars，当前记录没有能确认归属的登录账号。不得根据GitHub或BrowserStack账号猜测模型账号，不重复催问，不创建/切换账号或改密钥。
 
 官方公告已说明/user/info于2026-08-14停用，当前官方文档检索未发现已公开的账户替代查询接口，依据https://docs.siliconflow.cn/docs/release-notes/overview。此次只查文档、配置和现有workflow元数据，未运行旧probe-tts工作流；它会发起真实语音合成，不适合只读查账号。
+
+用户随后明确移除千人真实AI验收。该项与iPhone内微信均按用户排除记录，不再作为本次验收阻塞项；关闭对应的模型账号归属、余额、RPM/TPM及测试额度预检待办，不再追问或发起该项压测。已完成的单次真实AI、公开内容千人和设备测试证据保留，其余验收项与正常只读维护照常执行。

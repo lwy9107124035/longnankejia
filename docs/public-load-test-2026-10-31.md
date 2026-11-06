@@ -326,4 +326,6 @@ iPhone16原始报告.cache/free-acceptance/iphone-safari-20261105T195331130Z.jso
 
 用户不清楚项目硅基流动账号归属。核对functions/_lib/siliconflow.js、js/config.js、.github/workflows/cf-pages.yml及部署说明，确认默认模型Qwen/Qwen3-30B-A3B-Instruct-2507，codex密钥由GitHub Secret SILICONFLOW_API_KEY注入Cloudflare；main保留已有加密密钥，不能推定两站账号相同。现有配置记录没有登录账号归属。官方已公告/user/info于2026-08-14停用，本轮检索未找到公开的账户替代查询接口。[接口调整公告](https://docs.siliconflow.cn/docs/release-notes/overview)
 
-此次未读取明文密钥、修改凭据、切换供应商、运行模型探针或调用模型。真实千人AI保留待验收，仍需项目同一账号的限额及可用测试额度，不能将账号未知当作已通过。
+此次未读取明文密钥、修改凭据、切换供应商、运行模型探针或调用模型。
+
+用户随后明确移除千人真实AI验收。千人真实AI与iPhone内微信均记为用户排除，不再阻塞本次验收；相关账号、余额、限额及测试预算预检待办关闭。既有单次真实AI与公开内容千人读取/峰值保存结果保留，不改写为千人模型请求通过。其余尚未验收项目保持原状态。
