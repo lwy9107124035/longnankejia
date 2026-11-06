@@ -77,6 +77,10 @@
             statusEl.textContent = '回答方式：请补充问题';
           } else if (result.source === 'api') {
             statusEl.textContent = result.route === 'grounded' ? '回答方式：参考资料 · AI整理' : '回答方式：现有资料未覆盖';
+          } else if (result.route === 'uncovered-detail') {
+            statusEl.textContent = '回答方式：资料未记载该细节';
+          } else if (result.route === 'unanswered') {
+            statusEl.textContent = '回答状态：本次未完成';
           } else if (result.matched) {
             statusEl.textContent = result.fallback ? '回答方式：馆内资料节选' : '回答方式：馆内资料';
           } else if (result.nearest) {

@@ -75,8 +75,8 @@ for (const engine of ['chromium', 'webkit']) {
       const body = route.request().postDataJSON();
       const checking = body.messages[0].content.startsWith('你是资料一致性审核员');
       if (checking) audits++; else { drafts++; assert.match(body.messages[0].content, /合成石料/); }
-      const evidence = checking ? JSON.parse(body.messages.at(-1).content).parts[0].evidence[0].text : '';
-      const content = checking ? { checks: [{ index: 0, supported: true, quotes: [evidence] }] } : { parts: [{ text: '这项工艺以合成石料为材料，重点可以从材料选择来理解。', evidence: ['1.1'] }], gaps: [] };
+      const evidence = checking ? JSON.parse(body.messages.at(-1).content).parts[0].evidence[0].id : '';
+      const content = checking ? { checks: [{ index: 0, supported: true, answersQuestion: true, support: [evidence] }] } : { parts: [{ text: '这项工艺以合成石料为材料，重点可以从材料选择来理解。', evidence: ['1.1'] }], gaps: [] };
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }) });
     });
     await page.locator('#chatInput').fill('合成石砌工艺有哪些特点？'); await page.locator('#sendBtn').click();
@@ -88,6 +88,23 @@ for (const engine of ['chromium', 'webkit']) {
     assert.match(await page.locator('#detailBody .source-highlight').textContent(), /合成石料/);
     assert.equal(context.pages().length, 1);
     result.checks.push('the UI retrieves off-page knowledge, shows an audited paraphrase, and opens its exact source');
+    await page.evaluate(() => window.App.switchPanel('panelChat'));
+    for (const question of ['象塘房围有大象吗', '那里面有厕所吗？']) {
+      await page.locator('#chatInput').fill(question); await page.locator('#sendBtn').click();
+      await page.waitForFunction(() => !document.querySelector('#sendBtn').disabled && document.querySelector('#engineStatus').textContent.includes('未记载该细节'));
+      const text = await page.locator('.msg-bot').last().textContent();
+      assert.match(text, /象塘房围/); assert.match(text, question.includes('大象') ? /大象/ : /厕所/);
+      assert.match(text, /不能确认/); assert.doesNotMatch(text, /1662|1722|面阔|进深/);
+      assert.equal(drafts, 1); assert.equal(audits, 1);
+    }
+    result.checks.push('the reported elephant question and a facility followup receive concise uncertainty without provider calls');
+    await context.unroute('**/api/ai/chat/completions');
+    await context.route('**/api/ai/chat/completions', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'synthetic provider unavailable' }) }));
+    await page.locator('#chatInput').fill('象塘房围四角有什么建筑？'); await page.locator('#sendBtn').click();
+    await page.waitForFunction(() => !document.querySelector('#sendBtn').disabled && document.querySelector('#engineStatus').textContent.includes('本次未完成'));
+    const failed = page.locator('.msg-bot').last(); assert.match(await failed.textContent(), /重试/); assert.doesNotMatch(await failed.textContent(), /1662|1722|面阔|进深/);
+    assert.ok(await failed.locator('.msg-sources a').count());
+    result.checks.push('a provider failure shows a retryable state and source links without an unrelated introduction');
     assert.deepEqual(result.errors, []); result.checks.push('external references remain links while unsafe URL schemes are not clickable');
     result.passed = true;
   } catch (error) { result.failure = error.stack; }
