@@ -45,13 +45,7 @@ videoUrl: 'https://6525763.hlcode.pro/?id=Na61TDG' }
       ]
     },
     {
-      id: 'ch2', num: '贰', title: '"非"常传奇',
-      intro: '龙南360余座客家围屋形态万千，方形稳重、半圆柔美，厚达两米的夯土外墙坚不可摧，尽显古人智慧与匠心。',
-      items: [
-      ]
-    },
-    {
-      id: 'ch3', num: '叁', title: '"非"同凡响',
+      id: 'ch3', num: '贰', title: '"非"同凡响',
       intro: '客家人发展出独具一格的乡土曲艺戏剧艺术，包括采茶戏、木偶戏、客家汉乐等。',
       items: [
         { name: '采茶戏', sheet: 19, ipa: '[tsʰai⁵⁵ tsʰa²⁴ hi⁵⁵]', page: 15,
@@ -89,7 +83,7 @@ videoUrl: null }
       ]
     },
     {
-      id: 'ch4', num: '肆', title: '"非"常味道',
+      id: 'ch4', num: '叁', title: '"非"常味道',
       intro: '客家美食承载着千年辗转的乡愁与智慧，一碗酿豆腐、一块梅菜扣肉，凝聚着对故土的眷恋。',
       items: [
         { name: '赢肉', sheet: 28, ipa: '[ɕiaŋ²¹⁴ niɣʔ⁵¹]', page: 25,
@@ -159,7 +153,7 @@ videoUrl: null }
       ]
     },
     {
-      id: 'ch5', num: '伍', title: '"非"看不可',
+      id: 'ch5', num: '肆', title: '"非"看不可',
       intro: '客家传统技艺与风俗独具魅力，从花带到火笼，从板凳龙到走古事，承载着家族传承与乡土情怀。',
       items: [
         { name: '花带', sheet: 45, ipa: '[fa³⁵ tai⁵⁵]', page: 43,
@@ -217,7 +211,7 @@ videoUrl: null }
       ]
     },
     {
-      id: 'ch6', num: '陆', title: '"非"常创意',
+      id: 'ch6', num: '伍', title: '"非"常创意',
       intro: '客家传统技艺与现代创意交融，展现非遗活态传承的无限可能。',
       items: [
         { name: '龙舟', sheet: 60, ipa: '[lýŋ²¹⁴ tseu³⁵]', page: 58,
@@ -227,7 +221,7 @@ videoUrl: 'https://6525763.hlcode.pro/?id=Na61TCV' }
       ]
     },
     {
-      id: 'ch78', num: '柒·捌', title: '"非"你莫属 · "非"越世客',
+      id: 'ch78', num: '陆', title: '"非"你莫属 · "非"越世客',
       intro: '世界客属恳亲大会是连接全球客家人的桥梁，是客家人的"奥运会"。',
       items: [
         { name: '世界客属恳亲大会', sheet: 63, ipa: '', page: 60,
