@@ -108,6 +108,7 @@
       row.classList.toggle('is-active', rowIdx === i);
     });
 
+    window.MediaPlayer.clear(frameEl);
     frameEl.hidden = false;
     var targetUrl = (t.item.audioUrl || t.item.videoUrl || '');
     if (!globalThis.HeritageContent.safeUrl(targetUrl, false)) { frameEl.textContent = '媒体链接格式不正确，请联系管理员修正。'; return; }

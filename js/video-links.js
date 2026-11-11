@@ -21,7 +21,7 @@
     if (!/^(?:BV[a-zA-Z0-9]{10}|av[0-9]+)$/.test(id || '')) return null;
     var page = Number(url.searchParams.get('p') || url.searchParams.get('page'));
     if (!Number.isInteger(page) || page < 1 || page > 1000) page = 1;
-    return { short: false, provider: '哔哩哔哩', url: 'https://www.bilibili.com/video/' + id + '/?p=' + page,
+    return { short: false, provider: '哔哩哔哩', minWidth: 480, url: 'https://www.bilibili.com/video/' + id + '/?p=' + page,
       embed: 'https://player.bilibili.com/player.html?' + (id.startsWith('BV') ? 'bvid=' + id : 'aid=' + id.slice(2)) + '&p=' + page + '&autoplay=false' };
   }
 

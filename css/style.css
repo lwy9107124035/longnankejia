@@ -677,6 +677,14 @@ input { font-family: inherit; }
 .video-player-frame video, .dl-frame video { display: block; width: 100%; max-height: 60vh; background: #1a1a1a; border-radius: var(--radius-sm); }
 .media-player-status { margin: 8px 0; color: var(--ink-soft); line-height: 1.6; }
 .media-source-link { display: inline-block; color: var(--primary-deep); padding: 6px 0; overflow-wrap: anywhere; }
+.media-embed-viewport { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; background: #000; }
+.media-embed-viewport iframe.media-embed-scaled { position: absolute; top: 0; left: 0; transform-origin: top left; max-width: none; border: 0; }
+.media-embed-viewport:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+.media-embed-viewport:-webkit-full-screen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+.media-fullscreen-btn { margin: 6px 10px; padding: 7px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); color: var(--primary-deep); cursor: pointer; }
+.media-exit-fullscreen { display: none; position: absolute; top: 8px; right: 8px; z-index: 2; min-height: 40px; padding: 8px 12px; color: #fff; background: rgba(0,0,0,.75); border: 1px solid rgba(255,255,255,.6); border-radius: var(--radius-sm); cursor: pointer; }
+.media-embed-viewport:fullscreen .media-exit-fullscreen { display: block; }
+.media-embed-viewport:-webkit-full-screen .media-exit-fullscreen { display: block; }
 .video-player-title { font-size: 14px; font-weight: 700; color: var(--primary-deep); margin-bottom: 4px; }
 .video-player-desc { font-size: 11px; color: var(--ink-soft); }
 
@@ -1034,7 +1042,9 @@ input { font-family: inherit; }
 .dl-now-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
 
 .dl-frame { margin-bottom: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; background: #000; }
-.dl-frame iframe { display: block; width: 100%; height: 200px; border: 0; }
+.dl-frame iframe { display: block; width: 100%; height: auto; min-height: 200px; aspect-ratio: 16/9; border: 0; }
+.dl-frame .media-player-status { margin: 0; padding: 8px 10px; background: var(--card); }
+.dl-frame .media-source-link { display: block; padding: 8px 10px; background: var(--card); }
 .dl-open { display: block; padding: 7px 10px; font-size: 11px; color: var(--accent); background: var(--card); font-weight: 600; }
 
 .dl-tracks { list-style: none; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); overflow: hidden; }

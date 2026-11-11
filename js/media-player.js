@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var pending = new WeakMap(), streams = new WeakMap(), adaptiveRuntime;
+  var pending = new WeakMap(), streams = new WeakMap(), embeds = new WeakMap(), adaptiveRuntime;
 
   function mediaUrl(value) {
     if (!value || !globalThis.HeritageContent.safeUrl(value, false)) return null;
@@ -16,6 +16,7 @@
 
   function clear(container) {
     if (pending.has(container)) { pending.get(container).abort(); pending.delete(container); }
+    if (embeds.has(container)) { embeds.get(container).disconnect(); embeds.delete(container); }
     if (streams.has(container)) {
       streams.get(container).destroy().catch(function (error) { console.warn('视频清理失败:', error.name); });
       streams.delete(container);
@@ -24,13 +25,42 @@
     container.replaceChildren();
   }
 
-  function embed(container, url, name, sandbox) {
+  function embed(container, url, name, sandbox, minWidth) {
     var frame = document.createElement('iframe');
     frame.src = url; frame.title = (name || '展品') + '视频播放页面';
     frame.allow = 'autoplay; fullscreen; picture-in-picture'; frame.allowFullscreen = true;
     frame.referrerPolicy = 'strict-origin-when-cross-origin';
     if (sandbox) frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-    container.prepend(frame);
+    if (!minWidth) { container.prepend(frame); return; }
+    // 窄小容器会让平台隐藏进度栏；保留完整布局，再缩放到实际宽度。
+    var viewport = document.createElement('div'); viewport.className = 'media-embed-viewport';
+    frame.className = 'media-embed-scaled'; frame.style.width = minWidth + 'px'; frame.style.height = minWidth * 9 / 16 + 'px';
+    viewport.appendChild(frame); container.prepend(viewport);
+    function resize() {
+      var width = viewport.clientWidth, height = viewport.clientHeight;
+      if (!width || !height) return;
+      var playerWidth = Math.max(minWidth, width), playerHeight = playerWidth * 9 / 16;
+      var scale = Math.min(width / playerWidth, height / playerHeight);
+      frame.style.width = playerWidth + 'px'; frame.style.height = playerHeight + 'px';
+      frame.style.transform = 'translate(' + (width - playerWidth * scale) / 2 + 'px,' + (height - playerHeight * scale) / 2 + 'px) scale(' + scale + ')';
+    }
+    var observer = new ResizeObserver(resize); observer.observe(viewport); embeds.set(container, observer); resize();
+    var fullscreen = viewport.requestFullscreen || viewport.webkitRequestFullscreen;
+    var exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fullscreen && exitFullscreen) {
+      var button = document.createElement('button'); button.type = 'button'; button.className = 'media-fullscreen-btn'; button.textContent = '全屏播放';
+      button.addEventListener('click', function () {
+        var result = fullscreen.call(viewport);
+        if (result && result.catch) result.catch(function () { button.textContent = '请使用播放器的全屏按钮'; });
+      });
+      container.appendChild(button);
+      var exitButton = document.createElement('button'); exitButton.type = 'button'; exitButton.className = 'media-exit-fullscreen'; exitButton.textContent = '退出全屏';
+      exitButton.addEventListener('click', function () {
+        var result = exitFullscreen.call(document);
+        if (result && result.catch) result.catch(function () { exitButton.textContent = '请按 Esc 退出全屏'; });
+      });
+      viewport.appendChild(exitButton);
+    }
   }
 
   function loadAdaptiveRuntime() {
@@ -72,7 +102,7 @@
       var result = await response.json(), resolved = response.ok && result.ok && globalThis.HeritageVideo.bilibili(result.url);
       if (pending.get(container) !== controller) return;
       if (!resolved || resolved.short) throw new Error('Unresolved video link');
-      embed(container, resolved.embed, name); link.href = resolved.url;
+      embed(container, resolved.embed, name, false, resolved.minWidth); link.href = resolved.url;
       note.textContent = '视频由哔哩哔哩提供。若无法播放，请打开原播放页面观看。';
     } catch (error) {
       if (pending.get(container) === controller) note.textContent = '短链接暂时无法识别。可打开原页面观看，或请管理员改填完整视频链接或 BV 号。';
@@ -102,7 +132,7 @@
       link.href = platform.url;
       if (platform.short) resolveShortLink(container, platform, name, note, link);
       else {
-        embed(container, platform.embed, name, platform.sandbox);
+        embed(container, platform.embed, name, platform.sandbox, platform.minWidth);
         note.textContent = '视频由' + platform.provider + '提供。若无法播放，请打开原播放页面观看。';
       }
     } else if (location.protocol === 'https:' && url.protocol === 'http:') {
