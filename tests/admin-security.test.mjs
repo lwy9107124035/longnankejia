@@ -269,10 +269,14 @@ test('F08 version history stores only changed fields without copying an unchange
   assert.equal((await backend.call()).data.kepuCustom.length, 0);
 });
 
-test('F06 reserved IDs match the actual shipped builtin records', () => {
+test('F06 reserved IDs match shipped records and explicitly retired builtin IDs', () => {
   const window = {};
   vm.runInNewContext(fs.readFileSync(new URL('../js/knowledge-base.js', import.meta.url), 'utf8'), { window });
-  assert.deepEqual(globalThis.HeritageContent.reserved.kb.slice().sort(), Array.from(window.KNOWLEDGE_BASE, entry => entry.id).sort());
+  // Keep retired IDs reserved so existing saved bundles remain valid and custom records cannot reuse them.
+  const retiredKnowledgeIds = ['dc-huxingwei'];
+  const activeIds = Array.from(window.KNOWLEDGE_BASE, entry => entry.id);
+  assert.ok(retiredKnowledgeIds.every(id => !activeIds.includes(id)));
+  assert.deepEqual(globalThis.HeritageContent.reserved.kb.slice().sort(), activeIds.concat(retiredKnowledgeIds).sort());
   const ui = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
   const cards = ui.slice(ui.indexOf('var CARDS ='), ui.indexOf('function isCustomCard'));
   assert.deepEqual(globalThis.HeritageContent.reserved.kepu.slice().sort(), [...cards.matchAll(/\bid:\s*'([^']+)'/g)].map(match => match[1]).sort());
