@@ -672,7 +672,8 @@ input { font-family: inherit; }
 .video-player-modal { z-index: 400; }
 .video-player-modal .modal-card { max-width: 560px; padding: 14px; }
 .video-player-frame { width: 100%; margin-bottom: 8px; font-size: 12px; }
-.video-player-frame iframe { display: block; width: 100%; aspect-ratio: 16/9; border: none; background: #1a1a1a; border-radius: var(--radius-sm); }
+.video-player-frame iframe { display: block; width: 100%; aspect-ratio: 16/9; min-height: 200px; border: none; background: #1a1a1a; border-radius: var(--radius-sm); }
+.detail-video-player iframe { display: block; width: 100%; aspect-ratio: 16/9; min-height: 200px; border: none; }
 .video-player-frame video, .dl-frame video { display: block; width: 100%; max-height: 60vh; background: #1a1a1a; border-radius: var(--radius-sm); }
 .media-player-status { margin: 8px 0; color: var(--ink-soft); line-height: 1.6; }
 .media-source-link { display: inline-block; color: var(--primary-deep); padding: 6px 0; overflow-wrap: anywhere; }

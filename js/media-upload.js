@@ -51,7 +51,14 @@ function mount(form, input, mediaUploads) {
   status.textContent = '建议上传 H.264 编码的 MP4；最大250 MiB。上传完成后请保存资料；刷新后重选同一文件可续传。';
   if (mediaUploads === false) {
     choose.disabled = true; picker.disabled = true; choose.textContent = '文件上传待启用';
-    status.textContent = '服务器尚未启用视频文件存储，请联系站点管理员启用。已有 HTTPS 音视频直链仍可填写；电脑或手机中的文件名不能作为上传链接。';
+    choose.hidden = true;
+    const guide = document.createElement('a');
+    guide.className = 'admin-btn-sm'; guide.dataset.videoUploadGuide = '';
+    guide.href = 'https://member.bilibili.com/platform/upload/video/frame';
+    guide.target = '_blank'; guide.rel = 'noopener noreferrer';
+    guide.textContent = '视频上传示例：哔哩哔哩 ↗';
+    wrap.insertBefore(guide, choose);
+    status.textContent = '① 上传到你使用的视频平台并发布 ② 复制播放或分享链接 ③ 粘贴到上方后保存。不限定平台，100～500 MB 视频保存在原平台；手机里的文件名不能作为上传链接。音频可填写已有播放直链。';
     return () => wrap.remove();
   }
   let file = null, digest = '', record = null, storageKey = '', controller = null, busy = false, previousDisabled = false, applyingReceipt = false;
