@@ -278,7 +278,7 @@
     }
     var hits = searchExhibits(q);
     if (!hits.length) {
-      hint.textContent = '42 件展品的正文里没有「' + q + '」。换个说法，或者只打两个字试试。';
+      hint.textContent = allItems().length + ' 件展品的正文里没有「' + q + '」。换个说法，或者只打两个字试试。';
       listEl.innerHTML = '';
       return;
     }
@@ -335,6 +335,8 @@
       bindFind();
       selectChapter(data.chapters[0].id);
       var total = data.chapters.reduce(function(s,c){return s+c.items.length;},0);
+      var queryInput = document.getElementById('dcQuery');
+      if (queryInput) queryInput.placeholder = '输入关键词，检索 ' + total + ' 件展品全文';
       var withVideo = data.chapters.reduce(function(s,c){return s + c.items.filter(function(i){return i.videoUrl;}).length;},0);
       console.log('[Diancang] initialized:', data.chapters.length, 'chapters,', total, 'items,', withVideo, 'with video');
     } catch (e) {

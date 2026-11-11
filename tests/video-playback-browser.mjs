@@ -31,6 +31,8 @@ try {
       assert.equal(await page.evaluate(() => DIANCANG.chapters.flatMap(ch => ch.items).some(item => item.name === '虎形围')), false);
       assert.equal(await page.evaluate(() => KNOWLEDGE_BASE.some(item => item.id === 'dc-huxingwei')), false);
       assert.equal(await page.evaluate(() => Diancang.openItem('虎形围')), false);
+      const exhibitCount = await page.evaluate(() => DIANCANG.chapters.reduce((count, chapter) => count + chapter.items.length, 0));
+      assert.match(await page.locator('#dcQuery').getAttribute('placeholder'), new RegExp(' ' + exhibitCount + ' '));
       checks.push('removed exhibit cannot be opened or retrieved from built-in knowledge');
 
       await page.evaluate(() => UI.DetailModal.open({ id: 'test-video', name: '围屋视频', detail: '围屋介绍', videoUrl: 'https://example.com/share/123' }));
