@@ -1147,9 +1147,9 @@
       '      </div>' +
       '    </div>' +
       '  </div>' +
-      '  <label class="admin-label">讲解视频链接或本地MP4路径 (可选)</label>' +
-      '  <input type="text" id="kpVideo" class="admin-input" value="' + esc(initialVid) + '" placeholder="例如：月光光童谣.mp4 或 https://...">' +
-      '  <div class="admin-hint">支持本地视频文件名（如：月光光童谣.mp4）或在线视频讲解播放链接</div>' +
+      '  <label class="admin-label">讲解视频（可选）</label>' +
+      '  <input type="text" id="kpVideo" class="admin-input" value="' + esc(initialVid) + '" placeholder="上传后自动填写，或粘贴 HTTPS 视频直链">' +
+      '  <div class="admin-hint">点击“选择本地视频”，上传完成后再保存资料。仅填写手机或电脑里的文件名不会上传视频。百科、网盘及短视频分享页通常需打开原页面观看。</div>' +
       '  <label class="admin-label" style="margin-top:8px">科普详情正文</label>' +
       '  <div class="admin-hint">直接按回车换行，空一行分段，无需输入标签。兼容已有 HTML 段落。</div>' +
       '  <textarea id="kpDetail" class="admin-textarea" rows="8" placeholder="在此输入或粘贴正文，按回车即可换行…">' + esc(card ? card.detail : '') + '</textarea>' +

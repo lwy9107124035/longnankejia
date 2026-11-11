@@ -1029,13 +1029,15 @@
         html += '<img class="detail-media-img" src="' + esc(img) + '" alt="' + esc(card.name) + '" loading="lazy">';
       }
       if (vid) {
-        if (/\.(mp4|webm|ogg)($|\?)/i.test(vid)) {
-          html += '<video class="detail-media-video" controls playsinline preload="metadata" src="' + esc(vid) + '"></video>';
+        if (window.MediaPlayer.isVideoFile(vid)) {
+          html += '<div class="detail-video-player"></div>';
         } else {
           html += '<div class="detail-media-btn-wrap"><button class="dc-video-play-btn" id="detailPlayVidBtn" type="button">▶ 播放视频讲解</button></div>';
         }
       }
       mediaEl.innerHTML = html;
+      var videoPlayer = mediaEl.querySelector('.detail-video-player');
+      if (videoPlayer) window.MediaPlayer.mount(videoPlayer, vid, card.name);
       var image = mediaEl.querySelector('img');
       if (image) image.addEventListener('error', function () { image.hidden = true; });
       mediaEl.hidden = false;

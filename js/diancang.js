@@ -6,6 +6,7 @@
 
   var data = null;
   var currentChapter = null;
+  var videoOpener = null;
 
   function $(sel) { return document.querySelector(sel); }
   function esc(s) {
@@ -77,6 +78,7 @@
         '<div class="dc-item-more">查看详情 →</div>' +
         '</button>';
     }).join('');
+    if (!ch.items.length) grid.innerHTML = '<p class="dc-empty">本章节暂无展品。</p>';
 
     grid.querySelectorAll('.dc-item-card').forEach(function (card) {
       card.addEventListener('click', function () {
@@ -145,11 +147,19 @@
     var desc = document.getElementById('videoDesc');
     if (!mask) return;
 
-    title.textContent = item.name + ' — 客家话语音讲解';
-    desc.textContent = '《文化典藏》展品原声讲解 · 第 ' + (item.page || '') + ' 页';
-    // 用 iframe 嵌入视频页面
-    frame.innerHTML = '<iframe src="' + esc(item.videoUrl) + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+    videoOpener = document.activeElement;
+    title.textContent = item.name + ' — 视频讲解';
+    desc.textContent = item.page ? '《文化典藏》展品原声讲解 · 第 ' + item.page + ' 页' : '';
+    window.MediaPlayer.mount(frame, item.videoUrl, item.name);
     mask.hidden = false;
+    document.getElementById('videoClose').focus();
+  }
+
+  function closeVideoPlayer() {
+    document.getElementById('videoMask').hidden = true;
+    window.MediaPlayer.clear(document.getElementById('videoFrame'));
+    if (videoOpener && videoOpener.isConnected) videoOpener.focus();
+    videoOpener = null;
   }
 
   function showPreface() {
@@ -315,8 +325,11 @@
 
       var videoClose = document.getElementById('videoClose');
       var videoMask = document.getElementById('videoMask');
-      if (videoClose) videoClose.addEventListener('click', function () { videoMask.hidden = true; });
-      if (videoMask) videoMask.addEventListener('click', function (e) { if (e.target === videoMask) videoMask.hidden = true; });
+      if (videoClose) videoClose.addEventListener('click', closeVideoPlayer);
+      if (videoMask) videoMask.addEventListener('click', function (e) { if (e.target === videoMask) closeVideoPlayer(); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && videoMask && !videoMask.hidden) { e.preventDefault(); closeVideoPlayer(); }
+      });
 
       renderChapterTabs();
       bindFind();

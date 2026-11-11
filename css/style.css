@@ -669,9 +669,13 @@ input { font-family: inherit; }
 }
 
 /* 视频播放器弹层 */
-.video-player-modal .modal-card { max-width: 400px; padding: 14px; }
-.video-player-frame { width: 100%; aspect-ratio: 16/9; background: #1a1a1a; border-radius: var(--radius-sm); margin-bottom: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; overflow: hidden; }
-.video-player-frame iframe { width: 100%; height: 100%; border: none; }
+.video-player-modal { z-index: 400; }
+.video-player-modal .modal-card { max-width: 560px; padding: 14px; }
+.video-player-frame { width: 100%; margin-bottom: 8px; font-size: 12px; }
+.video-player-frame iframe { display: block; width: 100%; aspect-ratio: 16/9; border: none; background: #1a1a1a; border-radius: var(--radius-sm); }
+.video-player-frame video, .dl-frame video { display: block; width: 100%; max-height: 60vh; background: #1a1a1a; border-radius: var(--radius-sm); }
+.media-player-status { margin: 8px 0; color: var(--ink-soft); line-height: 1.6; }
+.media-source-link { display: inline-block; color: var(--primary-deep); padding: 6px 0; overflow-wrap: anywhere; }
 .video-player-title { font-size: 14px; font-weight: 700; color: var(--primary-deep); margin-bottom: 4px; }
 .video-player-desc { font-size: 11px; color: var(--ink-soft); }
 

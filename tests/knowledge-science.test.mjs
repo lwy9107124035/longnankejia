@@ -14,8 +14,9 @@ const scienceTopics = entries.flatMap(entry => (entry.sources || [])
   .map(source => ({ name: source.title.slice(5), entry })));
 
 test('science expansion adds 176 entries and supplements 11 existing entries without duplicate IDs or sources', () => {
-  assert.equal(entries.length, 261);
-  assert.equal(new Set(entries.map(entry => entry.id)).size, 261);
+  assert.equal(entries.length, 260);
+  assert.equal(new Set(entries.map(entry => entry.id)).size, 260);
+  assert.ok(!entries.some(entry => entry.id === 'dc-huxingwei'));
   assert.equal(entries.filter(entry => entry.id.startsWith('kb-science-')).length, 176);
   assert.equal(scienceTopics.length, 187);
   assert.equal(new Set(scienceTopics.map(topic => topic.name)).size, 187);

@@ -940,3 +940,16 @@
 - real-model-relevance-support-ids.json中原题/设施追问零模型调用，炮楼题6945ms、介绍5522ms均真实生成及审核。新增后续“请问那么里面…”定向测试发现主题前缀后的问候词未清理，final-focused.log原失败保留；复用cleanQuestion修正，31项问答定向及最终完整300项、CI全绿，未放宽断言。
 - 正式production-browser.json原题1215ms和设施追问942ms通过，均零模型请求；同轮炮楼题审核请求耗尽20秒，整份报告passed=false并保留，不能称三题单轮全过。随后一次单题隔离复核production-browser-isolated-recheck.json炮楼5394ms、真实AI整理及该回答出处同页高亮通过；两脚本发布字节均与31fe17d Git blob一致，无页面异常。上游偶发超时仍是实际风险，不放宽20秒、反复请求碰运气或承诺每次成功；软件现会明确告知未完成。
 - 发布前后production-integrity-comparison.json独立核对374状态行的值/revision、34208958逻辑字节、771公开/历史、原密码邀请码摘要/revision、环境及317库绑定完全相同，无生产SQL写入或迁移。11:21Z正式387/188、182图完整备份、719211B元数据/34562048B物理、warnings空，只有原两条删除意图告警，基线及pendingDeletionConfirmation保留。证据原目录.cache/question-relevance-20261106；维护任务恢复只读，不周期性调用模型、重复浏览器/压力或自动发布main。
+
+
+## 2026-11-11 客户围屋与视频反馈（codex）
+
+- 授权边界：先将远端 codex 精确对齐 main 的 69ffcbed65487a068d21594b21f96890ff660eab（已由 ls-remote 核实），后续应用修改仅在 codex。旧分支保存为 backup-codex-before-main-20261111；原未提交检查点备份与补丁位于 .cache/customer-feedback-20261111/。
+- 移除虎形围典藏卡片、内置知识及其视频触发入口和二维码映射；保留原始书籍资料。知识条数随删除调整为260。
+- 统一科普、典藏与方言视频渲染：MP4/WebM和 /api/media/<hash> 使用原生 video；第三方网页提供原页面入口，hlcode 仍可嵌入并保留后备入口；错误显示可读提示。视频弹层高于资料与后台，关闭和Escape均清理播放器。未给无页码的自定义视频标注空白典藏页码。HTTPS媒体直链可通过CSP。
+- 后台纠正“填写本地文件名即可上传”的说明；上传按钮继续服从服务器能力，不假报已启用。
+- 地图无需重复重绘：正式站、codex站与仓库的 data-hometown.js 规范文本完全一致，均为11月4日校正的22点版本；地图功能浏览器检查30/30通过。
+- 验证：新视频回归在 Chromium、WebKit 各6组通过，实际R2模拟后端的无扩展名MP4已解码并推进播放；现有分片上传回归两引擎各11组通过；相关单元测试32/32通过，其他受影响知识/地图/路由首轮43项通过后，删除引起的一项固定计数断言更新并通过；静态检查通过。截图和原始日志在 .cache/customer-feedback-20261111/。WebKit模拟不等于真机微信验收。
+- 保留的失败证据：map-browser.log 是旧视觉脚本未连接其要求的预览服务器导致缺少.hm-svg；改用自建服务器的地图功能套件后30/30通过，并非地图本身故障。
+- 尚待完成：Cloudflare R2 API明确返回10042（账号未开通R2），main公开能力与codex分页能力均为 mediaUploads:false。用户确认未开通且不知如何操作；已提供官方控制台步骤，订阅/账单信息需本人完成，之后可创建并绑定codex专用桶。不得声称文件上传已上线。
+- 线上只读快照：main revision430；codex分页revision1812。未修改客户线上记录，未复制数据库，未改main。部署完成证据另追加本节。

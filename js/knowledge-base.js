@@ -339,12 +339,6 @@ window.KNOWLEDGE_BASE = [
     answer: '乌石围又名磐石围，位于龙南杨村镇乌石村，因门前状似蟾蜍的乌石得名。始建于明万历十年（1583年），历时二十八载。围屋前方后圆，占地约四千五百平方米，围墙高约九米，四角设炮楼。2019年列入全国重点文物保护单位。'
   },
   {
-    id: 'dc-huxingwei',
-    title: '虎形围',
-    keywords: ['虎形围', '虎形', '肖形围'],
-    answer: '虎形围始建于清乾隆五十一年（1786年），是赣南唯一采用肖形构思设计的围屋——大门塑为虎口、圆窗作虎眼、炮楼为虎爪，背倚虎形山。爱国文人方其道出生于此，其未婚妻刘和珍即鲁迅《纪念刘和珍君》主人公。2011年亮相央视春晚闻名天下。'
-  },
-  {
     id: 'dc-caichaxi',
     title: '采茶戏',
     keywords: ['采茶戏', '赣南采茶', '采茶'],
@@ -584,7 +578,7 @@ window.KEYWORD_SYNONYMS = {
     '龙南竹编':{ids:['zhubian','v2-zhubian','bamboo-material','bamboo-tools','bamboo-process','bamboo-inheritance'],aliases:['竹编','杨村竹编','客家竹编','竹艺','篾匠','竹篾编织','徐昌添','度篾齿']},
     '南通蓝印花布':{ids:['v2-nantong-blue-print'],aliases:['南通蓝印花布','南通蓝染','蓝印花布','刻花版','防染浆']},
     '白族扎染':{ids:['v2-dali-bai-tie-dye'],aliases:['白族扎染','大理扎染','周城扎染','大理白族扎染']},
-    '客家围屋':{ids:['weiwu','longnan-wenbao-count','jiangyi-weiwu-overview','jiangyi-weiwu-defense','jiangyi-weiwu-windows','jiangyi-weiwu-red','dc-wushiwei','dc-huxingwei'],aliases:['围屋','关西新围','燕翼围','客家围屋','世界围屋之都']},
+    '客家围屋':{ids:['weiwu','longnan-wenbao-count','jiangyi-weiwu-overview','jiangyi-weiwu-defense','jiangyi-weiwu-windows','jiangyi-weiwu-red','dc-wushiwei'],aliases:['围屋','关西新围','燕翼围','客家围屋','世界围屋之都']},
     '客家传统纹样':{ids:sections.filter(function(row){return /^pattern-/.test(row[0]);}).map(function(row){return row[0];}).concat(['pattern-overview']),aliases:['传统纹样','客家纹样','门榜','微型族谱','狮象雕塑']},
     '客家寿诞':{ids:['dc-shoudan'],aliases:['客家寿诞','寿诞','大生日','做寿','祝寿','可提前不得推后','人生礼俗']},
     '龙南大漆':{ids:['dc-daqi'],aliases:['龙南大漆','大漆','大漆技艺','天然漆','生漆']},

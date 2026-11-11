@@ -123,9 +123,7 @@
         '  <div class="dl-audio-hint">🎙️ 原汁原味客家方言发音与本土民俗记述。</div>' +
         '</div>';
     } else {
-      frameEl.innerHTML =
-        '<iframe src="' + esc(targetUrl) + '" allow="autoplay; fullscreen" allowfullscreen></iframe>' +
-        '<a class="dl-open" href="' + esc(targetUrl) + '" target="_blank" rel="noopener">在新窗口打开讲解页 ↗</a>';
+      window.MediaPlayer.mount(frameEl, targetUrl, t.item.name);
     }
   }
 

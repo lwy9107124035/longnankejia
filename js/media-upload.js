@@ -48,10 +48,10 @@ function mount(form, input, mediaUploads) {
   const pause = wrap.querySelector('[data-media-pause]'), abort = wrap.querySelector('[data-media-abort]'), bar = wrap.querySelector('progress'), status = wrap.querySelector('[role="status"]');
   const save = form.querySelector('#kpSaveBtn, #dlSaveBtn');
   picker.accept = [...TYPES].filter(type => !videoOnly || type.startsWith('video/')).join(',');
-  status.textContent = '最大250 MiB；刷新后重新选择同一文件可续传。';
+  status.textContent = '建议上传 H.264 编码的 MP4；最大250 MiB。上传完成后请保存资料；刷新后重选同一文件可续传。';
   if (mediaUploads === false) {
     choose.disabled = true; picker.disabled = true; choose.textContent = '文件上传待启用';
-    status.textContent = '服务器尚未启用文件上传，可继续填写已有音视频链接。';
+    status.textContent = '服务器尚未启用视频文件存储，请联系站点管理员启用。已有 HTTPS 音视频直链仍可填写；电脑或手机中的文件名不能作为上传链接。';
     return () => wrap.remove();
   }
   let file = null, digest = '', record = null, storageKey = '', controller = null, busy = false, previousDisabled = false, applyingReceipt = false;
