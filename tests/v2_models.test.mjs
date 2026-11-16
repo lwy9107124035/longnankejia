@@ -99,19 +99,32 @@ test('Guanxi keeps continuous front wall, side entrances and flush hard-gable wa
   }
 });
 
-test('Guanxi has three continuous halls, ten skywells and recessed side-gate openings',()=>{
+test('Guanxi has three continuous halls and ten skywells',()=>{
   const g=build('weiwu');
   for(const name of ['cross_hall_0','central_ancestral_hall','cross_hall_2']){
     assert.ok(g.getObjectByName(name+'_body').geometry.parameters.width>2.7);
     assert.ok(g.getObjectByName(name+'_roof').getObjectByName('overlapping_qingwa_courses').count>1000);
   }
   assert.equal(g.children.filter(o=>o.name.startsWith('open_sky_court_')).length,10);
-  for(const side of ['east','west']){
-    const wall=g.getObjectByName(side+'_wall_weathered_earth');
-    assert.equal(wall.geometry.parameters.shapes.holes.length,1,'side entrance is cut through the wall');
-  }
   assert.ok(g.getObjectByName('outer_diamond_lattice').count>100);
   assert.ok(g.getObjectByName('timber_lattice_bars').count>300);
+});
+
+test('Guanxi side gates open through the perimeter rooms into the courtyard',()=>{
+  const g=build('weiwu');g.updateMatrixWorld(true);
+  for(const side of [-1,1]){
+    const portal=g.getObjectByName(side>0?'east_wall_side_gate':'west_wall_side_gate');
+    for(const dz of [-.04,0,.04])for(const height of [.08,.14,.18]){
+      const ray=new T.Raycaster(new T.Vector3(side*3.05,.036+height,portal.position.z+dz),new T.Vector3(-side,0,0),0,1.55);
+      const hits=ray.intersectObject(g,true);
+      assert.equal(hits.length,0,'gate sightline is blocked by '+hits.map(hit=>hit.object.name).join(','));
+    }
+    const wall=g.getObjectByName(side>0?'east_wall_weathered_earth':'west_wall_weathered_earth');
+    const ray=new T.Raycaster(new T.Vector3(side*3.05,.036+.12,portal.position.z+.12),new T.Vector3(-side,0,0));
+    assert.ok(ray.intersectObject(wall).length,'wall beside the opening stays solid');
+    ray.set(new T.Vector3(side*3.05,.036+.26,portal.position.z),new T.Vector3(-side,0,0));
+    assert.ok(ray.intersectObject(wall).length,'arch and wall above the opening stay solid');
+  }
 });
 
 test('Guanxi shared instanced materials keep compatible color attributes',()=>{

@@ -67,6 +67,8 @@
     var g=new THREE.Group();g.name='GuanxiXinwei';
     var scale=5.2/92.2,W=92.2*scale,D=83.5*scale,wallH=8*scale,towerH=10*scale;
     var foundation=.036,towerW=8.4*scale,towerRise=.085,towerEave=towerH-towerRise,thickness=scale;
+    var hallRows=[-1.28,-.29,.70],wingDepth=.60,frontWingZ=1.47,frontWingDepth=.57;
+    var sideGate={center:(hallRows[2]+wingDepth/2+frontWingZ-frontWingDepth/2)/2,width:.15,spring:.145};
     var plaster=new THREE.MeshStandardMaterial({map:canvasTex('guanxiWall'),color:0xdeddd3,roughness:1});
     var inner=new THREE.MeshStandardMaterial({map:plaster.map,color:0xe4e1d4,roughness:1});
     var brick=new THREE.MeshStandardMaterial({map:canvasTex('qingBrick'),color:0xc8ccc5,roughness:1});
@@ -153,13 +155,20 @@
       }
       g.add(r);return r;
     }
+    function passageBody(name,length,height,depth,mat,x,z,turn,center) {
+      var half=sideGate.width/2,outline=new THREE.Shape();
+      // The arch is a notch in the bottom boundary, open through the full depth of the building.
+      outline.moveTo(-length/2,0);outline.lineTo(center-half,0);outline.lineTo(center-half,sideGate.spring);
+      outline.absarc(center,sideGate.spring,half,Math.PI,0,true);outline.lineTo(center+half,0);
+      outline.lineTo(length/2,0);outline.lineTo(length/2,height);outline.lineTo(-length/2,height);outline.closePath();
+      var geo=new THREE.ExtrudeGeometry(outline,{depth:depth,bevelEnabled:false,curveSegments:12});geo.translate(0,0,-depth/2);
+      var body=new THREE.Mesh(metricUV(geo,1.3),mat);body.name=name;body.rotation.y=turn;body.position.set(x,foundation,z);
+      body.castShadow=body.receiveShadow=true;g.add(body);return body;
+    }
     function wall(name,x,z,length,axis,gate) {
-      var gateC=D*.21,gap=.15,spring=.145,gateTop=spring+gap/2;
+      var gateC=sideGate.center,gap=sideGate.width,spring=sideGate.spring,gateTop=spring+gap/2;
       if(gate){
-        var outline=new THREE.Shape();outline.moveTo(-length/2,0);outline.lineTo(length/2,0);outline.lineTo(length/2,wallH);outline.lineTo(-length/2,wallH);outline.closePath();
-        var hole=new THREE.Path(),c=-gateC;hole.moveTo(c-gap/2,0);hole.lineTo(c-gap/2,spring);hole.absarc(c,spring,gap/2,Math.PI,0,true);hole.lineTo(c+gap/2,0);hole.closePath();outline.holes.push(hole);
-        var geo=new THREE.ExtrudeGeometry(outline,{depth:thickness,bevelEnabled:false,curveSegments:12});geo.translate(0,0,-thickness/2);
-        var body=new THREE.Mesh(metricUV(geo,1.3),plaster);body.name=name+'_weathered_earth';body.rotation.y=Math.PI/2;body.position.set(x,foundation,z);body.castShadow=body.receiveShadow=true;g.add(body);
+        passageBody(name+'_weathered_earth',length,wallH,thickness,plaster,x,z,Math.PI/2,-gateC);
         var portal=new THREE.Group();portal.name=name+'_side_gate';portal.position.set(x+(x>0?1:-1)*(thickness/2+.002),foundation,gateC);portal.rotation.y=x>0?Math.PI/2:-Math.PI/2;
         var curve=new THREE.EllipseCurve(0,spring,gap/2+.007,gap/2+.007,0,Math.PI,false,0);
         var pts=curve.getPoints(20).map(function(p){return new THREE.Vector3(p.x,p.y,0);});
@@ -168,7 +177,12 @@
         var plaque=new THREE.Mesh(new THREE.BoxGeometry(.22,.032,.009),lime);plaque.position.set(0,gateTop+.04,0);portal.add(plaque);g.add(portal);
       }else box(name+'_weathered_earth',length,wallH,thickness,plaster,x,foundation+wallH/2,z);
       block('wall_eave_frieze',frieze,axis==='x'?length:thickness+.002,.026,axis==='x'?thickness+.002:length,x,foundation+wallH-.027,z);
-      block('stone_wall_footings',stone,axis==='x'?length:thickness+.006,.028,axis==='x'?thickness+.006:length,x,foundation+.014,z);
+      if(gate){
+        var before=gateC-gap/2+length/2,after=length/2-gateC-gap/2;
+        block('stone_wall_footings',stone,thickness+.006,.028,before,x,foundation+.014,-length/2+before/2);
+        block('stone_wall_footings',stone,thickness+.006,.028,after,x,foundation+.014,length/2-after/2);
+        block('side_gate_thresholds',stone,thickness+.014,.008,gap,x,foundation+.004,gateC);
+      }else block('stone_wall_footings',stone,axis==='x'?length:thickness+.006,.028,axis==='x'?thickness+.006:length,x,foundation+.014,z);
     }
     box('ground_apron',W+.78,.018,D+1.02,paving,0,.009,.30);
     box('stone_plinth',W+.20,foundation,D+.20,stone,0,foundation/2,0);
@@ -179,14 +193,17 @@
     function facadeBlock(name,mat,w,h,d,localX,y,localZ,cx,cz,turn,tilt) {
       block(name,mat,w,h,d,cx+localX*Math.cos(turn)+localZ*Math.sin(turn),y,cz-localX*Math.sin(turn)+localZ*Math.cos(turn),turn,tilt);
     }
-    function house(name,x,z,w,d,eave,rise,bays,turn,gallery) {
-      turn=turn||0;box(name+'_body',w,eave,d,inner,x,foundation+eave/2,z,turn);
+    function house(name,x,z,w,d,eave,rise,bays,turn,gallery,passageCenter) {
+      turn=turn||0;var passage=passageCenter!==undefined;
+      if(passage)passageBody(name+'_body',w,eave,d,inner,x,z,turn,passageCenter);
+      else box(name+'_body',w,eave,d,inner,x,foundation+eave/2,z,turn);
       roof(name+'_roof',x,z,w+.035,d+.075,foundation+eave,rise,turn,false);
       block('hall_stone_platforms',stone,w+.045,.016,d+.10,x,foundation+.008,z,turn);
       var f=function(kind,mat,ww,hh,dd,xx,yy,zz){facadeBlock(kind,mat,ww,hh,dd,xx,yy,zz,x,z,turn);};
       var step=w/bays;
       for(var bay=0;bay<bays;bay++){
         var xx=(bay-(bays-1)/2)*step,door=gallery||bay%3===1,pw=Math.min(step*.64,.14),ph=gallery?.125:door?.20:.105;
+        if(passage&&Math.abs(xx-passageCenter)<sideGate.width/2+pw/2+.012)continue;
         var yy=foundation+(gallery?.27:door?.12:.22);
         f('recessed_timber_panels',dark,pw,ph,.005,xx,yy,d/2+.003);
         [-1,1].forEach(function(sign){f('timber_door_frames',timber,.007,ph+.015,.010,xx+sign*(pw/2+.003),yy,d/2+.009);});
@@ -194,10 +211,21 @@
         for(var bar=-1;bar<=1;bar++)f('timber_lattice_bars',lime,.0035,ph-.01,.006,xx+bar*pw/4,yy,d/2+.010);
         f('timber_lattice_bars',lime,pw,.0035,.006,xx,yy,d/2+.010);
       }
-      for(var i=0;i<=bays;i++)f('veranda_columns',timber,.012,eave-.015,.012,-w/2+i*step,foundation+(eave-.015)/2,d/2+.035);
+      for(var i=0;i<=bays;i++){
+        var columnX=-w/2+i*step;
+        if(passage&&Math.abs(columnX-passageCenter)<sideGate.width/2+.012)continue;
+        f('veranda_columns',timber,.012,eave-.015,.012,columnX,foundation+(eave-.015)/2,d/2+.035);
+      }
       f('veranda_lintels',timber,w+.018,.019,.020,0,foundation+eave-.018,d/2+.035);
       f('veranda_stone_steps',stone,w+.04,.012,.052,0,foundation+.012,d/2+.034);
-      if(gallery)f('gallery_floor_beams',timber,w,.016,.027,0,foundation+.19,d/2+.012);
+      if(gallery){
+        if(passage){
+          var left=passageCenter-sideGate.width/2-.01,right=passageCenter+sideGate.width/2+.01;
+          f('gallery_floor_beams',timber,left+w/2,.016,.027,(left-w/2)/2,foundation+.19,d/2+.012);
+          f('gallery_floor_beams',timber,w/2-right,.016,.027,(right+w/2)/2,foundation+.19,d/2+.012);
+          f('gate_passage_floors',paving,sideGate.width,.006,d+.12,passageCenter,foundation+.016,0);
+        }else f('gallery_floor_beams',timber,w,.016,.027,0,foundation+.19,d/2+.012);
+      }
     }
     // The photograph shows broad, low corner towers rather than narrow stacks above the enclosure.
     [-1,1].forEach(function(sx){[-1,1].forEach(function(sz){
@@ -218,14 +246,14 @@
     var ring=.255,ringEave=.355;
     house('perimeter_north',0,-D/2+ring,W-towerW*2+.12,.43,ringEave,.095,24,0,true);
     house('perimeter_south',0,D/2-ring,W-towerW*2+.12,.43,ringEave,.095,24,Math.PI,true);
-    house('perimeter_west',-W/2+ring,0,D-towerW*2+.12,.43,ringEave,.095,21,Math.PI/2,true);
-    house('perimeter_east',W/2-ring,0,D-towerW*2+.12,.43,ringEave,.095,21,-Math.PI/2,true);
-    [-1.28,-.29,.70].forEach(function(z,row){
+    house('perimeter_west',-W/2+ring,0,D-towerW*2+.12,.43,ringEave,.095,21,Math.PI/2,true,-sideGate.center);
+    house('perimeter_east',W/2-ring,0,D-towerW*2+.12,.43,ringEave,.095,21,-Math.PI/2,true,sideGate.center);
+    hallRows.forEach(function(z,row){
       house(row===1?'central_ancestral_hall':'cross_hall_'+row,0,z,2.80,.59,.31,row===1?.135:.12,9,0,false);
-      [-1,1].forEach(function(sign){house('wing_'+sign+'_'+row,sign*1.77,z,.66,.60,.275,.10,3,0,false);});
+      [-1,1].forEach(function(sign){house('wing_'+sign+'_'+row,sign*1.77,z,.66,wingDepth,.275,.10,3,0,false);});
     });
     [-1,1].forEach(function(sign){
-      house('front_wing_'+sign,sign*1.77,1.47,.66,.57,.25,.105,3,0,false);
+      house('front_wing_'+sign,sign*1.77,frontWingZ,.66,frontWingDepth,.25,.105,3,0,false);
       house('forecourt_pavilion_'+sign,sign*.88,1.43,.62,.46,.235,.10,4,Math.PI/2,false);
     });
     var courts=0;
