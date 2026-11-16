@@ -413,10 +413,13 @@ export function publicRecordCounts(counts) {
 export async function searchKnowledgeRecords(db, manifest, query) {
   if (typeof query !== 'string' || !query.trim() || query.length > 500) throw new RecordError(400, 'INVALID_QUERY', '请输入500字以内的问题');
   const keywordMatch = "length(k.value)>1 AND instr(lower(?),lower(k.value))>0";
-  const titleMatch = "length(json_extract(t.value,'$.title'))>1 AND instr(lower(?),lower(json_extract(t.value,'$.title')))>0";
+  const title = "lower(replace(COALESCE(json_extract(t.value,'$.title'),json_extract(t.value,'$.name'),''),' ',''))";
+  const titleMatch = "length(" + title + ")>1 AND instr(lower(?)," + title + ")>0";
+  const terms = [...new Set(Array.from({ length: query.length - 1 }, (_, i) => query.slice(i, i + 2).toLowerCase()).filter(term => !/[\s，。？！、《》]/.test(term)))].slice(0, 100);
+  const titleTerms = 'COALESCE((SELECT SUM(length(p.value)*20) FROM json_each(?) p WHERE instr(' + title + ',p.value)>0),0)';
   const score = 'CASE WHEN ' + titleMatch + ' THEN 1000 ELSE 0 END + COALESCE((SELECT SUM(length(k.value)*10) FROM json_each(t.value,\'$.keywords\') k WHERE ' + keywordMatch + '),0)';
-  const match = "t.value LIKE ? ESCAPE '\\' OR (" + titleMatch + ') OR EXISTS(SELECT 1 FROM json_each(t.value,\'$.keywords\') k WHERE ' + keywordMatch + ')';
-  const { results } = await db.prepare('SELECT key,digest,value FROM (SELECT *,SUM(length(CAST(value AS BLOB))) OVER (ORDER BY score DESC,key) AS runningBytes,ROW_NUMBER() OVER (ORDER BY score DESC,key) AS position FROM (SELECT t.key,t.digest,t.value,' + score + " AS score FROM admin_content_items t WHERE t.generation=? AND t.kind IN ('kbCustom','kbEdited') AND t.value!='null' AND (" + match + ') ORDER BY score DESC,t.key LIMIT 20)) WHERE runningBytes<=1800000 OR position=1')
-    .bind(query, query, manifest.generation, '%' + query.replace(/[\\%_]/g, '\\$&') + '%', query, query).all();
+  const match = "t.value LIKE ? ESCAPE '\\' OR (" + titleMatch + ') OR EXISTS(SELECT 1 FROM json_each(t.value,\'$.keywords\') k WHERE ' + keywordMatch + ') OR (' + titleTerms + ')>=80';
+  const { results } = await db.prepare('SELECT key,digest,value FROM (SELECT *,SUM(length(CAST(value AS BLOB))) OVER (ORDER BY score DESC,key) AS runningBytes,ROW_NUMBER() OVER (ORDER BY score DESC,key) AS position FROM (SELECT t.key,t.digest,t.value,' + score + '+' + titleTerms + " AS score FROM admin_content_items t WHERE t.generation=? AND t.kind IN ('kbCustom','kbEdited','kepuCustom','kepuEdited') AND t.value!='null' AND (" + match + ') ORDER BY score DESC,t.key LIMIT 20)) WHERE runningBytes<=1800000 OR position=1')
+    .bind(query.replace(/\s+/g, ''), query, JSON.stringify(terms), manifest.generation, '%' + query.replace(/[\\%_]/g, '\\$&') + '%', query.replace(/\s+/g, ''), query, JSON.stringify(terms)).all();
   return { ok: true, model: 'records-v1', revision: manifest.revision, rows: results.map(row => ({ key: row.key, value: JSON.parse(row.value), hash: row.digest, summary: false })), cursor: '' };
 }

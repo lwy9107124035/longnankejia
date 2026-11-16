@@ -69,6 +69,20 @@ test('Guanxi enclosure and wall proportions match the documented low square form
   assert.ok(g.getObjectByName('east_wall_side_gate')&&g.getObjectByName('west_wall_side_gate'));
   assert.ok(g.getObjectByName('central_ancestral_hall_body'));
 });
+
+test('Guanxi keeps continuous front wall, side entrances and flush hard-gable watchtowers',()=>{
+  const g=build('weiwu');g.updateMatrixWorld(true);
+  assert.equal(g.getObjectByName('south_main_gate'),undefined);
+  assert.equal(g.getObjectByName('main_gate_doors'),undefined);
+  assert.ok(g.getObjectByName('south_wall_weathered_earth'));
+  for(const sx of [-1,1])for(const sz of [-1,1]){
+    const roof=g.getObjectByName('watchtower_'+sx+'_'+sz);
+    assert.equal(roof.children.filter(child=>child.name==='flush_gable_wall').length,2);
+    const b=new T.Box3().setFromObject(roof),size=b.getSize(new T.Vector3());
+    assert.ok(size.x<=0.31+1e-5,'roof and ridge stay within the tower wall ends');
+    assert.ok(size.z<=0.31+1e-5,'roof eaves stay within the tower footprint');
+  }
+});
 test('bowei keeps an open center instead of covering the hole with a photograph plane',()=>{
   const g=build('bowei');g.updateMatrixWorld(true);
   const ray=new T.Raycaster(new T.Vector3(0,2,0),new T.Vector3(0,-1,0));

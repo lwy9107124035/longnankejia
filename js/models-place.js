@@ -89,15 +89,15 @@
         o.updateMatrix();m.setMatrixAt(i,o.matrix);
       });m.name=name;m.castShadow=true;m.receiveShadow=true;g.add(m);return m;
     }
-    function roof(name,x,z,w,d,y,rise,turn) {
-      var r=new THREE.Group();r.name=name;var ex=w/2+0.04,ez=d/2+0.035;
+    function roof(name,x,z,w,d,y,rise,turn,hardGable) {
+      var r=new THREE.Group();r.name=name;var ex=w/2+(hardGable?0:0.04),ez=d/2+(hardGable?0:0.035);
       var points=[-ex,y,-ez, ex,y,-ez,ex,y+rise,0, -ex,y,-ez,ex,y+rise,0,-ex,y+rise,0,
         -ex,y+rise,0,ex,y+rise,0,ex,y,ez, -ex,y+rise,0,ex,y,ez,-ex,y,ez];
       var uvs=[0,0,1,0,1,1,0,0,1,1,0,1,0,1,1,1,1,0,0,1,1,0,0,0];
       var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(points,3));
       geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geo.computeVertexNormals();
       var face=new THREE.Mesh(geo,tile);face.name='continuous_tile_slopes';face.castShadow=true;r.add(face);
-      var ridge=new THREE.Mesh(new THREE.CylinderGeometry(0.009,0.009,w+0.035,8),tileFine);
+      var ridge=new THREE.Mesh(new THREE.CylinderGeometry(0.009,0.009,hardGable?w-0.018:w+0.035,8),tileFine);
       ridge.rotation.z=Math.PI/2;ridge.position.y=y+rise+0.01;ridge.name='grey_ridge_caps';r.add(ridge);
       var across=Math.max(8,Math.floor(w/0.034)), rows=Math.max(3,Math.floor(ez/0.06));
       var roofTiles=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.012,0.013,0.078,6,1,true,0,Math.PI),tileFine,across*rows*2);
@@ -108,9 +108,17 @@
         o.rotation.set(Math.PI/2+sign*slope,0,0);o.updateMatrix();roofTiles.setMatrixAt(n++,o.matrix);
       }r.add(roofTiles);
       [-1,1].forEach(function(s){
-        var beam=new THREE.Mesh(new THREE.BoxGeometry(w+0.03,0.016,0.025),timber);
-        beam.position.set(0,y-0.007,s*ez);r.add(beam);
+        var beam=new THREE.Mesh(new THREE.BoxGeometry(hardGable?w:w+0.03,0.016,hardGable?0.012:0.025),timber);
+        beam.position.set(0,y-0.007,s*(hardGable?ez-0.006:ez));r.add(beam);
       });
+      if(hardGable){
+        var end=new THREE.Shape();end.moveTo(-ez,0);end.lineTo(ez,0);end.lineTo(0,rise);end.closePath();
+        [-1,1].forEach(function(sign){
+          var wall=new THREE.Mesh(new THREE.ExtrudeGeometry(end,{depth:0.012,bevelEnabled:false}),brick);
+          wall.name='flush_gable_wall';wall.rotation.y=Math.PI/2;
+          wall.position.set(sign*ex-(sign>0?0.012:0),y,0);wall.castShadow=true;r.add(wall);
+        });
+      }
       r.position.set(x,0,z);r.rotation.y=turn||0;g.add(r);
     }
     function wall(name,x,z,length,axis,gate) {
@@ -146,17 +154,6 @@
     wall('north_wall',0,-D/2,W,'x',false);wall('south_wall',0,D/2,W,'x',false);
     wall('east_wall',W/2,0,D,'z',true);wall('west_wall',-W/2,0,D,'z',true);
 
-    // 南侧正门楼（“西林第”正大门楼与石额，客家围屋核心中轴大门）
-    var mainGate = new THREE.Group(); mainGate.name = 'south_main_gate';
-    box('main_gate_jamb_left', 0.08, 0.42, 0.14, brick, -0.22, foundation + 0.21, D / 2 + 0.06);
-    box('main_gate_jamb_right', 0.08, 0.42, 0.14, brick, 0.22, foundation + 0.21, D / 2 + 0.06);
-    box('main_gate_drum_left', 0.045, 0.12, 0.08, stone, -0.19, foundation + 0.06, D / 2 + 0.14);
-    box('main_gate_drum_right', 0.045, 0.12, 0.08, stone, 0.19, foundation + 0.06, D / 2 + 0.14);
-    box('main_gate_doors', 0.36, 0.32, 0.018, timber, 0, foundation + 0.16, D / 2 + 0.04);
-    box('main_gate_xilindi_plaque', 0.42, 0.075, 0.02, lime, 0, foundation + 0.38, D / 2 + 0.09);
-    roof('main_gate_roof', 0, D / 2 + 0.08, 0.62, 0.22, foundation + 0.44, 0.08, 0);
-    g.add(mainGate);
-
     // 围前客家半月塘（月池）：客家围屋风水灵魂与蓄水防火之池
     var pondRadius = 0.96;
     var pondShape = new THREE.Shape();
@@ -190,7 +187,7 @@
       var x=sx*(W/2-0.055),z=sz*(D/2-0.055),w=0.31;
       box('corner_tower_earth',w,towerH*0.58,w,earth,x,foundation+towerH*0.29,z);
       box('corner_tower_brick',w*0.97,towerH*0.42,w*0.97,brick,x,foundation+towerH*0.79,z);
-      roof('watchtower_'+sx+'_'+sz,x,z,w+0.02,w+0.02,foundation+towerH,0.095,0);
+      roof('watchtower_'+sx+'_'+sz,x,z,w*0.97,w*0.97,foundation+towerH,0.095,0,true);
       for(var lv=0;lv<3;lv++)for(var f=0;f<4;f++){
         var a=f*Math.PI/2;towerSlits.push([x+Math.sin(a)*0.158,foundation+0.22+lv*0.22,z+Math.cos(a)*0.158,0,a]);
       }

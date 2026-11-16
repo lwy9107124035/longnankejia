@@ -81,7 +81,7 @@
   }
   function RulesEngine() {
     this.name = 'rules'; this.label = '馆内资料'; this.history = []; this.lastTopics = [];
-    var raw = window.Store ? window.Store.getEntries() : (window.KNOWLEDGE_BASE || []), seen = new Map();
+    var raw = window.Store ? (window.Store.getAnswerEntries ? window.Store.getAnswerEntries() : window.Store.getEntries()) : (window.KNOWLEDGE_BASE || []), seen = new Map();
     raw.forEach(function (entry) {
       if (typeof entry.answer !== 'string') return;
       var old = seen.get(entry.id);
@@ -409,7 +409,7 @@
   window.AnswerEngine={RulesEngine:RulesEngine,ApiEngine:ApiEngine,getEngine:function(){if(!current){var cfg=window.Store?window.Store.getEffectiveAi():((window.APP_CONFIG && window.APP_CONFIG.ai)||{});current=cfg.mode==='api'?new ApiEngine():new RulesEngine();}return current;},ask:async function(q){
     var previous=this.getEngine(),local=previous._fallback||previous;
     if(window.Store&&window.Store.searchKnowledge&&!local.converse(q)){
-      try{await window.Store.searchKnowledge(q);}
+      try{await window.Store.searchKnowledge(local.resolve(q));}
       catch(error){return {text:'云端资料暂时无法读取，请稍后重试。',source:'rules',route:'unavailable',sources:[]};}
       var next=this.getEngine(),nextLocal=next._fallback||next;
       if(next!==previous){nextLocal.history=local.history;nextLocal.lastTopics=local.lastTopics;}

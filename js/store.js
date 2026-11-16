@@ -558,7 +558,7 @@
     remote.revision = cloudRevision; await mergeCloudDraft(remote); await persistState();
   }
   async function searchKnowledge(query) {
-    if (!catalog.model || !(catalog.counts.kbCustom || catalog.counts.kbEdited)) return;
+    if (!catalog.model || !['kbCustom', 'kbEdited', 'kepuCustom', 'kepuEdited'].some(function (field) { return catalog.counts[field]; })) return;
     query = String(query || '').trim().slice(0, 500); if (!query) return;
     var data = await cloudRequest(null, false, undefined, { format: 'search', q: query });
     if (data.revision < cloudRevision) throw new Error('资料已更新，请重试');
@@ -1054,6 +1054,54 @@
     return displayRecords(merged.concat(custom), 'kb');
   }
 
+  function getAnswerEntries() {
+    var heritage = window.Heritage || (window.UI && window.UI.Heritage);
+    var cards = heritage ? heritage.list() : getHeritageCards([]);
+    var replaced = new Set(visibleContent('kepuDeleted', [])), live = [];
+    function plain(html) {
+      return String(html || '').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+        .replace(/<br\s*\/?\s*>|<\/(?:p|div|h[1-6]|li|tr)>/gi, '\n').replace(/<[^>]+>/g, '')
+        .replace(/&(?:nbsp|amp|lt|gt|quot|apos);|&#(?:x[\da-f]+|\d+);/gi, function (entity) {
+          var named = { '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" };
+          if (named[entity.toLowerCase()]) return named[entity.toLowerCase()];
+          var code = parseInt(entity.slice(2, -1).replace(/^x/i, ''), /^&#x/i.test(entity) ? 16 : 10);
+          return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+        }).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim();
+    }
+    cards.forEach(function (card) {
+      // These two articles have curated cultural summaries in the knowledge base.
+      if (/渡江烫伤药|全鹿膏/.test(card.name || '')) return;
+      replaced.add(card.id);
+      var answer = plain(card.detail);
+      if (!answer) return;
+      var name = String(card.name || ''), song = name.match(/《(.+?)》/);
+      var aliases = [name, name.replace(/\s+/g, '')];
+      if (song) aliases.push(song[1].replace(/\s+/g, ''));
+      var rhyme = /童谣/.test(name + ' ' + (card.tag || ''));
+      live.push({ id: 'live-science-' + card.id, title: name, topics: rhyme ? [name, '客家童谣'] : [name], aliases: Array.from(new Set(aliases)),
+        keywords: aliases.concat(rhyme ? ['童谣', '客家童谣', '儿歌'] : []), answer: answer,
+        sources: [{ title: '科普 · ' + name, url: '#/science?item=' + encodeURIComponent(card.id) }] });
+    });
+    function superseded(source) {
+      var match = String(source.url || '').match(/#\/science\?item=([^&]+)/);
+      if (!match) return false;
+      try { return replaced.has(decodeURIComponent(match[1])); }
+      catch (error) { if (error instanceof URIError) return false; throw error; }
+    }
+    var entries = getEntries().flatMap(function (entry) {
+      var sources = entry.sources || [];
+      if (!sources.some(superseded)) return [entry];
+      var sections = String(entry.answer || '').split(/\n\n科普补充｜/);
+      if (sections.length === 1) return [];
+      var kept = sources.filter(function (source) { return !superseded(source); });
+      var answer = sections.filter(function (section, index) {
+        return index === 0 || kept.some(function (source) { return source.title === '科普 · ' + section.split('\n')[0]; });
+      }).join('\n\n科普补充｜');
+      return [Object.assign({}, entry, { answer: answer, sources: kept })];
+    });
+    return live.concat(entries);
+  }
+
   function addEntry(entry, creatorInfo) {
     var custom = read(LS.custom, []);
     if (!entry.id) entry.id = 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
@@ -1460,6 +1508,7 @@
 
     // 知识库
     getEntries: getEntries,
+    getAnswerEntries: getAnswerEntries,
     addEntry: addEntry,
     updateEntry: updateEntry,
     deleteEntry: deleteEntry,

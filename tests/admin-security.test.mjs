@@ -273,13 +273,13 @@ test('F06 reserved IDs match shipped records and explicitly retired builtin IDs'
   const window = {};
   vm.runInNewContext(fs.readFileSync(new URL('../js/knowledge-base.js', import.meta.url), 'utf8'), { window });
   // Keep retired IDs reserved so existing saved bundles remain valid and custom records cannot reuse them.
-  const retiredKnowledgeIds = ['dc-huxingwei'];
+  const retiredKnowledgeIds = ['dc-huxingwei', 'dc-shaowata', 'dc-zougushi'];
   const activeIds = Array.from(window.KNOWLEDGE_BASE, entry => entry.id);
   assert.ok(retiredKnowledgeIds.every(id => !activeIds.includes(id)));
   assert.deepEqual(globalThis.HeritageContent.reserved.kb.slice().sort(), activeIds.concat(retiredKnowledgeIds).sort());
   const ui = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
   const cards = ui.slice(ui.indexOf('var CARDS ='), ui.indexOf('function isCustomCard'));
-  assert.deepEqual(globalThis.HeritageContent.reserved.kepu.slice().sort(), [...cards.matchAll(/\bid:\s*'([^']+)'/g)].map(match => match[1]).sort());
+  assert.deepEqual(globalThis.HeritageContent.reserved.kepu.slice().sort(), [...cards.matchAll(/\bid:\s*'([^']+)'/g)].map(match => match[1]).concat('festival').sort());
 });
 
 test('early storage restoration can refresh dialect data before its DOM initialization', () => {
