@@ -64,169 +64,208 @@
   }
 
   function buildWeiwu(THREE, textures, canvasTex) {
-    var g = new THREE.Group(); g.name = 'GuanxiXinwei';
-    var earth = new THREE.MeshStandardMaterial({map:canvasTex('rammedLoam',3,1), color:0xb1b2aa, roughness:1});
-    var brick = new THREE.MeshStandardMaterial({map:canvasTex('qingBrick',5,2), color:0xa6a89f, roughness:1});
-    var stone = new THREE.MeshStandardMaterial({map:textures.stonePaving, color:0xb1a68f, roughness:1});
-    var paving = new THREE.MeshStandardMaterial({map:canvasTex('cobbleCourt',4,4), color:0xcfc6b0, roughness:1});
-    var tile = new THREE.MeshStandardMaterial({map:canvasTex('qingwaRoof',3,2),color:0x73746c,roughness:0.96,side:THREE.DoubleSide});
-    var tileFine = new THREE.MeshStandardMaterial({color:0x4c4d47,roughness:0.95});
-    var timber = new THREE.MeshStandardMaterial({color:0x6a4830,roughness:0.96});
-    var dark = new THREE.MeshStandardMaterial({color:0x352e26,roughness:1});
-    var lime = new THREE.MeshStandardMaterial({color:0xe0d9c5,roughness:1});
-    var pondWater = new THREE.MeshStandardMaterial({color:0x365e57, roughness:0.18, metalness:0.15});
-    [earth,brick,stone,paving,tile,tileFine,lime,pondWater].forEach(function(m){m.userData.surface='mineral';});
-    timber.userData.surface='wood';
-    var W=5.2, D=5.2, wallH=0.61, towerH=0.88, foundation=0.075;
-    function box(name,w,h,d,mat,x,y,z) {
-      var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
-      m.name=name;m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;g.add(m);return m;
+    var g=new THREE.Group();g.name='GuanxiXinwei';
+    var scale=5.2/92.2,W=92.2*scale,D=83.5*scale,wallH=8*scale,towerH=10*scale;
+    var foundation=.036,towerW=8.4*scale,towerRise=.085,towerEave=towerH-towerRise,thickness=scale;
+    var plaster=new THREE.MeshStandardMaterial({map:canvasTex('guanxiWall'),color:0xdeddd3,roughness:1});
+    var inner=new THREE.MeshStandardMaterial({map:plaster.map,color:0xe4e1d4,roughness:1});
+    var brick=new THREE.MeshStandardMaterial({map:canvasTex('qingBrick'),color:0xc8ccc5,roughness:1});
+    var stone=new THREE.MeshStandardMaterial({map:textures.stonePaving,color:0xd3d0c4,roughness:1});
+    var paving=new THREE.MeshStandardMaterial({map:canvasTex('guanxiPaving'),color:0xc0bfb6,roughness:1});
+    var tile=new THREE.MeshStandardMaterial({map:canvasTex('guanxiTiles'),color:0xb2b7b2,roughness:.95,side:THREE.DoubleSide});
+    var tileFine=new THREE.MeshStandardMaterial({color:0x61645f,roughness:.96,side:THREE.DoubleSide});
+    var timber=new THREE.MeshStandardMaterial({color:0x575247,roughness:.96});
+    var dark=new THREE.MeshStandardMaterial({color:0x302f29,roughness:1});
+    var lime=new THREE.MeshStandardMaterial({color:0xbec2b9,roughness:1});
+    var frieze=new THREE.MeshStandardMaterial({color:0x8d9992,roughness:1});
+    var pondWater=new THREE.MeshStandardMaterial({map:canvasTex('pondWater'),color:0xb1ae73,roughness:.7,metalness:.02});
+    [plaster,inner,brick,stone,paving,tile,tileFine,lime,frieze].forEach(function(m){m.userData.surface='mineral';m.userData.bumpScale=.001;});
+    tile.userData.bumpScale=.0005;tileFine.userData.bumpScale=.0003;
+    timber.userData.surface='wood';timber.userData.bumpScale=.0005;
+    var batches={},unitBox=new THREE.BoxGeometry(1,1,1);
+    function block(name,mat,w,h,d,x,y,z,turn,tilt) {
+      if(!batches[name])batches[name]={material:mat,items:[]};
+      batches[name].items.push([x,y,z,w,h,d,turn||0,tilt||0]);
     }
-    function instances(name,geo,mat,transforms) {
-      var m=new THREE.InstancedMesh(geo,mat,transforms.length), o=new THREE.Object3D();
-      transforms.forEach(function(t,i){
-        o.position.set(t[0],t[1],t[2]);o.rotation.set(t[3]||0,t[4]||0,t[5]||0);
-        o.updateMatrix();m.setMatrixAt(i,o.matrix);
-      });m.name=name;m.castShadow=true;m.receiveShadow=true;g.add(m);return m;
+    function metricUV(geo,unit) {
+      var p=geo.attributes.position,n=geo.attributes.normal,uv=[];
+      for(var i=0;i<p.count;i++){
+        var a=Math.abs(n.getX(i)),b=Math.abs(n.getY(i)),c=Math.abs(n.getZ(i));
+        uv.push((a>c?p.getZ(i):p.getX(i))/unit,(b>a&&b>c?p.getZ(i):p.getY(i))/.5);
+      }
+      geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));return geo;
+    }
+    function box(name,w,h,d,mat,x,y,z,turn) {
+      var m=new THREE.Mesh(metricUV(new THREE.BoxGeometry(w,h,d),mat===paving ? .6 : 1.3),mat);
+      m.name=name;m.position.set(x,y,z);m.rotation.y=turn||0;m.castShadow=m.receiveShadow=true;g.add(m);return m;
+    }
+    // Open half-round tiles run down each roof slope; individual courses remain visible when zoomed in.
+    function barrel(radius,length) {
+      var p=[],uv=[],indices=[],steps=4;
+      for(var j=0;j<2;j++)for(var k=0;k<=steps;k++){
+        var a=k/steps*Math.PI;p.push(-radius*Math.cos(a),radius*Math.sin(a),(j-.5)*length);uv.push(k/steps,j);
+      }
+      for(var i=0;i<steps;i++){var b=i+steps+1;indices.push(i,b,i+1,i+1,b,b+1);}
+      var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+      geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();return geo;
     }
     function roof(name,x,z,w,d,y,rise,turn,hardGable) {
-      var r=new THREE.Group();r.name=name;var ex=w/2+(hardGable?0:0.04),ez=d/2+(hardGable?0:0.035);
-      var points=[-ex,y,-ez, ex,y,-ez,ex,y+rise,0, -ex,y,-ez,ex,y+rise,0,-ex,y+rise,0,
-        -ex,y+rise,0,ex,y+rise,0,ex,y,ez, -ex,y+rise,0,ex,y,ez,-ex,y,ez];
-      var uvs=[0,0,1,0,1,1,0,0,1,1,0,1,0,1,1,1,1,0,0,1,1,0,0,0];
+      var r=new THREE.Group();r.name=name;r.position.set(x,y,z);r.rotation.y=turn||0;
+      var ex=w/2+(hardGable?0:.014),ez=d/2+(hardGable?0:.018),segments=6,points=[],uv=[],indices=[];
+      function height(v){return rise*(1-v)-.006*Math.sin(v*Math.PI);}
+      for(var side=0;side<2;side++){
+        var sign=side?1:-1,offset=points.length/3;
+        for(var j=0;j<=segments;j++){
+          var v=j/segments;
+          points.push(-ex,height(v),sign*ez*v,ex,height(v),sign*ez*v);
+          uv.push(0,v*Math.hypot(ez,rise)/.9,ex*2/.416,v*Math.hypot(ez,rise)/.9);
+          if(j<segments){var a=offset+j*2;indices.push(a,a+1,a+2,a+1,a+3,a+2);}
+        }
+      }
       var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(points,3));
-      geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geo.computeVertexNormals();
-      var face=new THREE.Mesh(geo,tile);face.name='continuous_tile_slopes';face.castShadow=true;r.add(face);
-      var ridge=new THREE.Mesh(new THREE.CylinderGeometry(0.009,0.009,hardGable?w-0.018:w+0.035,8),tileFine);
-      ridge.rotation.z=Math.PI/2;ridge.position.y=y+rise+0.01;ridge.name='grey_ridge_caps';r.add(ridge);
-      var across=Math.max(8,Math.floor(w/0.034)), rows=Math.max(3,Math.floor(ez/0.06));
-      var roofTiles=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.012,0.013,0.078,6,1,true,0,Math.PI),tileFine,across*rows*2);
-      roofTiles.name='overlapping_qingwa_courses';var o=new THREE.Object3D(),n=0,slope=Math.atan2(rise,ez);
-      for(var s=0;s<2;s++)for(var j=0;j<rows;j++)for(var k=0;k<across;k++){
-        var v=(j+0.5)/rows,sign=s?1:-1;
-        o.position.set(-w/2+(k+0.5)*w/across,y+rise*v+0.012,sign*ez*(1-v));
-        o.rotation.set(Math.PI/2+sign*slope,0,0);o.updateMatrix();roofTiles.setMatrixAt(n++,o.matrix);
-      }r.add(roofTiles);
-      [-1,1].forEach(function(s){
-        var beam=new THREE.Mesh(new THREE.BoxGeometry(hardGable?w:w+0.03,0.016,hardGable?0.012:0.025),timber);
-        beam.position.set(0,y-0.007,s*(hardGable?ez-0.006:ez));r.add(beam);
-      });
+      geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();
+      var face=new THREE.Mesh(geo,tile);face.name='continuous_tile_slopes';face.castShadow=face.receiveShadow=true;r.add(face);
+      var across=Math.max(6,Math.floor(ex*2/.026)),rows=Math.max(3,Math.ceil(Math.hypot(ez,rise)/.05));
+      var course=Math.hypot(ez,rise)/rows,tiles=new THREE.InstancedMesh(barrel(.0048,course*.90),tileFine,across*rows*2);
+      tiles.name='overlapping_qingwa_courses';var o=new THREE.Object3D(),color=new THREE.Color(),n=0;
+      for(var s=0;s<2;s++)for(var row=0;row<rows;row++)for(var col=0;col<across;col++){
+        var v=(row+.5)/rows,sgn=s?1:-1;
+        o.position.set(-ex+(col+.5)*ex*2/across,height(v)+.002,sgn*ez*v);
+        o.rotation.set(sgn*Math.atan2(rise+.006*Math.PI*Math.cos(v*Math.PI),ez),0,0);o.updateMatrix();tiles.setMatrixAt(n,o.matrix);
+        var shade=.88+((col*17+row*13+s*3)%19)/90;color.setRGB(shade,shade,shade*.97);tiles.setColorAt(n++,color);
+      }
+      tiles.castShadow=tiles.receiveShadow=true;r.add(tiles);
+      var caps=Math.max(3,Math.floor(w/.032)),ridge=new THREE.InstancedMesh(barrel(.008,w/caps*.98),tileFine,caps);
+      ridge.name='grey_ridge_caps';
+      for(var cap=0;cap<caps;cap++){
+        o.position.set(-w/2+(cap+.5)*w/caps,rise+.002,0);o.rotation.set(0,Math.PI/2,0);o.updateMatrix();ridge.setMatrixAt(cap,o.matrix);
+        ridge.setColorAt(cap,color.setRGB(1,1,1));
+      }
+      ridge.castShadow=true;r.add(ridge);
+      var beams=new THREE.InstancedMesh(unitBox,timber,2);beams.name='eave_fascia';
+      [-1,1].forEach(function(sign,i){o.position.set(0,-.004,sign*(ez-.004));o.rotation.set(0,0,0);o.scale.set(w,.009,.008);o.updateMatrix();beams.setMatrixAt(i,o.matrix);});r.add(beams);
       if(hardGable){
         var end=new THREE.Shape();end.moveTo(-ez,0);end.lineTo(ez,0);end.lineTo(0,rise);end.closePath();
         [-1,1].forEach(function(sign){
-          var wall=new THREE.Mesh(new THREE.ExtrudeGeometry(end,{depth:0.012,bevelEnabled:false}),brick);
-          wall.name='flush_gable_wall';wall.rotation.y=Math.PI/2;
-          wall.position.set(sign*ex-(sign>0?0.012:0),y,0);wall.castShadow=true;r.add(wall);
+          var wall=new THREE.Mesh(metricUV(new THREE.ExtrudeGeometry(end,{depth:.012,bevelEnabled:false}),.8),plaster);
+          wall.name='flush_gable_wall';wall.rotation.y=Math.PI/2;wall.position.x=sign*ex-(sign>0?.012:0);wall.castShadow=true;r.add(wall);
         });
       }
-      r.position.set(x,0,z);r.rotation.y=turn||0;g.add(r);
+      g.add(r);return r;
     }
     function wall(name,x,z,length,axis,gate) {
-      var thickness=0.105;
-      function piece(center,len){
-        var ww=axis==='x'?len:thickness,dd=axis==='x'?thickness:len;
-        box(name+'_weathered_earth',ww,wallH*0.68,dd,earth,axis==='x'?center:x,foundation+wallH*0.34,axis==='x'?z:center);
-        box(name+'_upper_brick',ww,wallH*0.32,dd*0.98,brick,axis==='x'?center:x,foundation+wallH*0.84,axis==='x'?z:center);
-      }
+      var gateC=D*.21,gap=.15,spring=.145,gateTop=spring+gap/2;
       if(gate){
-        var gateC=0.82,gap=0.28,min=-length/2,max=length/2;
-        piece((min+gateC-gap/2)/2,gateC-gap/2-min);
-        piece((gateC+gap/2+max)/2,max-gateC-gap/2);
-        var portal=new THREE.Group();portal.name=name+'_side_gate';
-        var arch=new THREE.Shape();arch.moveTo(-gap/2,0);arch.lineTo(-gap/2,0.28);
-        arch.absarc(0,0.28,gap/2,Math.PI,0,true);arch.lineTo(gap/2,0);arch.closePath();
-        var door=new THREE.Mesh(new THREE.ShapeGeometry(arch,16),dark);door.name='arched_gate_opening';portal.add(door);
-        var curve=new THREE.EllipseCurve(0,0.28,gap/2+0.018,gap/2+0.018,0,Math.PI,false,0);
-        var pts=curve.getPoints(24).map(function(p){return new THREE.Vector3(p.x,p.y,0);});
-        var arc=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),24,0.014,6,false),lime);portal.add(arc);
-        [-1,1].forEach(function(s){var jamb=new THREE.Mesh(new THREE.BoxGeometry(0.029,0.28,0.035),lime);jamb.position.set(s*(gap/2+0.014),0.14,0);portal.add(jamb);});
-        var plaque=new THREE.Mesh(new THREE.BoxGeometry(0.39,0.067,0.017),lime);plaque.position.set(0,0.48,0);portal.add(plaque);
-        portal.position.set(x+(x>0?0.06:-0.06),foundation,gateC);portal.rotation.y=x>0?Math.PI/2:-Math.PI/2;g.add(portal);
-        box(name+'_gate_wall_over',thickness,0.15,gap,brick,x,foundation+wallH-0.075,gateC);
-      }else piece(axis==='x'?x:z,length);
-      roof(name+'_wall_coping',x,z,length,0.12,foundation+wallH,0.028,axis==='x'?0:Math.PI/2);
+        var outline=new THREE.Shape();outline.moveTo(-length/2,0);outline.lineTo(length/2,0);outline.lineTo(length/2,wallH);outline.lineTo(-length/2,wallH);outline.closePath();
+        var hole=new THREE.Path(),c=-gateC;hole.moveTo(c-gap/2,0);hole.lineTo(c-gap/2,spring);hole.absarc(c,spring,gap/2,Math.PI,0,true);hole.lineTo(c+gap/2,0);hole.closePath();outline.holes.push(hole);
+        var geo=new THREE.ExtrudeGeometry(outline,{depth:thickness,bevelEnabled:false,curveSegments:12});geo.translate(0,0,-thickness/2);
+        var body=new THREE.Mesh(metricUV(geo,1.3),plaster);body.name=name+'_weathered_earth';body.rotation.y=Math.PI/2;body.position.set(x,foundation,z);body.castShadow=body.receiveShadow=true;g.add(body);
+        var portal=new THREE.Group();portal.name=name+'_side_gate';portal.position.set(x+(x>0?1:-1)*(thickness/2+.002),foundation,gateC);portal.rotation.y=x>0?Math.PI/2:-Math.PI/2;
+        var curve=new THREE.EllipseCurve(0,spring,gap/2+.007,gap/2+.007,0,Math.PI,false,0);
+        var pts=curve.getPoints(20).map(function(p){return new THREE.Vector3(p.x,p.y,0);});
+        var arch=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),20,.008,5,false),lime);arch.name='stone_gate_arch';portal.add(arch);
+        [-1,1].forEach(function(sign){var jamb=new THREE.Mesh(new THREE.BoxGeometry(.015,spring,.012),lime);jamb.position.set(sign*(gap/2+.008),spring/2,0);portal.add(jamb);});
+        var plaque=new THREE.Mesh(new THREE.BoxGeometry(.22,.032,.009),lime);plaque.position.set(0,gateTop+.04,0);portal.add(plaque);g.add(portal);
+      }else box(name+'_weathered_earth',length,wallH,thickness,plaster,x,foundation+wallH/2,z);
+      block('wall_eave_frieze',frieze,axis==='x'?length:thickness+.002,.026,axis==='x'?thickness+.002:length,x,foundation+wallH-.027,z);
+      block('stone_wall_footings',stone,axis==='x'?length:thickness+.006,.028,axis==='x'?thickness+.006:length,x,foundation+.014,z);
     }
-    // 围屋整体扩展基台（禾坪晒谷场与后庭，保持严格 5.98 × 5.98 正方形对称包围盒）
-    var totalBase = 5.98;
-    box('granary_stone_platform', totalBase, foundation * 0.7, totalBase, stone, 0, foundation * 0.35, 0);
-    box('stone_plinth',W+0.13,foundation,D+0.13,stone,0,foundation/2,0);
-    box('courtyard_ground',W-0.16,0.018,D-0.16,paving,0,foundation+0.01,0);
+    box('ground_apron',W+.78,.018,D+1.02,paving,0,.009,.30);
+    box('stone_plinth',W+.20,foundation,D+.20,stone,0,foundation/2,0);
+    box('courtyard_ground',W-.10,.008,D-.10,paving,0,foundation+.004,0);
     wall('north_wall',0,-D/2,W,'x',false);wall('south_wall',0,D/2,W,'x',false);
     wall('east_wall',W/2,0,D,'z',true);wall('west_wall',-W/2,0,D,'z',true);
 
-    // 围前客家半月塘（月池）：客家围屋风水灵魂与蓄水防火之池
-    var pondRadius = 0.96;
-    var pondShape = new THREE.Shape();
-    pondShape.absarc(0, 0, pondRadius, 0, Math.PI, false);
-    pondShape.closePath();
-    var pondGeo = new THREE.ShapeGeometry(pondShape, 24);
-    var pondMesh = new THREE.Mesh(pondGeo, pondWater);
-    pondMesh.name = 'crescent_moon_pond_surface';
-    pondMesh.rotation.x = -Math.PI / 2;
-    pondMesh.position.set(0, foundation * 0.72 + 0.005, D / 2 + 0.38);
-    pondMesh.receiveShadow = true;
-    g.add(pondMesh);
-    var pondCurve = new THREE.EllipseCurve(0, 0, pondRadius + 0.03, pondRadius + 0.03, 0, Math.PI, false, 0);
-    var pondPts = pondCurve.getPoints(24).map(function (p) {
-      return new THREE.Vector3(p.x, foundation * 0.76, D / 2 + 0.38 - p.y);
-    });
-    var pondCoping = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pondPts), 24, 0.018, 6, false), stone);
-    pondCoping.name = 'moon_pond_stone_coping';
-    pondCoping.castShadow = true;
-    g.add(pondCoping);
-    // 北侧后庭对景地台（保持前后左右对称）
-    box('rear_dragon_terrace', 2.4, 0.03, 0.50, paving, 0, foundation * 0.72 + 0.015, -D / 2 - 0.14);
-    var slits=[],towerSlits=[];
-    for(var side=0;side<4;side++)for(var j=0;j<20;j++){
-      var q=(j-9.5)*0.22;
-      slits.push(side<2?[q,foundation+0.43,side===0?D/2+0.054:-D/2-0.054,0,side===0?0:Math.PI]
-        :[side===2?W/2+0.054:-W/2-0.054,foundation+0.43,q,0,Math.PI/2]);
+    function facadeBlock(name,mat,w,h,d,localX,y,localZ,cx,cz,turn,tilt) {
+      block(name,mat,w,h,d,cx+localX*Math.cos(turn)+localZ*Math.sin(turn),y,cz-localX*Math.sin(turn)+localZ*Math.cos(turn),turn,tilt);
     }
-    instances('defensive_slit_windows',new THREE.BoxGeometry(0.026,0.009,0.003),dark,slits);
+    function house(name,x,z,w,d,eave,rise,bays,turn,gallery) {
+      turn=turn||0;box(name+'_body',w,eave,d,inner,x,foundation+eave/2,z,turn);
+      roof(name+'_roof',x,z,w+.035,d+.075,foundation+eave,rise,turn,false);
+      block('hall_stone_platforms',stone,w+.045,.016,d+.10,x,foundation+.008,z,turn);
+      var f=function(kind,mat,ww,hh,dd,xx,yy,zz){facadeBlock(kind,mat,ww,hh,dd,xx,yy,zz,x,z,turn);};
+      var step=w/bays;
+      for(var bay=0;bay<bays;bay++){
+        var xx=(bay-(bays-1)/2)*step,door=gallery||bay%3===1,pw=Math.min(step*.64,.14),ph=gallery?.125:door?.20:.105;
+        var yy=foundation+(gallery?.27:door?.12:.22);
+        f('recessed_timber_panels',dark,pw,ph,.005,xx,yy,d/2+.003);
+        [-1,1].forEach(function(sign){f('timber_door_frames',timber,.007,ph+.015,.010,xx+sign*(pw/2+.003),yy,d/2+.009);});
+        f('timber_door_frames',timber,pw+.02,.009,.010,xx,yy+ph/2+.006,d/2+.009);
+        for(var bar=-1;bar<=1;bar++)f('timber_lattice_bars',lime,.0035,ph-.01,.006,xx+bar*pw/4,yy,d/2+.010);
+        f('timber_lattice_bars',lime,pw,.0035,.006,xx,yy,d/2+.010);
+      }
+      for(var i=0;i<=bays;i++)f('veranda_columns',timber,.012,eave-.015,.012,-w/2+i*step,foundation+(eave-.015)/2,d/2+.035);
+      f('veranda_lintels',timber,w+.018,.019,.020,0,foundation+eave-.018,d/2+.035);
+      f('veranda_stone_steps',stone,w+.04,.012,.052,0,foundation+.012,d/2+.034);
+      if(gallery)f('gallery_floor_beams',timber,w,.016,.027,0,foundation+.19,d/2+.012);
+    }
+    // The photograph shows broad, low corner towers rather than narrow stacks above the enclosure.
     [-1,1].forEach(function(sx){[-1,1].forEach(function(sz){
-      var x=sx*(W/2-0.055),z=sz*(D/2-0.055),w=0.31;
-      box('corner_tower_earth',w,towerH*0.58,w,earth,x,foundation+towerH*0.29,z);
-      box('corner_tower_brick',w*0.97,towerH*0.42,w*0.97,brick,x,foundation+towerH*0.79,z);
-      roof('watchtower_'+sx+'_'+sz,x,z,w*0.97,w*0.97,foundation+towerH,0.095,0,true);
-      for(var lv=0;lv<3;lv++)for(var f=0;f<4;f++){
-        var a=f*Math.PI/2;towerSlits.push([x+Math.sin(a)*0.158,foundation+0.22+lv*0.22,z+Math.cos(a)*0.158,0,a]);
+      var x=sx*(W/2-towerW/2+.09),z=sz*(D/2-towerW/2+.09),id=sx+'_'+sz;
+      box('corner_tower_'+id+'_body',towerW,towerEave,towerW,plaster,x,foundation+towerEave/2,z);
+      box('corner_tower_'+id+'_stone_base',towerW+.006,.042,towerW+.006,stone,x,foundation+.021,z);
+      roof('watchtower_'+id,x,z,towerW,towerW,foundation+towerEave,towerRise,0,true);
+      for(var side=0;side<4;side++){
+        var turn=side*Math.PI/2;
+        [.145,.29,.405].forEach(function(y,level){[-1,1].forEach(function(sign){
+          facadeBlock('watchtower_loopholes',dark,.014,level===2?.026:.032,.004,sign*.09,foundation+y,towerW/2+.002,x,z,turn);
+          facadeBlock('loophole_stone_lintels',lime,.024,.005,.007,sign*.09,foundation+y+.019,towerW/2+.004,x,z,turn);
+        });});
+        [.15,.31,towerEave-.025].forEach(function(y){facadeBlock('tower_string_courses',frieze,towerW+.004,.006,.007,0,foundation+y,towerW/2,x,z,turn);});
+        [-1,1].forEach(function(sign){facadeBlock('tower_corner_quoins',lime,.013,towerEave-.045,.007,sign*(towerW/2-.012),foundation+towerEave/2,towerW/2+.001,x,z,turn);});
       }
     });});
-    instances('watchtower_loopholes',new THREE.BoxGeometry(0.028,0.035,0.003),dark,towerSlits);
-    // Perimeter rooms and their inward-facing roofs form the outer ring visible in the aerial photograph.
-    [-1,1].forEach(function(s){
-      box('perimeter_rooms_NS',4.45,0.42,0.36,earth,0,foundation+0.21,s*2.34);
-      roof('perimeter_roof_NS_'+s,0,s*2.34,4.48,0.43,foundation+0.43,0.13,0);
-      box('perimeter_rooms_EW',0.36,0.42,3.98,earth,s*2.34,foundation+0.21,0);
-      roof('perimeter_roof_EW_'+s,s*2.34,0,4.02,0.43,foundation+0.43,0.13,Math.PI/2);
+    var ring=.255,ringEave=.355;
+    house('perimeter_north',0,-D/2+ring,W-towerW*2+.12,.43,ringEave,.095,24,0,true);
+    house('perimeter_south',0,D/2-ring,W-towerW*2+.12,.43,ringEave,.095,24,Math.PI,true);
+    house('perimeter_west',-W/2+ring,0,D-towerW*2+.12,.43,ringEave,.095,21,Math.PI/2,true);
+    house('perimeter_east',W/2-ring,0,D-towerW*2+.12,.43,ringEave,.095,21,-Math.PI/2,true);
+    [-1.28,-.29,.70].forEach(function(z,row){
+      house(row===1?'central_ancestral_hall':'cross_hall_'+row,0,z,2.80,.59,.31,row===1?.135:.12,9,0,false);
+      [-1,1].forEach(function(sign){house('wing_'+sign+'_'+row,sign*1.77,z,.66,.60,.275,.10,3,0,false);});
     });
-    var columns=[],doors=[];
-    // Five parallel building ranges, three cross halls: a diagram of the documented symmetric organization.
-    [-1.44,-0.72,0,0.72,1.44].forEach(function(x,ci){
-      [-1.15,0,1.15].forEach(function(z,ri){
-        var w=ci===2?0.78:0.62,d=0.83,eave=ci===2?0.51:0.44;
-        var name=ci===2&&ri===1?'central_ancestral_hall':'hall_'+ci+'_'+ri;
-        box(name+'_body',w,eave,d,earth,x,foundation+eave/2,z);
-        roof(name+'_roof',x,z,w+0.045,d+0.045,foundation+eave,ci===2?0.145:0.12,0);
-        [-1,1].forEach(function(s){doors.push([x+s*w*0.22,foundation+0.19,z+d/2+0.005]);});
-        for(var k=0;k<3;k++)columns.push([x+(k-1)*w*0.37,foundation+eave/2,z+d/2+0.052]);
-      });
+    [-1,1].forEach(function(sign){
+      house('front_wing_'+sign,sign*1.77,1.47,.66,.57,.25,.105,3,0,false);
+      house('forecourt_pavilion_'+sign,sign*.88,1.43,.62,.46,.235,.10,4,Math.PI/2,false);
     });
-    instances('timber_doors_and_windows',new THREE.BoxGeometry(0.10,0.25,0.008),timber,doors);
-    instances('veranda_columns',new THREE.CylinderGeometry(0.008,0.010,0.39,6),timber,columns);
-    var courtFrames=[];
-    [-1.44,-0.72,0,0.72,1.44].forEach(function(x){[-0.57,0.57].forEach(function(z){
-      box('open_sky_court',0.51,0.014,0.19,stone,x,foundation+0.027,z);
-      courtFrames.push([x,foundation+0.038,z-0.10],[x,foundation+0.038,z+0.10]);
+    var courts=0;
+    [-1.77,-.87,0,.87,1.77].forEach(function(x){[-.785,.205].forEach(function(z){
+      box('open_sky_court_'+courts++,.69,.006,.235,paving,x,foundation+.010,z);
+      [-1,1].forEach(function(sign){block('court_drains',dark,.70,.004,.010,x,foundation+.015,z+sign*.12);});
     });});
-    instances('court_drains',new THREE.BoxGeometry(0.54,0.008,0.012),dark,courtFrames);
-    var partitions=[];
-    [-1.8,-1.08,-0.36,0.36,1.08,1.8].forEach(function(x){
-      [-0.58,0.58].forEach(function(z){partitions.push([x,foundation+0.15,z]);});
+    [-1,1].forEach(function(sign){
+      block('forecourt_screen_walls',inner,.92,.14,.033,sign*.93,foundation+.07,1.16);
+      block('forecourt_wall_coping',frieze,.95,.012,.043,sign*.93,foundation+.147,1.16);
+      block('forecourt_cross_walls',inner,.032,.16,.37,sign*1.39,foundation+.08,1.37);
     });
-    instances('internal_court_partition_walls',new THREE.BoxGeometry(0.035,0.3,0.55),earth,partitions);
-    g.userData.referenceMode='documented-form';
-    g.userData.wallHeightRatio=wallH/W;g.userData.towerHeightRatio=towerH/W;
+    [-1.3,-.44,.44,1.3].forEach(function(x){[-.785,.205].forEach(function(z){block('skywell_partition_walls',inner,.025,.18,.25,x,foundation+.09,z);});});
+    for(var step=0;step<3;step++)block('ancestral_hall_steps',stone,.55,.009,.037,0,foundation+.005+step*.009,1.095-step*.031);
+
+    // Small pierced lattice vents sit in the grey-green band below the outer eaves.
+    function vent(x,z,turn) {
+      facadeBlock('outer_lattice_recesses',dark,.108,.037,.003,0,foundation+wallH-.03,0,x,z,turn);
+      [-1,1].forEach(function(sign){
+        facadeBlock('outer_lattice_frames',lime,.114,.004,.005,0,foundation+wallH-.03+sign*.021,0,x,z,turn);
+        facadeBlock('outer_lattice_frames',lime,.004,.039,.005,sign*.055,foundation+wallH-.03,0,x,z,turn);
+      });
+      for(var j=-1;j<=1;j++)[-1,1].forEach(function(sign){facadeBlock('outer_diamond_lattice',lime,.003,.033,.005,j*.028,foundation+wallH-.03,.002,x,z,turn,sign*Math.PI/4);});
+    }
+    [-1,1].forEach(function(sign){
+      for(var j=0;j<6;j++)vent((j-2.5)*.66,sign*(D/2+thickness/2+.003),sign>0?0:Math.PI);
+      for(var k=0;k<5;k++)vent(sign*(W/2+thickness/2+.003),(k-2)*.65,sign>0?Math.PI/2:-Math.PI/2);
+    });
+    var pond=[[-W/2-.15,D/2+.16],[-W/2+.08,D/2+.72],[W/2-.08,D/2+.72],[W/2+.22,D/2+.42],[W/2+.12,D/2+.16]];
+    var outline=new THREE.Shape();pond.forEach(function(p,i){if(i)outline.lineTo(p[0],-p[1]);else outline.moveTo(p[0],-p[1]);});outline.closePath();
+    var water=new THREE.Mesh(new THREE.ShapeGeometry(outline),pondWater);water.name='front_pond_surface';water.rotation.x=-Math.PI/2;water.position.y=.019;water.receiveShadow=true;g.add(water);
+    pond.forEach(function(p,i){var q=pond[(i+1)%pond.length],dx=q[0]-p[0],dz=q[1]-p[1];block('pond_stone_edging',stone,Math.hypot(dx,dz),.015,.018,(p[0]+q[0])/2,.026,(p[1]+q[1])/2,-Math.atan2(dz,dx));});
+    Object.keys(batches).forEach(function(name){
+      var batch=batches[name],m=new THREE.InstancedMesh(unitBox.clone(),batch.material,batch.items.length),o=new THREE.Object3D();m.name=name;
+      batch.items.forEach(function(t,i){o.position.set(t[0],t[1],t[2]);o.rotation.set(0,t[6],t[7],'YXZ');o.scale.set(t[3],t[4],t[5]);o.updateMatrix();m.setMatrixAt(i,o.matrix);});
+      m.castShadow=m.receiveShadow=true;g.add(m);
+    });
+    g.userData.referenceMode='photo-informed-form';g.userData.wallHeightRatio=wallH/W;g.userData.towerHeightRatio=towerH/W;
+    g.userData.dimensions={width:92.2,depth:83.5,wallHeight:8,towerHeight:10};
+    g.userData.estimatedDetails=['tower footprint','individual bays','courtyard partitions','pond outline'];
     g.userData.sourceUrl='https://www.ganzhou.gov.cn/zfxxgk/c144214/202211/8dcc8823a68742bf8fb3c4f5afff641a.shtml';
     return g;
   }

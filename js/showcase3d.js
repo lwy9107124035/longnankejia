@@ -27,7 +27,7 @@
     {id:'bowei',name:'脖围',subtitle:'四瓣绣花围领',icon:'🌸',angle:0.55,desc:'依据四分花绣脖围照片重做外缘、中心圆孔、黑色分隔与白底花绣，中心孔贯通。'},
     {id:'zhiyi',name:'客家纸艺',subtitle:'橙花盆景',icon:'🌼',angle:0.23,desc:'依据纸艺盆景多角度照片构建弯曲树干、分枝、橙色花簇与多边盆，花朵分布按照片概括。'},
     {id:'hutoumao',name:'花帽',subtitle:'红金绣檐与金色饰件',icon:'🌺',angle:0.08,desc:'以223号实物照片为主，还原红金绣檐、七尊人物饰件、花形饰片与侧垂链；另参考224号照片的红布与外扩下摆。绣檐贴合帽体，后披以软布褶皱垂落；背面与内衬按结构补全。'},
-    {id:'weiwu',name:'关西新围',subtitle:'客家围屋',icon:'🏯',angle:0.65,desc:'参照实景与形制介绍，保留东西侧门和连续外墙，外墙中部不开大门；四角炮楼采用山墙封至屋面、墙端不挑出的硬山顶。围内厅堂与天井按对称布局示意。'}
+    {id:'weiwu',name:'关西新围',subtitle:'客家围屋',icon:'🏯',angle:0.74,desc:'结合航拍与92.2米×83.5米的尺度，表现低厚围墙、宽体炮楼、硬山屋顶、连排厅堂及前庭天井，补充瓦垄、窗格、廊柱和侧门。墙高约8米、炮楼约10米；开间细部与池岸按照片估计。'}
   ];
 
   function loadThree() {
@@ -158,7 +158,7 @@
     var kind=material.userData.surface,profile=surfaceProfiles[kind],maps=surfaceMaps[kind];
     if(!profile)return;
     if(!material.map)material.map=maps.color;
-    material.bumpMap=maps.height;material.bumpScale=profile[1];material.roughnessMap=maps.roughness;
+    material.bumpMap=maps.height;material.bumpScale=material.userData.bumpScale==null?profile[1]:material.userData.bumpScale;material.roughnessMap=maps.roughness;
     material.roughness=profile[2];material.envMapIntensity=profile[3];
     if(kind==='fabric'&&material.map.image instanceof HTMLImageElement){
       if(!photoReliefs.has(material.map)){
@@ -211,6 +211,16 @@
     var radial=Math.hypot(hi.x-lo.x,hi.z-lo.z)/2,halfHeight=(hi.y-lo.y)/2;
     var vertical=camera.fov*Math.PI/360, horizontal=Math.atan(Math.tan(vertical)*camera.aspect);
     var angle=Math.abs(ITEMS.find(function(item){return item.id===activeId;}).angle);
+    if(activeId==='weiwu'){
+      // Couple depth and screen extent at the same point, so a low enclosure fills the viewer while rotating.
+      var distance=0;
+      for(var i=0;i<64;i++)for(var side=-1;side<=1;side+=2){
+        var a=i*Math.PI/32,x=radial*Math.cos(a),z=radial*Math.sin(a),y=side*halfHeight;
+        var depth=y*Math.sin(angle)+z*Math.cos(angle),up=y*Math.cos(angle)-z*Math.sin(angle);
+        distance=Math.max(distance,depth+Math.abs(x)/Math.tan(horizontal),depth+Math.abs(up)/Math.tan(vertical));
+      }
+      defaultZoom=distance*1.08;targetZoom=defaultZoom;return;
+    }
     var elevation=halfHeight*Math.cos(angle)+radial*Math.sin(angle),depth=halfHeight*Math.sin(angle)+radial*Math.cos(angle);
     defaultZoom=(Math.max(radial/Math.tan(horizontal),elevation/Math.tan(vertical))+depth)*1.10;
     targetZoom=defaultZoom;

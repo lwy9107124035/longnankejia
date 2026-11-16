@@ -63,9 +63,15 @@ test('circular tray diagonal bamboo strips retain substantial projected width',(
   }
   assert.ok(projectedArea>3,`XZ projected triangle area is only ${projectedArea.toFixed(3)}`);
 });
-test('Guanxi enclosure and wall proportions match the documented low square form',()=>{
-  const g=build('weiwu');const b=new T.Box3().setFromObject(g);const s=b.getSize(new T.Vector3());
-  assert.ok(Math.abs(s.x/s.z-1)<0.05);assert.ok(g.userData.wallHeightRatio>0.08&&g.userData.wallHeightRatio<0.15);
+test('Guanxi enclosure and heights follow the supplied 92.2 × 83.5 m dimensions',()=>{
+  const g=build('weiwu');g.updateMatrixWorld(true);
+  const width=g.getObjectByName('south_wall_weathered_earth').geometry.parameters.width;
+  const north=new T.Box3().setFromObject(g.getObjectByName('north_wall_weathered_earth'));
+  const south=new T.Box3().setFromObject(g.getObjectByName('south_wall_weathered_earth'));
+  const depth=south.getCenter(new T.Vector3()).z-north.getCenter(new T.Vector3()).z;
+  assert.ok(Math.abs(width/depth-92.2/83.5)<.0001);
+  assert.ok(Math.abs(g.userData.wallHeightRatio-8/92.2)<.0001);
+  assert.ok(Math.abs(g.userData.towerHeightRatio-10/92.2)<.0001);
   assert.ok(g.getObjectByName('east_wall_side_gate')&&g.getObjectByName('west_wall_side_gate'));
   assert.ok(g.getObjectByName('central_ancestral_hall_body'));
 });
@@ -78,10 +84,44 @@ test('Guanxi keeps continuous front wall, side entrances and flush hard-gable wa
   for(const sx of [-1,1])for(const sz of [-1,1]){
     const roof=g.getObjectByName('watchtower_'+sx+'_'+sz);
     assert.equal(roof.children.filter(child=>child.name==='flush_gable_wall').length,2);
-    const b=new T.Box3().setFromObject(roof),size=b.getSize(new T.Vector3());
-    assert.ok(size.x<=0.31+1e-5,'roof and ridge stay within the tower wall ends');
-    assert.ok(size.z<=0.31+1e-5,'roof eaves stay within the tower footprint');
+    const body=g.getObjectByName('corner_tower_'+sx+'_'+sz+'_body'),b=new T.Box3().setFromObject(body);
+    assert.ok(body.geometry.parameters.width/body.geometry.parameters.height>.9,'tower is a broad defensive block');
+    const v=new T.Vector3(),m=new T.Matrix4();
+    roof.traverse(o=>{if(!o.isMesh)return;for(let k=0;k<(o.isInstancedMesh?o.count:1);k++){
+      if(o.isInstancedMesh){o.getMatrixAt(k,m);m.premultiply(o.matrixWorld);}else m.copy(o.matrixWorld);
+      const p=o.geometry.attributes.position;
+      for(let i=0;i<p.count;i++){
+        v.fromBufferAttribute(p,i).applyMatrix4(m);
+        assert.ok(v.x>=b.min.x-1e-5&&v.x<=b.max.x+1e-5,'roof components stay within gable wall ends');
+        assert.ok(v.z>=b.min.z-1e-5&&v.z<=b.max.z+1e-5,'eaves stay within the tower footprint');
+      }
+    }});
   }
+});
+
+test('Guanxi has three continuous halls, ten skywells and recessed side-gate openings',()=>{
+  const g=build('weiwu');
+  for(const name of ['cross_hall_0','central_ancestral_hall','cross_hall_2']){
+    assert.ok(g.getObjectByName(name+'_body').geometry.parameters.width>2.7);
+    assert.ok(g.getObjectByName(name+'_roof').getObjectByName('overlapping_qingwa_courses').count>1000);
+  }
+  assert.equal(g.children.filter(o=>o.name.startsWith('open_sky_court_')).length,10);
+  for(const side of ['east','west']){
+    const wall=g.getObjectByName(side+'_wall_weathered_earth');
+    assert.equal(wall.geometry.parameters.shapes.holes.length,1,'side entrance is cut through the wall');
+  }
+  assert.ok(g.getObjectByName('outer_diamond_lattice').count>100);
+  assert.ok(g.getObjectByName('timber_lattice_bars').count>300);
+});
+
+test('Guanxi shared instanced materials keep compatible color attributes',()=>{
+  const materials=new Map();
+  build('weiwu').traverse(o=>{
+    if(!o.isInstancedMesh)return;
+    const colored=!!o.instanceColor;
+    if(materials.has(o.material))assert.equal(colored,materials.get(o.material),'mixed instanceColor would reuse an incompatible WebGL program');
+    materials.set(o.material,colored);
+  });
 });
 test('bowei keeps an open center instead of covering the hole with a photograph plane',()=>{
   const g=build('bowei');g.updateMatrixWorld(true);

@@ -273,6 +273,65 @@
     return t.canvas;
   }
 
+  function seededNoise(seed) {
+    return function () { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  }
+
+  function guanxiWall() {
+    var t=createCanvas(1024,512),ctx=t.ctx,rnd=seededNoise(1650);
+    ctx.fillStyle='#b7b4aa';ctx.fillRect(0,0,1024,512);
+    for(var i=0;i<170;i++){
+      var x=rnd()*1024,y=rnd()*512,r=15+rnd()*85;
+      var grad=ctx.createRadialGradient(x,y,0,x,y,r);
+      grad.addColorStop(0,i%3?'rgba(77,76,66,.12)':'rgba(236,231,215,.23)');
+      grad.addColorStop(1,'rgba(150,148,135,0)');ctx.fillStyle=grad;ctx.fillRect(x-r,y-r,r*2,r*2);
+    }
+    for(var row=0;row<24;row++)for(var col=-1;col<22;col++){
+      var bx=col*50+(row%2)*25,by=row*22;
+      ctx.strokeStyle='rgba(70,72,66,'+(0.025+rnd()*.075)+')';ctx.lineWidth=.8;
+      ctx.strokeRect(bx,by,50,22);
+    }
+    for(var n=0;n<10000;n++){
+      ctx.fillStyle=n%2?'rgba(46,49,43,.09)':'rgba(239,236,224,.21)';
+      ctx.fillRect(rnd()*1024,rnd()*512,1+rnd()*2,1+rnd()*2);
+    }
+    for(var k=0;k<30;k++){
+      var xx=rnd()*1024,yy=320+rnd()*170;
+      ctx.strokeStyle='rgba(72,74,62,.09)';ctx.lineWidth=1+rnd()*7;
+      ctx.beginPath();ctx.moveTo(xx,yy);ctx.lineTo(xx+4-rnd()*8,512);ctx.stroke();
+    }
+    return t.canvas;
+  }
+
+  function guanxiTiles() {
+    var t=createCanvas(512,512),ctx=t.ctx,rnd=seededNoise(1798),cw=32,ch=26;
+    ctx.fillStyle='#777a76';ctx.fillRect(0,0,512,512);
+    for(var col=0;col<16;col++)for(var row=0;row<20;row++){
+      var x=col*cw,y=row*ch,shade=111+Math.floor(rnd()*32);
+      var grad=ctx.createLinearGradient(x,y,x+cw,y);
+      grad.addColorStop(0,'rgb('+(shade-15)+','+(shade-12)+','+(shade-17)+')');
+      grad.addColorStop(.38,'rgb('+(shade+13)+','+(shade+14)+','+(shade+8)+')');
+      grad.addColorStop(1,'rgb('+(shade-10)+','+(shade-8)+','+(shade-13)+')');
+      ctx.fillStyle=grad;ctx.fillRect(x,y,cw,ch);
+      ctx.fillStyle='rgba(38,43,40,.48)';ctx.fillRect(x,y,1, ch);ctx.fillRect(x,y+ch-2,cw,1.3);
+      ctx.fillStyle='rgba(208,204,186,.16)';ctx.fillRect(x+3,y+ch-4,cw-6,1);
+      if(rnd()<.14){ctx.fillStyle='rgba(102,111,79,.17)';ctx.fillRect(x+4,y+3,9+rnd()*13,ch-8);}
+    }
+    return t.canvas;
+  }
+
+  function guanxiPaving() {
+    var t=createCanvas(512,512),ctx=t.ctx,rnd=seededNoise(1827);
+    ctx.fillStyle='#77786c';ctx.fillRect(0,0,512,512);
+    for(var row=0;row<20;row++)for(var col=-1;col<13;col++){
+      var shade=139+Math.floor(rnd()*27),x=col*44+(row%2)*22,y=row*26;
+      ctx.fillStyle='rgb('+shade+','+(shade-2)+','+(shade-12)+')';ctx.fillRect(x+1,y+1,42,24);
+      ctx.fillStyle='rgba(235,228,204,.15)';ctx.fillRect(x+2,y+2,40,1);
+      ctx.fillStyle='rgba(49,58,43,.10)';ctx.fillRect(x+2,y+23,40,1);
+    }
+    return t.canvas;
+  }
+
   /* ---------- 青砖：细砂灰砖与浅灰勾缝 ---------- */
   function qingBrick() {
     var t=createCanvas(512,512),ctx=t.ctx;
@@ -648,6 +707,9 @@
   }
 
   window.Textures = {
+    guanxiWall: guanxiWall,
+    guanxiTiles: guanxiTiles,
+    guanxiPaving: guanxiPaving,
     surfaceDetail: surfaceDetail,
     studioEnvironment: studioEnvironment,
     redFabric: redFabric,

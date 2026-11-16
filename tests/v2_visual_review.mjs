@@ -135,9 +135,10 @@ try {
     // 上一次就是这个原因，七张截图全空白而断言全绿（那一帧只画了地面圆盘的 32 个三角面）。
     check(id+' 确实提交给渲染器绘制',measurement.stats?.calls>=Math.max(2,Math.floor(measurement.meshes*0.5)),{calls:measurement.stats?.calls,meshes:measurement.meshes});
     if(id==='weiwu'){
-      // 检查方形围合和低墙比例。
-      const fp=measurement.footprint||{}, ratio=fp.x/fp.z;
-      check('关西新围方形围合与长墙比例',ratio>0.95&&ratio<1.05&&measurement.metadata.wallHeightRatio<0.15,fp);
+      const dimensions=measurement.metadata.dimensions||{};
+      check('关西新围长方形围合与实际高度比例',dimensions.width===92.2&&dimensions.depth===83.5
+        &&Math.abs(measurement.metadata.wallHeightRatio-8/92.2)<.0001
+        &&Math.abs(measurement.metadata.towerHeightRatio-10/92.2)<.0001,dimensions);
     }
     if(process.argv.includes('--all-angles')){
       for(const [view,angle] of [['front',0],['side',Math.PI/2],['back',Math.PI],['other-side',Math.PI*1.5]]){
