@@ -80,7 +80,6 @@
     var dark=new THREE.MeshStandardMaterial({color:0x302f29,roughness:1});
     var lime=new THREE.MeshStandardMaterial({color:0xbec2b9,roughness:1});
     var frieze=new THREE.MeshStandardMaterial({color:0x8d9992,roughness:1});
-    var pondWater=new THREE.MeshStandardMaterial({map:canvasTex('pondWater'),color:0xb1ae73,roughness:.7,metalness:.02});
     [plaster,inner,brick,stone,paving,tile,tileFine,lime,frieze].forEach(function(m){m.userData.surface='mineral';m.userData.bumpScale=.001;});
     tile.userData.bumpScale=.0005;tileFine.userData.bumpScale=.0003;
     timber.userData.surface='wood';timber.userData.bumpScale=.0005;
@@ -282,10 +281,6 @@
       for(var j=0;j<6;j++)vent((j-2.5)*.66,sign*(D/2+thickness/2+.003),sign>0?0:Math.PI);
       for(var k=0;k<5;k++)vent(sign*(W/2+thickness/2+.003),(k-2)*.65,sign>0?Math.PI/2:-Math.PI/2);
     });
-    var pond=[[-W/2-.15,D/2+.16],[-W/2+.08,D/2+.72],[W/2-.08,D/2+.72],[W/2+.22,D/2+.42],[W/2+.12,D/2+.16]];
-    var outline=new THREE.Shape();pond.forEach(function(p,i){if(i)outline.lineTo(p[0],-p[1]);else outline.moveTo(p[0],-p[1]);});outline.closePath();
-    var water=new THREE.Mesh(new THREE.ShapeGeometry(outline),pondWater);water.name='front_pond_surface';water.rotation.x=-Math.PI/2;water.position.y=.019;water.receiveShadow=true;g.add(water);
-    pond.forEach(function(p,i){var q=pond[(i+1)%pond.length],dx=q[0]-p[0],dz=q[1]-p[1];block('pond_stone_edging',stone,Math.hypot(dx,dz),.015,.018,(p[0]+q[0])/2,.026,(p[1]+q[1])/2,-Math.atan2(dz,dx));});
     Object.keys(batches).forEach(function(name){
       var batch=batches[name],m=new THREE.InstancedMesh(unitBox.clone(),batch.material,batch.items.length),o=new THREE.Object3D();m.name=name;
       batch.items.forEach(function(t,i){o.position.set(t[0],t[1],t[2]);o.rotation.set(0,t[6],t[7],'YXZ');o.scale.set(t[3],t[4],t[5]);o.updateMatrix();m.setMatrixAt(i,o.matrix);});
@@ -293,7 +288,7 @@
     });
     g.userData.referenceMode='photo-informed-form';g.userData.wallHeightRatio=wallH/W;g.userData.towerHeightRatio=towerH/W;
     g.userData.dimensions={width:92.2,depth:83.5,wallHeight:8,towerHeight:10};
-    g.userData.estimatedDetails=['tower footprint','individual bays','courtyard partitions','pond outline'];
+    g.userData.estimatedDetails=['tower footprint','individual bays','courtyard partitions'];
     g.userData.sourceUrl='https://www.ganzhou.gov.cn/zfxxgk/c144214/202211/8dcc8823a68742bf8fb3c4f5afff641a.shtml';
     return g;
   }
