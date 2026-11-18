@@ -547,6 +547,7 @@ input { font-family: inherit; }
 .dc-item-card:active { transform: scale(0.97); background: var(--primary-faint); }
 
 .dc-item-thumb { width: 100%; height: 70px; object-fit: cover; object-position: top; border-radius: 5px; margin-bottom: 5px; background: var(--paper-deep); border: 1px solid var(--line); }
+.dc-item-placeholder { display: grid; place-items: center; font-size: 26px; }
 
 .dc-item-name { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 1px; }
 .dc-item-ipa { font-size: 9.5px; color: var(--primary); margin-bottom: 2px; font-style: italic; }
@@ -566,7 +567,10 @@ input { font-family: inherit; }
 .dc-detail-name { font-size: 17px; font-weight: 700; color: var(--primary-deep); margin-bottom: 2px; }
 .dc-detail-ipa { font-size: 12px; color: var(--primary); font-style: italic; margin-bottom: 8px; }
 .dc-detail-img { width: 100%; border-radius: var(--radius-sm); margin-bottom: 10px; border: 1px solid var(--line); }
-.dc-detail-desc { font-size: 13px; color: var(--ink-soft); line-height: 1.8; margin-bottom: 12px; }
+.dc-detail-desc { font-size: 13px; color: var(--ink-soft); line-height: 1.8; margin-bottom: 12px; white-space: pre-line; }
+.dc-detail-photo { aspect-ratio: 16 / 9; object-fit: cover; object-position: top; }
+.dc-source-link { display: block; margin: 10px 0; color: var(--primary); text-align: left; text-decoration: underline; }
+.dc-source-notice { color: var(--muted); font-size: 12px; }
 .dc-detail-desc p { margin-bottom: 6px; }
 
 /* 视频播放卡片 */

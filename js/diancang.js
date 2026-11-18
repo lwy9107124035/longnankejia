@@ -7,19 +7,59 @@
   var data = null;
   var currentChapter = null;
   var videoOpener = null;
+  var detailRequest = 0, detailItemId = null;
 
   function $(sel) { return document.querySelector(sel); }
   function esc(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  function imageSource(item) {
+    var src = item.image || '', p = item.sheet || item.page;
+    if (!src && p) src = 'assets/pdf-imgs/page-' + String(p).padStart(2, '0') + '.jpg';
+    if (/^\/api\/media\//.test(src)) src = new URL(src, window.APP_CONFIG.app.canonicalUrl).href;
+    return globalThis.HeritageContent.safeUrl(src, true) ? src : '';
+  }
+
   function pageImg(item) {
-    // 图片按 PDF 第几张命名，而 item.page 是书上的印刷页码，两者在书中段差 2~5 页。
-    // 配图必须用 sheet，否则每条展品显示的都是隔壁那一页；page 仍用于给读者引用。
-    var p = item.sheet || item.page;
-    if (!p) return '';
-    p = String(p).padStart(2, '0');
-    return '<img class="dc-item-thumb" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '" loading="lazy">';
+    var src = imageSource(item);
+    return src ? '<img class="dc-item-thumb" src="' + esc(src) + '" alt="' + esc(item.name) + '" loading="lazy">'
+      : '<div class="dc-item-thumb dc-item-placeholder" aria-hidden="true">📖</div>';
+  }
+
+  function resolveItem(item, cards) {
+    var value = Object.assign({}, item), source = item.science;
+    if (!source) return value;
+    var card = cards.find(function (c) { return c.id === source.id; });
+    if (!card || typeof card.detail !== 'string' || !card.detail.trim()) return value;
+    value.text = globalThis.HeritageContent.plainText(card.detail);
+    value.desc = value.text.split('\n').find(function (line) { return line.length > 25; }) || value.text;
+    var image = card.imageUrl || card.image;
+    if (image) { value.image = image; value.imageCrop = false; }
+    // A reused book-page URL must keep the exhibit it actually narrates.
+    var borrowed = window.DIANCANG.chapters.some(function (ch) {
+      return ch.items.some(function (other) { return other.id !== item.id && other.videoUrl && other.videoUrl === card.videoUrl; });
+    });
+    if (card.videoUrl && !borrowed && globalThis.HeritageContent.safeUrl(card.videoUrl, false)) value.videoUrl = card.videoUrl;
+    return value;
+  }
+
+  function refresh() {
+    if (!data) return;
+    var chapterId = currentChapter && currentChapter.id;
+    var heritage = window.Heritage || (window.UI && window.UI.Heritage), cards = heritage ? heritage.list() : [];
+    data = Object.assign({}, window.DIANCANG, { chapters: window.DIANCANG.chapters.map(function (ch) {
+      return Object.assign({}, ch, { items: ch.items.map(function (item) { return resolveItem(item, cards); }) });
+    }) });
+    renderChapterTabs(); selectChapter(chapterId);
+    var total = data.chapters.reduce(function (sum, ch) { return sum + ch.items.length; }, 0);
+    var query = document.getElementById('dcQuery');
+    if (query) { query.placeholder = '输入关键词，检索 ' + total + ' 件展品全文'; if (query.value.trim()) runFind(); }
+    var mask = document.getElementById('dcDetailMask');
+    if (detailItemId && mask && !mask.hidden) {
+      var current = allItems().find(function (rec) { return rec.item.id === detailItemId; });
+      if (current) renderItemDetail(current.item);
+    }
   }
 
   function switchToChat(question) {
@@ -88,17 +128,17 @@
     });
   }
 
-  function showItemDetail(item) {
+  function renderItemDetail(item, notice) {
     var mask = document.getElementById('dcDetailMask');
     var body = document.getElementById('dcDetailBody');
     if (!mask || !body) return;
 
     var imgHtml = '';
-    var imgPage = item.sheet || item.page;
-    if (imgPage) {
-      var p = String(imgPage).padStart(2, '0');
-      imgHtml = '<img class="dc-detail-img" src="assets/pdf-imgs/page-' + p + '.jpg" alt="' + esc(item.name) + '">' +
-        '<div class="dc-detail-cite">《文化典藏》第 ' + esc(item.page) + ' 页</div>';
+    var src = imageSource(item);
+    if (src) {
+      var caption = item.imageCaption || (item.science ? (item.imageCrop ? '《文化典藏》配图' : '科普配图 · ' + item.science.name) : '《文化典藏》第 ' + item.page + ' 页');
+      imgHtml = '<img class="dc-detail-img' + (item.imageCrop ? ' dc-detail-photo' : '') + '" src="' + esc(src) + '" alt="' + esc(item.name) + '">' +
+        '<div class="dc-detail-cite">' + esc(caption) + '</div>';
     }
 
     var videoHtml = '';
@@ -112,16 +152,22 @@
         '</div>';
     }
 
-    // 详情展示《文化典藏》原文全文；desc 只作为列表里的短摘要
     var fullText = item.text || item.desc;
     body.innerHTML =
       '<div class="dc-detail-name">' + esc(item.name) + '</div>' +
       (item.ipa ? '<div class="dc-detail-ipa">' + esc(item.ipa) + '</div>' : '') +
       imgHtml +
       '<div class="dc-detail-desc">' + esc(fullText) + '</div>' +
+      (notice ? '<p class="dc-source-notice" role="status">' + esc(notice) + '</p>' : '') +
+      (item.science ? '<button type="button" class="dc-source-link" id="dcScienceBtn">资料来源 · 科普「' + esc(item.science.name) + '」 →</button>' : '') +
       videoHtml +
       '<button class="dc-detail-ask" id="dcAskBtn" type="button">问问阿蓝关于「' + esc(item.name) + '」的更多知识</button>';
     mask.hidden = false;
+    detailItemId = item.id;
+    var sourceBtn = document.getElementById('dcScienceBtn');
+    if (sourceBtn) sourceBtn.addEventListener('click', function () {
+      closeDetail(); window.Router.go('science', { item: item.science.id });
+    });
 
     var playBtn = document.getElementById('dcPlayBtn');
     if (playBtn && item.videoUrl) {
@@ -133,9 +179,29 @@
     var askBtn = document.getElementById('dcAskBtn');
     if (askBtn) {
       askBtn.addEventListener('click', function () {
-        mask.hidden = true;
+        closeDetail();
         switchToChat(item.name + '是什么？');
       });
+    }
+  }
+
+  function closeDetail() {
+    detailRequest++; detailItemId = null;
+    document.getElementById('dcDetailMask').hidden = true;
+  }
+
+  async function showItemDetail(item) {
+    var request = ++detailRequest;
+    renderItemDetail(item);
+    if (!item.science || !window.Store) return;
+    try {
+      if (!window.Store.getSyncStatus().cloudLoaded) await window.Store.syncWithCloud();
+      await window.Store.loadRecord(item.science.field, item.science.id, { fresh: true });
+      if (request !== detailRequest || document.getElementById('dcDetailMask').hidden) return;
+      var latest = allItems().find(function (rec) { return rec.item.id === item.id; });
+      if (latest) renderItemDetail(latest.item);
+    } catch (error) {
+      if (request === detailRequest && !document.getElementById('dcDetailMask').hidden) renderItemDetail(item, '暂时无法读取科普更新，正在展示已收录的内容。');
     }
   }
 
@@ -149,7 +215,7 @@
 
     videoOpener = document.activeElement;
     title.textContent = item.name + ' — 视频讲解';
-    desc.textContent = item.page ? '《文化典藏》展品原声讲解 · 第 ' + item.page + ' 页' : '';
+    desc.textContent = item.page ? '《文化典藏》展品原声讲解 · 第 ' + item.page + ' 页' : (item.science ? '科普 · ' + item.science.name : '');
     window.MediaPlayer.mount(frame, item.videoUrl, item.name);
     mask.hidden = false;
     document.getElementById('videoClose').focus();
@@ -220,10 +286,10 @@
     if (!q) return [];
     return allItems().map(function (rec) {
       var it = rec.item;
-      var name = norm(it.name), chapter = norm(rec.chapter);
+      var name = norm(it.name), chapter = norm(rec.chapter), aliases = (it.aliases || []).map(norm);
       var body = norm(it.text || '') + norm(it.desc || '') + norm(it.ipa || '');
       var score = 0;
-      if (name === q) score += 100;
+      if (name === q || aliases.indexOf(q) >= 0) score += 100;
       else if (name.indexOf(q) !== -1) score += 60;
       else if (q.indexOf(name) !== -1 && name.length >= 2) score += 45;
       if (chapter.indexOf(q) !== -1) score += 12;
@@ -320,8 +386,8 @@
 
       var closeBtn = document.getElementById('dcDetailClose');
       var mask = document.getElementById('dcDetailMask');
-      if (closeBtn) closeBtn.addEventListener('click', function () { mask.hidden = true; });
-      if (mask) mask.addEventListener('click', function (e) { if (e.target === mask) mask.hidden = true; });
+      if (closeBtn) closeBtn.addEventListener('click', closeDetail);
+      if (mask) mask.addEventListener('click', function (e) { if (e.target === mask) closeDetail(); });
 
       var videoClose = document.getElementById('videoClose');
       var videoMask = document.getElementById('videoMask');
@@ -331,9 +397,8 @@
         if (e.key === 'Escape' && videoMask && !videoMask.hidden) { e.preventDefault(); closeVideoPlayer(); }
       });
 
-      renderChapterTabs();
       bindFind();
-      selectChapter(data.chapters[0].id);
+      refresh();
       var total = data.chapters.reduce(function(s,c){return s+c.items.length;},0);
       var queryInput = document.getElementById('dcQuery');
       if (queryInput) queryInput.placeholder = '输入关键词，检索 ' + total + ' 件展品全文';
@@ -370,7 +435,7 @@
     data.chapters.forEach(function (ch) {
       (ch.items || []).forEach(function (it) {
         if (!it.videoUrl) return;
-        var alias = (triggers[it.name] || []).concat([it.name]);
+        var alias = (triggers[it.name] || []).concat(it.aliases || [], [it.name]);
         // 单字名不参与单字全词检索，必须命中2字及以上别名
         var inQ = false;
         if (q) {
@@ -394,11 +459,12 @@
 
   window.Diancang = {
     init: init,
+    refresh: refresh,
     switchToChat: switchToChat,
     findRelatedVideos: findRelatedVideos,
     search: searchExhibits,
     openItem: function (id) {
-      var matches = allItems().filter(function (record) { return record.item.id === id || record.item.name === id; });
+      var matches = allItems().filter(function (record) { return record.item.id === id || record.item.name === id || (record.item.aliases || []).indexOf(id) >= 0; });
       if (matches.length !== 1) return false;
       showItemDetail(matches[0].item); return true;
     },

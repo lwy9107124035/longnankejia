@@ -273,7 +273,7 @@ test('F06 reserved IDs match shipped records and explicitly retired builtin IDs'
   const window = {};
   vm.runInNewContext(fs.readFileSync(new URL('../js/knowledge-base.js', import.meta.url), 'utf8'), { window });
   // Keep retired IDs reserved so existing saved bundles remain valid and custom records cannot reuse them.
-  const retiredKnowledgeIds = ['dc-huxingwei', 'dc-shaowata', 'dc-zougushi'];
+  const retiredKnowledgeIds = ['dc-huxingwei', 'dc-shaowata', 'dc-zougushi', 'dc-muou', 'dc-jiushibaixiang'];
   const activeIds = Array.from(window.KNOWLEDGE_BASE, entry => entry.id);
   assert.ok(retiredKnowledgeIds.every(id => !activeIds.includes(id)));
   assert.deepEqual(globalThis.HeritageContent.reserved.kb.slice().sort(), activeIds.concat(retiredKnowledgeIds).sort());

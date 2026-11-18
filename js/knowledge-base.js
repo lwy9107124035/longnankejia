@@ -45,8 +45,8 @@ window.KNOWLEDGE_BASE = [
       '龙南客家非遗包含传统技艺、建筑营造、民俗表演与生活礼俗等多个门类，数字助手与世界客家非遗馆重点收录展示的项目包括：\n' +
       '① 传统手工艺与服饰：赣南客家蓝染（三浸三晒三发酵古法制靛、蜡染模板与靛蓝织带工艺）、杨村客家竹编（截竹、刮节、破篾、度篾齿磨边等二十余道工序）、客家织带（冬头帕重要系扎部件，饰有万字纹与吉祥文字）、龙南大漆、客家纸艺等；\n' +
       '② 建筑与居住文化：客家围屋营造技艺（关西新围、燕翼围、乌石围等，龙南素有“中国围屋之乡”之称）；\n' +
-      '③ 民俗节庆与体育：客家擂茶（人类非遗代表作名录）、杨村太平堡龙船会（世界最小龙舟赛场）、程龙镇板凳龙、九狮拜象等；\n' +
-      '④ 传统音乐与曲艺：客家山歌、客家童谣、赣南采茶戏、莲花调、木偶戏等。\n' +
+      '③ 民俗节庆与体育：客家擂茶（人类非遗代表作名录）、杨村太平堡龙船会（世界最小龙舟赛场）、程龙镇板凳龙等；\n' +
+      '④ 传统音乐与曲艺：客家山歌、客家童谣、赣南采茶戏、莲花调等。\n' +
       '您可以在页面中浏览科普卡片、三维展品和文化典藏，或直接向阿蓝提问任意具体项目。',
     sources: [
       { title: '《龙南市非物质文化遗产保护名录》' },
@@ -54,23 +54,13 @@ window.KNOWLEDGE_BASE = [
     ]
   },
   {
-    id: 'hakka-food-overview',
-    title: '龙南客家美食与风味小吃',
-    topics: ['客家美食', '风味小吃'],
-    aliases: ['客家美食', '龙南美食', '客家小吃', '好吃的', '特色美食', '有什么好吃的', '美食推荐'],
-    keywords: [
-      '美食', '小吃', '好吃的', '有什么好吃的', '客家美食', '客家小吃', '龙南美食',
-      '风味小吃', '特色菜', '客家菜', '特产', '饮食文化'
-    ],
-    answer:
-      '龙南客家饮食讲求原汁原味与就地取材，代表性美食与传统小吃包括：\n' +
-      '① 经典名菜：客家擂茶（人类非遗，陶钵擂制茶泥滚水冲泡）、酿豆腐（客家标志性菜肴）、梅菜扣肉、四星望月、客家三及第、客家一桌菜；\n' +
-      '② 特色风味小吃：黄姜豆腐（金黄爽嫩、清香微辣）、仙水冻（消暑凉品）、黄元米果（打米果传统节庆民俗）；\n' +
-      '③ 节庆食俗：寿诞龙须面、过年客家米酒与各类茶点。\n' +
-      '在文化典藏的客家风味栏目中收录了详细制作记载与客家方言原声讲解，欢迎查阅。',
-    sources: [
-      { title: '《龙南客家饮食文化与传统风味调查》' }
-    ]
+    id: "hakka-food-overview",
+    title: "龙南客家美食与风味小吃",
+    topics: ["客家美食", "风味小吃"],
+    aliases: ["客家美食", "龙南美食", "客家小吃", "好吃的", "特色美食", "有什么好吃的", "美食推荐"],
+    keywords: ["美食", "小吃", "好吃的", "有什么好吃的", "客家美食", "客家小吃", "龙南美食", "风味小吃", "特色菜", "客家菜", "特产", "饮食文化"],
+    answer: "龙南客家饮食讲求原汁原味与就地取材，龙南客家一桌菜“围屋宴”由12道龙南特色主菜、4道龙南特色配菜、4道龙南特色主食组成。\n一、龙南特色主菜\n虔心脆皮鸡、板盖丸焖鸭、秘制卤鹅\n清蒸鲟鱼、龙南牛多宝、龙南扣肉\n龙南酿豆腐、杨村炒乌粉、龙南三酥\n临塘浸菜、土香猪汤、凤眼珍珠\n二、龙南特色配菜\n汶龙灰水粄、龙南豆腐乳\n龙南腊味、炸利薯丸\n三、龙南特色主食\n大碗捶鱼面、龙南春卷\n龙南豆粥、咸蛋烫皮汤",
+    sources: [{"title": "典藏 · 一桌菜（企方修订）", "url": "https://longnankejia.pages.dev/#/diancang?item=dc-yizhuocai"}]
   },
   {
     id: 'landye',
@@ -311,10 +301,14 @@ window.KNOWLEDGE_BASE = [
     answer: '三及第汤寓意"连中三元"，瘦肉、猪肝、粉肠分别借喻状元、榜眼、探花，既滋补又有好彩头。'
   },
   {
-    id: 'dc-yizhuocai',
-    title: '一桌菜',
-    keywords: ['一桌菜', '龙南一桌菜'],
-    answer: '"龙南客家一桌菜"2019年正式评选推出，从二十余道候选菜品中选出十三道最具地方特色的佳肴，汇聚客家烹饪精粹。'
+    id: "dc-yizhuocai",
+    title: "客家一桌菜",
+    topics: ["客家一桌菜"],
+    aliases: ["一桌菜", "客家一桌菜", "龙南客家一桌菜", "围屋宴"],
+    keywords: ["一桌菜", "客家一桌菜", "围屋宴"],
+    answer: "龙南客家饮食讲求原汁原味与就地取材，龙南客家一桌菜“围屋宴”由12道龙南特色主菜、4道龙南特色配菜、4道龙南特色主食组成。\n一、龙南特色主菜\n虔心脆皮鸡、板盖丸焖鸭、秘制卤鹅\n清蒸鲟鱼、龙南牛多宝、龙南扣肉\n龙南酿豆腐、杨村炒乌粉、龙南三酥\n临塘浸菜、土香猪汤、凤眼珍珠\n二、龙南特色配菜\n汶龙灰水粄、龙南豆腐乳\n龙南腊味、炸利薯丸\n三、龙南特色主食\n大碗捶鱼面、龙南春卷\n龙南豆粥、咸蛋烫皮汤",
+    sources: [{"title": "典藏 · 一桌菜（企方修订）", "url": "https://longnankejia.pages.dev/#/diancang?item=dc-yizhuocai"}],
+    replacesScienceId: "kepu-1792980951543-ffofe6i7"
   },
   {
     id: 'dc-lingmao',
@@ -349,12 +343,6 @@ window.KNOWLEDGE_BASE = [
     title: '莲花调',
     keywords: ['莲花调', '莲花落'],
     answer: '莲花调是流传于龙南东坑、里仁、杨村一带的传统曲艺，唱词以四句七言为主，以竹板击节，即兴而歌。源于旧时乞者沿门唱书的"莲花落"，传入龙南后在本地唱开。'
-  },
-  {
-    id: 'dc-muou',
-    title: '杖头木偶戏',
-    keywords: ['杖头木偶', '木偶戏', '木偶'],
-    answer: '江西杖头木偶戏以樟木雕偶头，演员藏于屏后举杆而演，2021年列入省级非遗。一人可撑一台大戏——双脚踩打锣鼓，双手操控木偶，一人演尽生旦净末丑。龙南年节庙会偶有戏班亮相，演绎《满堂福》《花木兰》等千古悲欢。'
   },
   {
     id: 'dc-niangdoufu',
@@ -421,12 +409,6 @@ window.KNOWLEDGE_BASE = [
     title: '火笼',
     keywords: ['火笼', '竹火笼'],
     answer: '火笼以竹为骨、以陶为胆，笼身竹篾编织，内胆陶钵盛炭。客家人"地瓜当饭饱，火笼当棉袄"。火笼是女儿出嫁必备嫁妆，笼内装红炭贴喜字，寓意将娘家"火种"带到夫家，婚后红红火火。'
-  },
-  {
-    id: 'dc-jiushibaixiang',
-    title: '九狮拜象',
-    keywords: ['九狮拜象', '瑞狮'],
-    answer: '九狮拜象是赣南客家传统民俗表演。2025年"非遗贺新春"主会场在龙南世客围启动，37名演员舞动雄狮与大象。九狮一象、百兽相随，饱含客家人驱逐不祥、祈福新春的朴素愿望。'
   },
   {
     id: 'jiangyi-weiwu-overview',
@@ -570,9 +552,9 @@ window.KEYWORD_SYNONYMS = {
     '客家传统纹样':{ids:sections.filter(function(row){return /^pattern-/.test(row[0]);}).map(function(row){return row[0];}).concat(['pattern-overview']),aliases:['传统纹样','客家纹样','门榜','微型族谱','狮象雕塑']},
     '客家寿诞':{ids:['dc-shoudan'],aliases:['客家寿诞','寿诞','大生日','做寿','祝寿','可提前不得推后','人生礼俗']},
     '龙南大漆':{ids:['dc-daqi'],aliases:['龙南大漆','大漆','大漆技艺','天然漆','生漆']},
-    '客家戏曲':{ids:['dc-xiqu','dc-caichaxi','dc-lianhuadiao','dc-luodihuagu','dc-muou'],aliases:['采茶戏','莲花调','客家戏曲','戏曲与说唱','采茶操','采茶戏和莲花调']},
-    '客家饮食':{ids:['dc-niangdoufu','dc-huangyuanmiguo','dc-huangjiangdoufu','dc-xianshuidong','dc-meicaikouro','dc-sanjidi','dc-yizhuocai','dc-leicha','dc-sijingwangyue'],aliases:['酿豆腐','无麦之饺','黄元米果','客家味道','客家饮食']},
-    '节庆民俗':{ids:['dc-longzhou','dc-bandenglong','dc-jiushibaixiang'],aliases:['龙南龙舟','赛龙舟','板凳龙','九狮拜象','节庆民俗']},
+    '客家戏曲':{ids:['dc-xiqu','dc-caichaxi','dc-lianhuadiao','dc-luodihuagu'],aliases:['采茶戏','莲花调','客家戏曲','戏曲与说唱','采茶操','采茶戏和莲花调']},
+    '客家饮食':{ids:['dc-niangdoufu','dc-huangyuanmiguo','dc-huangjiangdoufu','dc-xianshuidong','dc-meicaikouro','dc-sanjidi','dc-leicha','dc-sijingwangyue'],aliases:['酿豆腐','无麦之饺','黄元米果','客家味道','客家饮食']},
+    '节庆民俗':{ids:['dc-longzhou','dc-bandenglong'],aliases:['龙南龙舟','赛龙舟','板凳龙','节庆民俗']},
     '客家方言':{ids:['fangyan'],aliases:['客家方言','龙南话','宁龙片','客家话','客家语']},
     '世界客属恳亲大会':{ids:['dc-shikehui'],aliases:['世界客属恳亲大会','世客会','恳亲大会','世客围']}
   };
@@ -4169,6 +4151,7 @@ window.KEYWORD_SYNONYMS = {
   scienceEntries.forEach(function (addition) {
     var existing = window.KNOWLEDGE_BASE.find(function (entry) { return entry.id === addition.id; });
     if (!existing) { window.KNOWLEDGE_BASE.push(addition); return; }
+    if (existing.replacesScienceId && addition.sources.some(function (source) { return source.url.endsWith('item=' + existing.replacesScienceId); })) return;
     existing.answer += "\n\n科普补充｜" + addition.title + "\n" + addition.answer;
     ["topics", "aliases", "keywords"].forEach(function (field) { existing[field] = Array.from(new Set((existing[field] || []).concat(addition[field]))); });
     existing.sources = (existing.sources || []).concat(addition.sources);

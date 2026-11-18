@@ -13,14 +13,14 @@ const scienceTopics = entries.flatMap(entry => (entry.sources || [])
   .filter(source => source.title.startsWith('科普 · '))
   .map(source => ({ name: source.title.slice(5), entry })));
 
-test('science expansion adds 176 entries and supplements 11 existing entries without duplicate IDs or sources', () => {
-  assert.equal(entries.length, 258);
-  assert.equal(new Set(entries.map(entry => entry.id)).size, 258);
+test('science expansion adds 176 entries and supplements 10 entries while preserving the reviewed menu', () => {
+  assert.equal(entries.length, 256);
+  assert.equal(new Set(entries.map(entry => entry.id)).size, 256);
   assert.ok(!entries.some(entry => entry.id === 'dc-huxingwei'));
   assert.equal(entries.filter(entry => entry.id.startsWith('kb-science-')).length, 176);
-  assert.equal(scienceTopics.length, 187);
-  assert.equal(new Set(scienceTopics.map(topic => topic.name)).size, 187);
-  assert.equal(scienceTopics.filter(topic => !topic.entry.id.startsWith('kb-science-')).length, 11);
+  assert.equal(scienceTopics.length, 186);
+  assert.equal(new Set(scienceTopics.map(topic => topic.name)).size, 186);
+  assert.equal(scienceTopics.filter(topic => !topic.entry.id.startsWith('kb-science-')).length, 10);
   assert.equal(scienceTopics.filter(topic => topic.name === '竹其居围').length, 1);
   for (const { entry } of scienceTopics) {
     assert.ok(entry.answer.length > 40);
@@ -29,7 +29,7 @@ test('science expansion adds 176 entries and supplements 11 existing entries wit
   }
 });
 
-test('all 187 science subjects retrieve their own knowledge entry using the real rules engine', () => {
+test('all 186 science subjects retrieve their own knowledge entry using the real rules engine', () => {
   const engine = new context.window.AnswerEngine.RulesEngine();
   for (const { name, entry } of scienceTopics) {
     const ranked = engine.rank('介绍一下' + name);

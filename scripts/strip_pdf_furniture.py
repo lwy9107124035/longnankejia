@@ -1,4 +1,4 @@
-"""去掉 diancang-data.js 里 text/desc 开头的 PDF 页码残渣。
+"""去掉 diancang-data.js 里 text/desc 首尾的 PDF 页码残渣。
 
 《文化典藏》把页码印在正文同一行，sync_diancang_text.py 拼接时把它们粘进了正文开头，
 实测有 7 条：「hhh大漆…」「21421435迎龙灯…」「513555h11九狮拜象…」这类。
@@ -18,6 +18,7 @@ P = "js/diancang-data.js"
 FIELD = re.compile(r"(text: '|desc: ')((?:[^'\\]|\\.)*)'", re.S)
 # 开头一串数字/小写字母；后面紧跟汉字，且不是「1929年」这种年份
 FURNITURE = re.compile(r"^(?!19\d\d年|20\d\d年)([0-9a-z]{2,10})(?=[\u4e00-\u9fff])")
+TRAILING_FURNITURE = re.compile(r"(?<=[。！？；”」])\s*(?:[0-9a-z]{2,12}(?:中三弦|弦三中|头弦|弦头|椰胡|胡椰)?|(?:采茶扇|扇茶采)[0-9a-z]{2,12})$")
 
 
 def main():
@@ -26,7 +27,7 @@ def main():
 
     def sub(m):
         head, body, tail = m.group(1), m.group(2), "'"
-        stripped = FURNITURE.sub("", body)
+        stripped = TRAILING_FURNITURE.sub("", FURNITURE.sub("", body))
         if stripped != body:
             changed.append((body[:14], stripped[:14]))
         return head + stripped + tail

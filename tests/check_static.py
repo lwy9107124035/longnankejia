@@ -290,10 +290,11 @@ def check_diancang_text_clean():
     """
     src = read(rel("js", "diancang-data.js"))
     junk = re.compile(r"^(?!19\d\d年|20\d\d年)[0-9a-z]{2,10}(?=[\u4e00-\u9fff])")
+    trailing = re.compile(r"(?<=[。！？；”」])\s*(?:[0-9a-z]{2,12}(?:中三弦|弦三中|头弦|弦头|椰胡|胡椰)?|(?:采茶扇|扇茶采)[0-9a-z]{2,12})$")
     bad = []
     for m in re.finditer(r"(?:text|desc):\s*'((?:[^'\\]|\\.)*)'", src, re.S):
         body = m.group(1).strip()
-        if junk.match(body):
+        if junk.match(body) or trailing.search(body):
             bad.append(body[:18])
     for b in bad[:6]:
         fail("典藏正文以页码残渣开头：%r —— 跑 python scripts/strip_pdf_furniture.py" % b)
@@ -321,6 +322,9 @@ def check_diancang_pages():
     checked = 0
     for m in re.finditer(r"name:\s*'([^']+)'([^}]*?)desc:", data, re.S):
         name = m.group(1)
+        book_name = re.search(r"bookName:\s*'([^']+)'", m.group(2))
+        if book_name:
+            name = book_name.group(1)
         sm = re.search(r"sheet:\s*(\d+)", m.group(2))
         if not sm:
             continue
@@ -663,7 +667,8 @@ def check_video_attribution():
         body = m.group(2)
         u = re.search(r"videoUrl:\s*'(https:[^']+)'", body)
         sh = re.search(r"sheet:\s*(\d+)", body)
-        items.append({"name": m.group(1),
+        book_name = re.search(r"bookName:\s*'([^']+)'", body)
+        items.append({"name": m.group(1), "bookName": book_name.group(1) if book_name else m.group(1),
                       "vid": (re.search(r"id=([\w-]+)", u.group(1)) or [None, ""])[1] if u else None,
                       "sheet": int(sh.group(1)) if sh else None})
     with_url = [x for x in items if x["vid"]]
@@ -678,7 +683,7 @@ def check_video_attribution():
         fail("qr-content 里这些页的码没有展品在挂：%s（sheet 对不上或漏挂）"
              % "、".join(str(p) for p in sorted(orphan)))
     for page, v in qr.items():
-        owner = next((x["name"] for x in items if x["sheet"] == int(page)), None)
+        owner = next((x["bookName"] for x in items if x["sheet"] == int(page)), None)
         if owner and v.get("exhibit") != owner:
             fail("data/qr-content.json 第 %s 页写着 [%s]，但那一页上的展品是 [%s]"
                  % (page, v.get("exhibit"), owner))

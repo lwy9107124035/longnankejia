@@ -293,10 +293,10 @@ MUTATIONS = [
      '<div class="name">豆包的工作分支</div>', '<div class="name">doubao branch</div>',
      ["地址.html 丢了「豆包的工作分支」"], "static"),
     ("W1", "把一件展品的视频改回按 page 挂", DD,
-     "name: '龙舟', sheet: 60", "name: '龙舟', sheet: 999",
+     "sheet: 60,", "sheet: 999,",
      ["这些展品的讲解视频不是印在它那一页上的码"], "static"),
     ("W2", "往触发词表里塞回单字", DD,
-     "  '龙舟': ['龙舟', '龙船会']", "  '龙舟': ['舟', '龙船会']",
+     "  '杨村池塘龙舟赛': ['龙舟', '龙船会', '赛龙舟', '杨村池塘龙舟赛']", "  '杨村池塘龙舟赛': ['舟', '龙船会', '赛龙舟', '杨村池塘龙舟赛']",
      ["有单字触发词"], "static"),
     ("W3", "qr-content 的展品名改回按 page 填", QRC,
      '"exhibit": "冬头帕"', '"exhibit": "火笼"',
@@ -307,7 +307,7 @@ MUTATIONS = [
      ["自我介绍里不挂视频"], ""),
     ("W6", "挂卡永远挂同一件展品", DC,
      "        if (inQ || namedInA) hits.push(it);",
-     "        if (it.name === '龙舟') hits.push(it);",
+     "        if (it.name === '杨村池塘龙舟赛') hits.push(it);",
      ["答案下方挂出原声讲解入口"], ""),
 
 ]

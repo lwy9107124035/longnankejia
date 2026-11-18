@@ -162,6 +162,17 @@
     var cells = contentCells(value);
     for (var entry of cells.values()) await prepareMediaRecord(entry);
   }
+  function plainText(html) {
+    return String(html || '').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+      .replace(/<br\s*\/?\s*>|<\/(?:p|div|h[1-6]|li|tr)>/gi, '\n').replace(/<[^>]+>/g, '')
+      .replace(/&(?:nbsp|amp|lt|gt|quot|apos);|&#(?:x[\da-f]+|\d+);/gi, function (entity) {
+        var named = { '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" };
+        if (named[entity.toLowerCase()]) return named[entity.toLowerCase()];
+        var code = parseInt(entity.slice(2, -1).replace(/^x/i, ''), /^&#x/i.test(entity) ? 16 : 10);
+        return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+      }).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim();
+  }
+
   function isAudioTrack(track) {
     if (!track) return false;
     if (track.mediaType === 'audio' || (track.item && (track.item.mediaType === 'audio' || track.item.audioUrl))) return true;
@@ -169,5 +180,5 @@
   }
   root.HeritageContent = { defaults: fields, validateBundle: validateBundle, record: record, safeUrl: safeUrl, reserved: reserved, canonical: canonical,
     comparable: comparable, rawComparable: rawComparable, contentCells: contentCells, setContentCell: setContentCell, cellHash: cellHash,
-    mediaIdentity: mediaIdentity, mediaPath: mediaPath, prepareMediaRecord: prepareMediaRecord, prepareMediaBundle: prepareMediaBundle, isAudioTrack: isAudioTrack };
+    mediaIdentity: mediaIdentity, mediaPath: mediaPath, prepareMediaRecord: prepareMediaRecord, prepareMediaBundle: prepareMediaBundle, isAudioTrack: isAudioTrack, plainText: plainText };
 })(globalThis);

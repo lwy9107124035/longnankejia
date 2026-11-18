@@ -476,6 +476,7 @@
   function triggerFrontEndRefresh() {
     var h = window.Heritage || (window.UI && window.UI.Heritage);
     if (h && h.render) h.render();
+    if (window.Diancang && window.Diancang.refresh) window.Diancang.refresh();
     if (window.Dialect && window.Dialect.refresh) window.Dialect.refresh();
     if (window.AnswerEngine && window.AnswerEngine.reset) window.AnswerEngine.reset();
   }
@@ -1057,22 +1058,13 @@
   function getAnswerEntries() {
     var heritage = window.Heritage || (window.UI && window.UI.Heritage);
     var cards = heritage ? heritage.list() : getHeritageCards([]);
-    var replaced = new Set(visibleContent('kepuDeleted', [])), live = [];
-    function plain(html) {
-      return String(html || '').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
-        .replace(/<br\s*\/?\s*>|<\/(?:p|div|h[1-6]|li|tr)>/gi, '\n').replace(/<[^>]+>/g, '')
-        .replace(/&(?:nbsp|amp|lt|gt|quot|apos);|&#(?:x[\da-f]+|\d+);/gi, function (entity) {
-          var named = { '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" };
-          if (named[entity.toLowerCase()]) return named[entity.toLowerCase()];
-          var code = parseInt(entity.slice(2, -1).replace(/^x/i, ''), /^&#x/i.test(entity) ? 16 : 10);
-          return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
-        }).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim();
-    }
+    var baseEntries = getEntries(), corrected = new Set(baseEntries.map(function (entry) { return entry.replacesScienceId; }).filter(Boolean));
+    var replaced = new Set(visibleContent('kepuDeleted', []).concat(Array.from(corrected))), live = [];
     cards.forEach(function (card) {
-      // These two articles have curated cultural summaries in the knowledge base.
-      if (/渡江烫伤药|全鹿膏/.test(card.name || '')) return;
+      // Published corrections and the two curated cultural summaries take precedence.
+      if (corrected.has(card.id) || /渡江烫伤药|全鹿膏/.test(card.name || '')) return;
       replaced.add(card.id);
-      var answer = plain(card.detail);
+      var answer = globalThis.HeritageContent.plainText(card.detail);
       if (!answer) return;
       var name = String(card.name || ''), song = name.match(/《(.+?)》/);
       var aliases = [name, name.replace(/\s+/g, '')];
@@ -1088,7 +1080,7 @@
       try { return replaced.has(decodeURIComponent(match[1])); }
       catch (error) { if (error instanceof URIError) return false; throw error; }
     }
-    var entries = getEntries().flatMap(function (entry) {
+    var entries = baseEntries.flatMap(function (entry) {
       var sources = entry.sources || [];
       if (!sources.some(superseded)) return [entry];
       var sections = String(entry.answer || '').split(/\n\n科普补充｜/);
